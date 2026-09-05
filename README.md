@@ -1,128 +1,71 @@
 # Plain
 
-Лёгкая читалка и редактор Markdown для Windows 11.
+A lightweight Markdown reader and editor for Windows 11.
 
-Открываете `.md` двойным кликом — и сразу читаете. Поправили — файл остался вашим байт в байт. Библиотека — это обычная папка на диске: без базы данных, без аккаунта, без сети.
+Double-click a `.md` file and you are reading. Make a change, and the file stays yours, byte for byte. Your library is a plain folder on disk: no database, no account, no network.
 
-![Plain — режим чтения](docs/screenshot-light.png)
+![Plain in reading mode](docs/screenshot-light.png)
 
-## Что умеет
+## What it does
 
-- **Три вида одного документа**: `read` — аккуратный рендер, `edit` — исходник с подсветкой, `rich` — исходник со скрытыми маркерами, как в Typora. Переключение — `Ctrl+/` или клик в верхней полосе.
-- **Полный Markdown**: таблицы, чекбоксы, сноски, callouts `> [!note]`, формулы KaTeX, диаграммы Mermaid, подсветка кода, `==выделение==`, wikilinks `[[заметка]]`, картинки из папки.
-- **Папка как библиотека**: дерево файлов, создание, переименование, удаление в корзину, поиск по содержимому всей папки.
-- **Быстрый переход** `Ctrl+K`: файлы по имени, недавние, команды.
-- **Бережное сохранение**: атомарная запись, сохранение кодировки и переводов строк, черновики на случай сбоя, предупреждение, если файл изменили снаружи.
-- **Тихий интерфейс**: один моноширинный шрифт, светлая и тёмная тема, никаких панелей инструментов и иконок.
+- **Three views of one document.** `read` renders the text, `edit` shows the source with syntax highlighting, and `rich` shows the source with the markup hidden, the way Typora does. Switch with `Ctrl+/` or by clicking the mode bar.
+- **All the Markdown you need.** Tables, task lists, footnotes, callouts like `> [!note]`, KaTeX math, Mermaid diagrams, syntax-highlighted code, `==highlights==`, `[[wikilinks]]`, and images from your folder.
+- **A folder as a library.** A file tree, create, rename, delete to the Recycle Bin, and full-text search across the folder.
+- **Quick open.** `Ctrl+K` finds files by name, lists recent ones, and runs commands.
+- **Careful saving.** Atomic writes, encodings and line endings preserved, recovery drafts in case of a crash, and a warning when a file changes on disk while you have it open.
+- **A quiet interface.** One monospace font, light and dark themes, no toolbars, no icons.
 
-## Установка
+## Installation
 
-1. Распакуйте `Plain-0.1.0-win-x64.zip` в любую папку, например `C:\Program Files\Plain` или `%LOCALAPPDATA%\Programs\Plain`. Внутри только `plain.exe`, установщик не нужен.
-2. Запустите `plain.exe`. При первом запуске Windows SmartScreen покажет синее окно «Система Windows защитила ваш компьютер», потому что программа не подписана. Нажмите **Подробнее → Выполнить в любом случае**. Больше он не спросит.
-3. Чтобы `.md` открывались в Plain двойным кликом: правый клик на любом `.md` → **Открыть с помощью → Выбрать другое приложение → Plain → Всегда**. Plain уже есть в этом списке после первого запуска, но по умолчанию сам себя не назначает.
+1. Unpack `Plain-0.1.0-win-x64.zip` into any folder, for example `C:\Program Files\Plain` or `%LOCALAPPDATA%\Programs\Plain`. It contains a single `plain.exe`; there is no installer.
+2. Run `plain.exe`. On first launch, Windows SmartScreen shows a blue "Windows protected your PC" dialog because the program is not code-signed. Click **More info → Run anyway**. It will not ask again.
+3. To open `.md` files in Plain with a double-click: right-click any `.md` file → **Open with → Choose another app → Plain → Always**. Plain appears in that list after its first launch, but it never makes itself the default on its own.
 
-Ничего дополнительно ставить не нужно: ни Node, ни Rust, ни WebView2 — всё, что требуется, уже есть в Windows 11. Если папку с программой перенесли, просто запустите exe с нового места.
+Nothing else needs to be installed: no Node, no Rust, no separate WebView2 runtime. Everything Plain needs already ships with Windows 11. If you move the folder later, just run the exe from its new location.
 
-## Как пользоваться
+## Using it
 
-- **Открыть файл** — двойной клик в Проводнике, перетаскивание на окно или `Ctrl+O`.
-- **Открыть папку** — `Ctrl+Alt+O` или перетащить папку на окно. Слева появится дерево файлов, `Ctrl+Shift+F` ищет по содержимому всех файлов.
-- **Править** — `Ctrl+/` переключает чтение и редактирование. Форматирование — обычные сочетания (`Ctrl+B`, `Ctrl+I`, `Ctrl+K`…) или плавающая панель, которая появляется над выделенным текстом.
-- **Сохранить** — `Ctrl+S`. Пока не сохранили, в заголовке видна точка `•`, а черновик уже лежит в безопасном месте: если программа или компьютер выключатся, при следующем запуске она предложит восстановить текст.
-- **Настройки** — `Ctrl+,`: тема, размер шрифта, ширина колонки, номера строк и ещё несколько вещей. Меняются сразу.
-- **Всё остальное** — в меню `file · edit · view · help` или через палитру команд `Ctrl+Shift+P`.
+- **Open a file.** Double-click it in Explorer, drop it onto the window, or press `Ctrl+O`.
+- **Open a folder.** Press `Ctrl+Alt+O` or drop a folder onto the window. The file tree appears on the left, and `Ctrl+Shift+F` searches the contents of every file in it.
+- **Edit.** `Ctrl+/` switches between reading and editing. Format with the usual shortcuts (`Ctrl+B`, `Ctrl+I`, `Ctrl+Shift+K`…) or with the small panel that appears above selected text.
+- **Save.** `Ctrl+S`. Until you save, a `•` shows in the title, and a recovery draft is already stored in a safe place: if the program or the computer shuts down, Plain offers to restore your text on the next launch.
+- **Settings.** `Ctrl+,` opens theme, font size, column width, line numbers, and a few more. Changes apply immediately.
+- **Everything else** lives in the `file · edit · view · help` menu and in the command palette, `Ctrl+Shift+P`. The full list of keyboard shortcuts is under `help → shortcuts`, or press `F1`.
 
-## Горячие клавиши
+## Keyboard shortcuts
 
-| Файлы | |
+The complete list is inside the app: `help → shortcuts` or `F1`. Shortcuts work in any keyboard layout, so `Ctrl+B` is bold even when the layout is Cyrillic.
+
+## Where your data lives
+
+In `%APPDATA%\Plain` (that is `C:\Users\<you>\AppData\Roaming\Plain`):
+
+| File | Contents |
 |---|---|
-| `Ctrl+N` | новый файл |
-| `Ctrl+O` / `Ctrl+Alt+O` | открыть файл / папку |
-| `Ctrl+S` / `Ctrl+Shift+S` | сохранить / сохранить как |
-| `Ctrl+W` / `Ctrl+Tab` | закрыть / следующий открытый |
-| `F5` | перечитать с диска |
+| `settings.json` | settings; easier to change with `Ctrl+,` |
+| `drafts\` | recovery drafts of unsaved edits |
+| `state.json` | open files, reading positions, the last folder |
 
-| Навигация | |
-|---|---|
-| `Ctrl+K` | быстрый переход: файлы, недавние |
-| `Ctrl+Shift+P` | палитра команд |
-| `Ctrl+F` / `Ctrl+H` | найти / заменить |
-| `F3` / `Shift+F3` | следующее / предыдущее совпадение |
-| `Ctrl+Shift+F` | поиск по папке |
-| `Ctrl+G` | перейти к строке |
-| `Alt+←` / `Alt+→` | назад / вперёд по ссылкам |
+Plain creates nothing inside your own folders.
 
-| Вид | |
-|---|---|
-| `Ctrl+/` | чтение ↔ редактирование |
-| `Ctrl+Alt+1` / `2` / `3` | read / edit / rich |
-| `Ctrl+\` | скрыть или показать боковую панель |
-| `Ctrl+Shift+D` | светлая / тёмная тема |
-| `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | масштаб |
-| `Ctrl+Shift+9` | номера строк |
-| `F11` / `Ctrl+Shift+A` | полный экран / поверх других окон |
-| `Ctrl+,` | настройки |
+## How it treats your files
 
-| Форматирование | |
-|---|---|
-| `Ctrl+B` / `Ctrl+I` / `Ctrl+E` | жирный / курсив / код |
-| `Ctrl+Shift+K` | ссылка |
-| `Ctrl+Shift+Q` | цитата |
-| `Ctrl+Shift+L` | список: `-` → `1.` → `- [ ]` → снять |
-| `Ctrl+Enter` | отметить чекбокс |
-| `Ctrl+1` … `Ctrl+6` | заголовок (повтор снимает) |
-| ``Ctrl+Shift+` `` | блок кода |
-| `Ctrl+]` / `Ctrl+[` | увеличить / уменьшить отступ |
+- Bytes you did not touch do not change: list markers, indentation, trailing spaces, the byte order mark, the final newline.
+- Line endings are kept as they were, CRLF or LF. If a file mixes both, saving picks the dominant style and says so in the status bar.
+- The encoding is kept: UTF-8, UTF-8 with BOM, UTF-16. For a legacy cp1251 file, Plain offers to convert it to UTF-8 the first time you save.
+- Writes are atomic: the text goes to a temporary file next to the original, which is then replaced in one step. An interrupted write cannot corrupt a document.
+- If a file changes on disk while it is open: with no edits of your own, it is reloaded quietly; with edits, Plain shows a warning and never overwrites the other change.
 
-| Правка | |
-|---|---|
-| `Ctrl+D` | выделить следующее такое же слово |
-| `Ctrl+Alt+↑` / `↓` | добавить курсор |
-| `Alt+↑` / `↓` | передвинуть строку |
-| `Alt+Shift+↑` / `↓` | дублировать строку |
-| `Ctrl+Shift+X` | удалить строку |
-| `Ctrl+Shift+[` / `]` | свернуть / развернуть раздел |
-| `Ctrl+Shift+V` | вставить как текст |
-| `Ctrl+Shift+C` | скопировать путь к файлу |
+## Building from source
 
-| Дерево файлов | |
-|---|---|
-| `F2` | переименовать |
-| `Delete` | в корзину |
-| `Ctrl+Shift+E` | показать в Проводнике |
-
-Сочетания работают в любой раскладке: `Ctrl+B` в русской раскладке — это тоже жирный.
-
-## Где хранятся данные
-
-В папке `%APPDATA%\Plain` (`C:\Users\<имя>\AppData\Roaming\Plain`):
-
-| Файл | Что там |
-|---|---|
-| `settings.json` | настройки, их удобнее менять через `Ctrl+,` |
-| `drafts\` | черновики несохранённых правок |
-| `state.json` | открытые файлы, позиции чтения, последняя папка |
-
-В вашей папке с текстами Plain не создаёт ничего.
-
-## Как это работает с файлами
-
-- Байты, которых вы не касались, не меняются: маркеры списков, отступы, пробелы в конце строк, BOM, финальный перевод строки.
-- Переводы строк сохраняются как были (CRLF или LF). Если в файле они перемешаны, при сохранении выбирается преобладающий стиль, и об этом сообщается в строке состояния.
-- Кодировка сохраняется: UTF-8, UTF-8 с BOM, UTF-16. Старый файл в cp1251 при первом сохранении предложит перевести в UTF-8.
-- Запись атомарная: сначала во временный файл рядом, потом замена. Оборванная запись не испортит документ.
-- Если файл изменили снаружи, пока он открыт: без ваших правок — тихо перечитается, с правками — покажет предупреждение и не затрёт чужие изменения.
-
-## Сборка из исходников
-
-Нужны Node.js 22, Rust (`rustup`, toolchain `stable-x86_64-pc-windows-msvc`) и Visual Studio Build Tools с компонентом «Desktop development with C++».
+You need Node.js 22, Rust (`rustup` with the `stable-x86_64-pc-windows-msvc` toolchain), and Visual Studio Build Tools with the "Desktop development with C++" workload.
 
 ```
 npm install
-npm run tauri dev     # запуск в режиме разработки
-npm run pack          # release-сборка и dist-win\Plain-0.1.0-win-x64.zip
+npm run tauri dev     # development build with live reload
+npm run pack          # release build, produces dist-win\Plain-0.1.0-win-x64.zip
 ```
 
-Проверки: `npm run build`, `npx vitest run`, `cargo test` в папке `src-tauri`. Ручной чек-лист перед раздачей — `CHECKLIST.md`.
+Checks: `npm run build`, `npx vitest run`, and `cargo test` inside `src-tauri`. The manual checklist used before a release is in `CHECKLIST.md`.
 
-Стек: Tauri 2, React, CodeMirror 6, unified (remark/rehype), Shiki, KaTeX, Mermaid. Rust для файловой системы, наблюдения за папкой и поиска.
+Stack: Tauri 2, React, CodeMirror 6, unified (remark and rehype), Shiki, KaTeX, Mermaid. Rust handles the file system, folder watching, and search.
