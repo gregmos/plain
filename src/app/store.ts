@@ -3,8 +3,8 @@
 
 import { create } from "zustand";
 import { normalizeEol, type Eol } from "./eol";
-import { DEFAULTS, type Settings, type Theme } from "./settings";
-import { applyAppearance, applyTheme, resolveTheme } from "./theme";
+import { DEFAULTS, saveSettings, type Settings, type Theme } from "./settings";
+import { applyAppearance, applyReading, applyTheme, flipTheme, resolveTheme } from "./theme";
 import { basename, pathKey } from "./paths";
 
 /** Over this, highlighting is off and read renders on demand (spec §8). */
@@ -99,6 +99,29 @@ export interface Dialog {
   cancel: () => void;
 }
 
+/** One entry of the library tree (spec §6); folders carry their children. */
+export interface TreeNode {
+  name: string;
+  /** Absolute path, as Rust spelled it. */
+  path: string;
+  /** Path relative to the library root, `/` separated — the tree's identity. */
+  rel: string;
+  dir: boolean;
+  children: TreeNode[];
+}
+
+/** The row the tree is about to create; `Enter` in the inline field makes it. */
+export interface TreeDraft {
+  /** Absolute path of the folder it goes into. */
+  parent: string;
+  kind: "file" | "folder";
+}
+
+/** `Ctrl+K`; `seed` is `>` when the palette was asked for (spec §4). */
+export interface QuickSearch {
+  seed: string;
+}
+
 export interface BannerAction {
   label: string;
   run: () => void;
@@ -130,7 +153,37 @@ interface AppState {
   /** Drafts waiting to be restored or discarded; null once that is done. */
   recovery: Recovery[] | null;
 
+  /* ------------------------------------------------- the library (wave 5) */
+
+  /** Roots of the library tree; empty without a library. */
+  tree: TreeNode[];
+  /** How many files the tree holds, for the rail footer. */
+  treeFiles: number;
+  /** Relative paths of the folders that are folded shut; kept in the session. */
+  collapsed: string[];
+  /** Absolute path of the row the keyboard is on. */
+  treeSelected: string | null;
+  /** A new file or folder is being named inline; null the rest of the time. */
+  treeDraft: TreeDraft | null;
+  /** Absolute path of the row being renamed inline. */
+  treeRenaming: string | null;
+  /** The quick-search modal, or null when it is closed. */
+  quickSearch: QuickSearch | null;
+  /** `Ctrl+Shift+F` takes over the content area (spec §7). */
+  folderSearch: boolean;
+
+  /* ------------------------------------------ menu and settings (wave 5b) */
+
+  /** The settings screen takes over the content area too (spec §10). */
+  settingsOpen: boolean;
+  /** WebView2 zoom factor the view menu drives; 1 is 100% (spec §4). */
+  zoom: number;
+
   applySettings: (settings: Settings) => void;
+  /** A change made on the settings screen: applied now, written to disk. */
+  changeSettings: (settings: Settings) => void;
+  setSettingsOpen: (open: boolean) => void;
+  setZoom: (zoom: number) => void;
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
   syncSystemTheme: (resolved: "light" | "dark") => void;
@@ -156,6 +209,21 @@ interface AppState {
   setDialog: (dialog: Dialog | null) => void;
   setRecovery: (recovery: Recovery[] | null) => void;
   setRecent: (recent: string[]) => void;
+
+  setTree: (tree: TreeNode[]) => void;
+  setCollapsed: (collapsed: string[]) => void;
+  toggleCollapsed: (rel: string) => void;
+  setTreeSelected: (path: string | null) => void;
+  setTreeDraft: (draft: TreeDraft | null) => void;
+  setTreeRenaming: (path: string | null) => void;
+  setQuickSearch: (quickSearch: QuickSearch | null) => void;
+  setFolderSearch: (open: boolean) => void;
+}
+
+function countFiles(nodes: TreeNode[]): number {
+  let total = 0;
+  for (const node of nodes) total += node.dir ? countFiles(node.children) : 1;
+  return total;
 }
 
 let messageTimer: ReturnType<typeof setTimeout> | undefined;
@@ -181,10 +249,21 @@ export const useStore = create<AppState>()((set, get) => ({
   alwaysOnTop: false,
   dialog: null,
   recovery: null,
+  tree: [],
+  treeFiles: 0,
+  collapsed: [],
+  treeSelected: null,
+  treeDraft: null,
+  treeRenaming: null,
+  quickSearch: null,
+  folderSearch: false,
+  settingsOpen: false,
+  zoom: 1,
 
   applySettings: (settings) => {
     applyTheme(settings.appearance.theme);
     applyAppearance(settings.appearance);
+    applyReading(settings.read);
     set({
       settings,
       theme: settings.appearance.theme,
@@ -192,16 +271,27 @@ export const useStore = create<AppState>()((set, get) => ({
     });
   },
 
-  setTheme: (theme) => {
-    applyTheme(theme);
-    set({ theme, resolvedTheme: resolveTheme(theme) });
+  // Same as applySettings, plus the write. Startup uses the other one: it
+  // would otherwise write the file back the moment it read it.
+  changeSettings: (settings) => {
+    get().applySettings(settings);
+    saveSettings(settings);
   },
 
-  toggleTheme: () => {
-    const next = get().resolvedTheme === "dark" ? "light" : "dark";
-    applyTheme(next);
-    set({ theme: next, resolvedTheme: next });
+  setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+  setZoom: (zoom) => set({ zoom }),
+
+  // The theme is a setting like any other, so picking one writes the file
+  // (spec §10) — from the status bar, Ctrl+Shift+D or the view menu.
+  setTheme: (theme) => {
+    const settings = { ...get().settings, appearance: { ...get().settings.appearance, theme } };
+    applyTheme(theme);
+    set({ settings, theme, resolvedTheme: resolveTheme(theme) });
+    saveSettings(settings);
   },
+
+  /** Toggling out of "system" lands on the opposite of what is on screen. */
+  toggleTheme: () => get().setTheme(flipTheme(get().resolvedTheme)),
 
   syncSystemTheme: (resolved) => {
     if (get().theme === "system") set({ resolvedTheme: resolved });
@@ -296,6 +386,20 @@ export const useStore = create<AppState>()((set, get) => ({
   setDialog: (dialog) => set({ dialog }),
   setRecovery: (recovery) => set({ recovery }),
   setRecent: (recent) => set({ recent }),
+
+  setTree: (tree) => set({ tree, treeFiles: countFiles(tree) }),
+  setCollapsed: (collapsed) => set({ collapsed }),
+  toggleCollapsed: (rel) =>
+    set((s) => ({
+      collapsed: s.collapsed.includes(rel)
+        ? s.collapsed.filter((r) => r !== rel)
+        : [...s.collapsed, rel],
+    })),
+  setTreeSelected: (treeSelected) => set({ treeSelected }),
+  setTreeDraft: (treeDraft) => set({ treeDraft }),
+  setTreeRenaming: (treeRenaming) => set({ treeRenaming }),
+  setQuickSearch: (quickSearch) => set({ quickSearch }),
+  setFolderSearch: (folderSearch) => set({ folderSearch }),
 }));
 
 export function activeDoc(state: AppState): Doc | null {

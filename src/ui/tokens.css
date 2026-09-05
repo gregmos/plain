@@ -16,6 +16,10 @@
   --selection: rgba(124, 58, 237, 0.18);
   --modal-bg: #fbfaf8;
   --modal-border: #e6e3dc;
+  /* Floating format panel (mockup 1d): dark on light, inverted in dark. */
+  --toolbar-bg: #1c1b19;
+  --toolbar-fg: #f7f6f3;
+  --toolbar-sep: #4a4844;
 
   color-scheme: light;
 
@@ -60,6 +64,9 @@
     --selection: rgba(167, 139, 250, 0.28);
     --modal-bg: #1c1b19;
     --modal-border: #2e2d2a;
+    --toolbar-bg: #e8e6e1;
+    --toolbar-fg: #141413;
+    --toolbar-sep: #c9c5bb;
 
     color-scheme: dark;
   }
@@ -79,6 +86,9 @@
   --selection: rgba(167, 139, 250, 0.28);
   --modal-bg: #1c1b19;
   --modal-border: #2e2d2a;
+  --toolbar-bg: #e8e6e1;
+  --toolbar-fg: #141413;
+  --toolbar-sep: #c9c5bb;
 
   color-scheme: dark;
 }

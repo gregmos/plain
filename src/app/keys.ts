@@ -1,55 +1,37 @@
-// One keyboard layer for the whole app. Chords are written the way they are
-// spelled in the spec and bound by physical key (see chords.ts).
+// One keyboard layer for the whole app. There are no chords here: every
+// binding comes from the command registry (spec §12), so a shortcut and the
+// menu entry that shows it can never drift apart. Tree keys (`F2`, `Delete`,
+// the arrows) are local to the tree and live in the rail.
 
 import { tinykeys } from "tinykeys";
 import { chordToPattern, matchesChord } from "./chords";
-import { closeActive } from "./close";
-import {
-  newDoc,
-  openFile,
-  openLibrary,
-  refresh,
-  toggleAlwaysOnTop,
-  toggleFullscreen,
-} from "./commands";
-import { saveActive, saveAs } from "./save";
-import { toggleLineNumbers } from "../editor/setup";
-import { goBack, goForward } from "../read/history";
-import { useStore } from "./store";
+import { commands } from "./registry";
 
 /**
  * WebView2 keeps its own accelerators (spec §12 leaves them on for zoom), but
- * these four must not reach it — they are ours, or they would reload the app.
+ * these must not reach it — they are ours, or they would reload or print.
  */
-const SWALLOW = ["Ctrl+F", "Ctrl+P", "Ctrl+G", "F5", "Ctrl+S", "Ctrl+Shift+S", "Ctrl+N"];
+const SWALLOW = [
+  "Ctrl+F",
+  "Ctrl+P",
+  "Ctrl+G",
+  "F5",
+  "Ctrl+S",
+  "Ctrl+Shift+S",
+  "Ctrl+N",
+  "Ctrl+O",
+  "Ctrl+H",
+  "Ctrl+K",
+];
 
-/** chord -> action. New shortcuts go here and nowhere else. */
-function bindings(): Record<string, () => void> {
-  const store = () => useStore.getState();
-  return {
-    "Ctrl+/": () => store().toggleMode(),
-    "Ctrl+Alt+1": () => store().setMode("read"),
-    "Ctrl+Alt+2": () => store().setMode("edit"),
-    "Ctrl+\\": () => store().toggleRail(),
-    "Ctrl+Shift+D": () => store().toggleTheme(),
-    F11: () => void toggleFullscreen(),
-    "Ctrl+Shift+A": () => void toggleAlwaysOnTop(),
-    "Ctrl+O": () => void openFile(),
-    "Ctrl+Alt+O": () => void openLibrary(),
-    "Ctrl+N": () => newDoc(),
-    "Ctrl+S": () => void saveActive(),
-    "Ctrl+Shift+S": () => {
-      const id = store().activeId;
-      if (id) void saveAs(id);
-    },
-    "Ctrl+W": () => closeActive(),
-    "Ctrl+Shift+9": () => toggleLineNumbers(),
-    "Ctrl+Tab": () => store().cycleDoc(1),
-    "Ctrl+Shift+Tab": () => store().cycleDoc(-1),
-    "Alt+Left": () => goBack(),
-    "Alt+Right": () => goForward(),
-    F5: () => refresh(),
-  };
+/** chord -> action, straight out of the registry. */
+export function bindings(): Record<string, () => void> {
+  const map: Record<string, () => void> = {};
+  for (const command of commands) {
+    if (!command.chord) continue;
+    map[command.chord] = () => void command.run();
+  }
+  return map;
 }
 
 export function installKeys(): () => void {

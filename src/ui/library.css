@@ -1,0 +1,355 @@
+/* The library: the file tree in the rail, its context menus, quick search
+   (mockup 1f) and search in folder. Same rules as everywhere — no radii, no
+   shadows, hierarchy from distance and 1px lines. */
+
+/* ------------------------------------------------------------- the tree */
+
+.tree {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  /* The keyboard owns the tree as a whole; rows are not tab stops. */
+  outline-offset: -1px;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 5px var(--rail-pad-x);
+  color: var(--muted);
+}
+
+.tree-row:hover {
+  color: var(--fg);
+}
+
+.tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A folder is a section heading you can fold (mockup 1a). */
+.tree-row.is-folder {
+  padding-top: 10px;
+  padding-bottom: 6px;
+  font-size: var(--fs-section);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.tree-row.is-active {
+  color: var(--fg);
+  background: var(--surface);
+}
+
+/* Where the keyboard is, and — only when it got there by keyboard — the
+   accent outline the spec asks for (§3). */
+.tree-row.is-selected {
+  color: var(--fg);
+}
+
+.tree-row:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.tree-empty {
+  padding: 5px var(--rail-pad-x);
+  color: var(--muted);
+}
+
+/* The inline name field for `new file`, `new folder` and `rename`. */
+.tree-input {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--fg);
+  caret-color: var(--accent);
+  outline: none;
+}
+
+/* --------------------------------------------------------- context menu */
+
+.menu {
+  min-width: 168px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: var(--fs-rail);
+  z-index: 50;
+}
+
+.menu-item {
+  padding: 6px 14px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  cursor: default;
+  user-select: none;
+  outline: none;
+}
+
+.menu-item:first-child {
+  border-top: 0;
+}
+
+.menu-item[data-highlighted],
+.menu-item:hover {
+  color: var(--fg);
+}
+
+/* --------------------------------------------------------- quick search */
+
+/* The application keeps rendering behind the modal, faded out (mockup 1f). */
+.app.is-searching .app-body {
+  opacity: 0.35;
+}
+
+.qs {
+  position: fixed;
+  left: 50%;
+  top: 120px;
+  transform: translateX(-50%);
+  width: min(520px, calc(100% - 32px));
+  max-height: calc(100% - 200px);
+  display: flex;
+  flex-direction: column;
+  background: var(--modal-bg);
+  border: 1px solid var(--modal-border);
+  font-size: 12.5px;
+  z-index: 40;
+}
+
+.qs-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--modal-border);
+  flex: none;
+}
+
+.qs-glyph {
+  color: var(--muted);
+  flex: none;
+}
+
+.qs-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--fg);
+  caret-color: var(--accent);
+  outline: none;
+}
+
+.qs-esc {
+  flex: none;
+  font-size: var(--fs-section);
+  color: var(--muted);
+}
+
+.qs-list {
+  padding: 8px 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+}
+
+.qs-section {
+  padding: 6px 18px;
+  font-size: var(--fs-section);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+[cmdk-group]:not(:first-child) .qs-section {
+  padding-top: 12px;
+}
+
+.qs-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 18px;
+  color: var(--muted);
+  cursor: default;
+}
+
+.qs-item[data-selected="true"] {
+  color: var(--fg);
+  background: var(--surface-2);
+}
+
+.qs-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The end of a folder path is the part that says where you are, so a long
+   one is cut in front rather than behind. */
+.qs-where {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  font-size: var(--fs-small);
+  color: var(--muted);
+}
+
+.qs-hit {
+  color: var(--accent);
+}
+
+.qs-empty {
+  padding: 8px 18px;
+  color: var(--muted);
+}
+
+.qs-footer {
+  display: flex;
+  gap: 16px;
+  flex: none;
+  padding: 10px 18px;
+  border-top: 1px solid var(--modal-border);
+  font-size: var(--fs-status);
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------ search in folder */
+
+.folder-search {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 44px 56px 40px;
+}
+
+.folder-search-title {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 22px;
+}
+
+.folder-search-title .is-where {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.folder-search-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.folder-search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--fg);
+  caret-color: var(--accent);
+  outline: none;
+}
+
+.folder-search-note {
+  padding-top: 10px;
+  font-size: var(--fs-small);
+  color: var(--muted);
+}
+
+.folder-search-file {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 18px 0 6px;
+  font-size: 12.5px;
+}
+
+.folder-search-name {
+  flex: none;
+  color: var(--fg);
+}
+
+.folder-search-where {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-small);
+  color: var(--muted);
+}
+
+.folder-search-line {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  width: 100%;
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.folder-search-line:hover {
+  color: var(--fg);
+}
+
+.folder-search-no {
+  flex: none;
+  width: 44px;
+  text-align: right;
+  font-size: var(--fs-small);
+  color: var(--faint);
+}
+
+.folder-search-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-search-text mark {
+  background: var(--selection);
+  color: var(--accent);
+}
+
+/* The glyph toggles `Aa · .*`, the same ones the find panel uses (§5.2). */
+.glyph-toggle {
+  flex: none;
+  padding: 0 4px;
+  color: var(--faint);
+  font-size: var(--fs-small);
+}
+
+.glyph-toggle:hover {
+  color: var(--muted);
+}
+
+.glyph-toggle.is-active {
+  color: var(--fg);
+}

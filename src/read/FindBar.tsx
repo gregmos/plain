@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { matchesChord } from "../app/chords";
+import { FIND_STEP } from "./events";
 import { clearPaint, findRanges, paint, scrollRangeIntoView } from "./find";
 
 interface Props {
@@ -45,22 +46,21 @@ export function FindBar({ container, revision, focusToken, onClose }: Props) {
     if (ranges.length > 0) setIndex((value) => value + delta);
   };
 
-  // F3 / Shift+F3 work while the field has focus and while it does not.
+  // F3 / Shift+F3 come from the command registry and work whether or not the
+  // field has focus; `Esc` is the bar's own.
   useEffect(() => {
+    const onStep = (event: Event) => step((event as CustomEvent<1 | -1>).detail);
     const onKey = (event: KeyboardEvent) => {
-      if (matchesChord("F3", event)) {
-        event.preventDefault();
-        step(1);
-      } else if (matchesChord("Shift+F3", event)) {
-        event.preventDefault();
-        step(-1);
-      } else if (matchesChord("Escape", event)) {
-        event.preventDefault();
-        onClose();
-      }
+      if (!matchesChord("Escape", event)) return;
+      event.preventDefault();
+      onClose();
     };
+    window.addEventListener(FIND_STEP, onStep);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener(FIND_STEP, onStep);
+      window.removeEventListener("keydown", onKey);
+    };
   });
 
   return (

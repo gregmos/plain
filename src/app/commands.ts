@@ -3,13 +3,16 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { mkdir } from "@tauri-apps/plugin-fs";
+import { appDataDir, join } from "@tauri-apps/api/path";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isDirty } from "../editor/buffers";
 import { emitRerender } from "../read/events";
 import { inTauri } from "./env";
-import { docFields, fsError, readFile } from "./fs";
+import { docFields, fsError, hashFile, readFile, writeTextAtomic } from "./fs";
 import { basename, pathKey } from "./paths";
 import { reloadFromDisk } from "./save";
+import { SETTINGS_FILE, serializeSettings } from "./settings";
 import { activeDoc, makeDoc, useStore } from "./store";
 
 /**
@@ -44,14 +47,20 @@ export async function openPaths(paths: string[]): Promise<boolean> {
 }
 
 /**
- * `Ctrl+N`. Without a library this is a nameless buffer whose `Ctrl+S` is
- * Save As (spec §6); inside a library the tree will name it in wave 5, so
- * for now it is the same buffer with the library as the default folder.
+ * `Ctrl+N`. With a library open the tree grows a row with an inline name
+ * field in the root folder; without one it is a nameless buffer whose
+ * `Ctrl+S` is Save As (spec §6).
  */
 let untitled = 0;
 
 export function newDoc(): void {
   const store = useStore.getState();
+  if (store.libraryPath) {
+    store.setRailCollapsed(false);
+    store.setRailView("files");
+    store.setTreeDraft({ parent: store.libraryPath, kind: "file" });
+    return;
+  }
   untitled += 1;
   store.openDoc(
     makeDoc({
@@ -87,10 +96,20 @@ export async function pendingPaths(): Promise<string[]> {
   return inTauri ? invoke<string[]>("take_pending_paths") : [];
 }
 
+/** Folder arguments, parked separately: a folder is a library (spec §6). */
+export async function pendingFolders(): Promise<string[]> {
+  return inTauri ? invoke<string[]>("take_pending_folders") : [];
+}
+
 export async function drainPendingPaths(): Promise<void> {
+  const folders = await pendingFolders();
+  const first = folders[0];
+  if (first) await openLibraryPath(first);
   const paths = await pendingPaths();
   if (paths.length === 0) return;
-  if (await openPaths(paths)) useStore.getState().setRailCollapsed(true);
+  // A file on its own arrives with the rail out of the way; a file that came
+  // with its folder does not, because the folder is the point.
+  if ((await openPaths(paths)) && !first) useStore.getState().setRailCollapsed(true);
 }
 
 export async function openFile(): Promise<void> {
@@ -111,11 +130,27 @@ export async function openLibrary(): Promise<void> {
   // recursive: the fs scope has to reach files in sub-folders, not just the root.
   const picked = await open({ directory: true, multiple: false, recursive: true });
   if (typeof picked !== "string") return;
+  await openLibraryPath(picked);
+}
+
+/**
+ * The one way a folder becomes the library: the dialog, a dropped folder, a
+ * folder given as an argument and the session all come through here. The
+ * tree, the watcher and the asset scope follow the store (spec §6, §9).
+ */
+export async function openLibraryPath(path: string, announce = true): Promise<void> {
   const store = useStore.getState();
-  store.setLibraryPath(picked);
+  if (inTauri) {
+    // Images and links inside the library have to be reachable (spec §9).
+    await invoke("allow_asset_dir", { path }).catch(() => undefined);
+  }
+  store.setLibraryPath(path);
+  // A folder that is opened afresh starts with everything unfolded; the
+  // session puts its own set back after this (bootstrap.ts).
+  if (announce) store.setCollapsed([]);
   store.setRailView("files");
   store.setRailCollapsed(false);
-  store.setMessage(`library · ${basename(picked)}`);
+  if (announce) store.setMessage(`library · ${basename(path)}`);
 }
 
 export async function toggleFullscreen(): Promise<void> {
@@ -141,4 +176,99 @@ export async function openPathsInBackground(paths: string[]): Promise<boolean> {
   const opened = await openPaths(paths);
   if (before) useStore.getState().activate(before);
   return opened;
+}
+
+/* ------------------------------------------------------------- wave 5 */
+
+/** Opens the file and lands in edit — quick search's `Ctrl+Enter` (spec §4). */
+export async function openInEdit(path: string): Promise<void> {
+  if (!(await openPaths([path]))) return;
+  useStore.getState().setMode("edit");
+}
+
+/** `Ctrl+Shift+E`: the tree selection first, else the open document (§12). */
+export async function revealInExplorer(target?: string): Promise<void> {
+  const store = useStore.getState();
+  const path = target ?? store.treeSelected ?? activeDoc(store)?.path;
+  if (!path || !inTauri) return;
+  const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
+  await revealItemInDir(path).catch((error: unknown) => {
+    store.setMessage(`couldn't reveal — ${fsError(error).message}`);
+  });
+}
+
+/** `Ctrl+Shift+C` (spec §12). */
+export async function copyPath(target?: string): Promise<void> {
+  const store = useStore.getState();
+  const path = target ?? activeDoc(store)?.path ?? store.treeSelected;
+  if (!path) return;
+  try {
+    await navigator.clipboard.writeText(path);
+    store.setMessage("path copied");
+  } catch {
+    store.setMessage("couldn't copy the path");
+  }
+}
+
+/** The command palette's `quick search` and `command palette` (spec §4). */
+export function openQuickSearch(seed = ""): void {
+  useStore.getState().setQuickSearch({ seed });
+}
+
+/** `Ctrl+Shift+F` (spec §7). Needs a library; says so when there is none. */
+export function openFolderSearch(): void {
+  const store = useStore.getState();
+  if (!store.libraryPath) {
+    store.setMessage("no library — open a folder first");
+    return;
+  }
+  store.setFolderSearch(true);
+}
+
+/**
+ * `Ctrl+,` until the settings screen lands. The file is created with the
+ * defaults so there is something to edit (spec §10).
+ */
+export async function openSettingsFile(): Promise<void> {
+  if (!inTauri) return;
+  const dir = await appDataDir();
+  const file = await join(dir, SETTINGS_FILE);
+  try {
+    await mkdir(dir, { recursive: true }).catch(() => undefined);
+    if ((await hashFile(file)) === null) {
+      // What is in force right now, not the defaults: the settings screen
+      // may already have moved things the file never got to hold.
+      await writeTextAtomic(file, `${serializeSettings(useStore.getState().settings)}\n`);
+    }
+    await openPaths([file]);
+    useStore.getState().setMode("edit");
+  } catch (error) {
+    useStore.getState().setMessage(`couldn't open settings — ${fsError(error).message}`);
+  }
+}
+
+/** `help → about` (spec §13): the version and the two links. */
+export function showAbout(): void {
+  const store = useStore.getState();
+  const go = async (url: string) => {
+    if (!inTauri) return;
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(url).catch(() => store.setMessage("couldn't open the link"));
+  };
+  store.setDialog({
+    title: "plain 0.1",
+    lines: ["a markdown reader and editor that leaves your files alone."],
+    actions: [
+      { label: "default apps", run: () => void go("ms-settings:defaultapps") },
+      { label: "github", run: () => void go("https://github.com/") },
+      { label: "close", run: () => store.setDialog(null) },
+    ],
+    cancel: () => store.setDialog(null),
+  });
+}
+
+/** `file → exit`: the same one question as the window's X (spec §8). */
+export async function exitApp(): Promise<void> {
+  if (!inTauri) return;
+  await getCurrentWindow().close();
 }

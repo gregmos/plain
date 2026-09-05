@@ -267,6 +267,12 @@
   font-size: inherit;
 }
 
+/* settings: read.codeWrap (spec §10) */
+:root[data-code-wrap="on"] .read-html pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .codeblock {
   position: relative;
   margin: 0 0 20px;

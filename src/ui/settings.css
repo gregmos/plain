@@ -1,0 +1,116 @@
+/* Settings screen (spec §10) in the style of mockup 1e: a 22px title, rows
+   split by a 1px line, and text controls on the right. */
+
+/* The rows carry their own padding and 1px rule, as in mockup 1e, so the
+   column must not add a gap on top of them. */
+.settings-column {
+  width: min(640px, 100%);
+  gap: 0;
+}
+
+.settings-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 28px;
+}
+
+.settings-head .link {
+  font-size: var(--fs-small);
+}
+
+.setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: baseline;
+  padding: 11px 0;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+}
+
+.setting-key {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.setting-name {
+  color: var(--fg);
+}
+
+.setting-about {
+  font-size: var(--fs-small);
+  color: var(--muted);
+}
+
+.setting-control {
+  flex: none;
+  font-size: var(--fs-small);
+  white-space: nowrap;
+}
+
+/* enum and bool: words, the one in force in --fg */
+
+.choice {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.choice-option {
+  color: var(--muted);
+  font-size: inherit;
+}
+
+.choice-option:hover {
+  color: var(--fg);
+}
+
+.choice-option.is-on {
+  color: var(--fg);
+}
+
+/* numbers: −  value  + */
+
+.number {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.number-step {
+  color: var(--muted);
+  font-size: inherit;
+}
+
+.number-step:hover {
+  color: var(--fg);
+}
+
+.number-value {
+  min-width: 34px;
+  color: var(--fg);
+  text-align: center;
+}
+
+/* library.extensions */
+
+.setting-field {
+  width: 200px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg);
+  font: inherit;
+  text-align: right;
+  caret-color: var(--accent);
+}
+
+.setting-field:focus {
+  border-bottom-color: var(--accent);
+  outline: none;
+}

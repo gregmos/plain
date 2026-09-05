@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { EditorView } from "@codemirror/view";
+import { EditorView, type Command as EditorCommand } from "@codemirror/view";
 import type { Doc } from "../app/store";
 import { useStore } from "../app/store";
 import { buffer, keepBuffer, markSaved, moveBuffer, setBufferText } from "./buffers";
@@ -23,6 +23,19 @@ let pending: { line: number; at: number } | null = null;
  */
 export function flushActiveEditor(): void {
   if (live && liveId) flushText(live, liveId);
+}
+
+/**
+ * Runs a CodeMirror command against whichever editor is on screen. The menu
+ * bar needs this: undo, bold and friends are editor commands, and the menu
+ * has no view of its own (spec §4). Nothing mounted — nothing happens.
+ */
+export function runEditorCommand(command: EditorCommand): boolean {
+  if (!live) return false;
+  // The menu took the focus away; the command works on the selection anyway,
+  // but the caret has to come back or the next keystroke goes nowhere.
+  live.focus();
+  return command(live);
 }
 
 /**

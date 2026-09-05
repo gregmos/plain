@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { stat } from "@tauri-apps/plugin-fs";
-import { matchesChord } from "../app/chords";
 import { openPaths, openPathsInBackground } from "../app/commands";
 import { inTauri } from "../app/env";
 import { readingPosition, rememberReading } from "../app/session";
 import { useStore, type Doc } from "../app/store";
 import { allowAssetDir } from "./assets";
 import { enhance, revealImage } from "./dom";
-import { emitGotoLine, GOTO_HEADING, RERENDER } from "./events";
+import { emitGotoLine, FIND, GOTO_HEADING, REPLACE, RERENDER } from "./events";
 import { FindBar } from "./FindBar";
 import {
   folderOf,
@@ -253,19 +252,20 @@ export function ReadView({ doc }: { doc: Doc }) {
     };
   }, [docId]);
 
+  // The chords live in the command registry; read only answers the events.
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (matchesChord("Ctrl+F", event)) {
-        event.preventDefault();
-        setFindOpen(true);
-        setFindFocus((value) => value + 1);
-      } else if (matchesChord("Ctrl+H", event)) {
-        event.preventDefault();
-        useStore.getState().setMode("edit");
-      }
+    const onFind = () => {
+      setFindOpen(true);
+      setFindFocus((value) => value + 1);
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    // `Ctrl+H` in read means edit, which is where replacing happens (§5.1).
+    const onReplace = () => useStore.getState().setMode("edit");
+    window.addEventListener(FIND, onFind);
+    window.addEventListener(REPLACE, onReplace);
+    return () => {
+      window.removeEventListener(FIND, onFind);
+      window.removeEventListener(REPLACE, onReplace);
+    };
   }, []);
 
   /* -------------------------------------------------------------- links */

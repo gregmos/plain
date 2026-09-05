@@ -38,7 +38,9 @@ import { useStore } from "../app/store";
 import { detectIndent } from "./commands";
 import { editorKeymap } from "./keymap";
 import { findPanel } from "./findPanel";
+import { remoteCommands } from "./remote";
 import { storeSync } from "./sync";
+import { formatToolbar } from "./toolbar";
 import { editorTheme, highlightStyle } from "./theme";
 
 export const gutterConf = new Compartment();
@@ -135,6 +137,15 @@ export function onLineNumbers(listener: () => void): () => void {
   return () => numbersListeners.delete(listener);
 }
 
+/**
+ * The settings screen moved the base, so the session override is stale — the
+ * setting is what the user just looked at (spec §10).
+ */
+export function syncLineNumbers(): void {
+  numbersOverride = null;
+  for (const listener of numbersListeners) listener();
+}
+
 export function gutterExtension(on: boolean): Extension {
   return on ? lineNumbers() : [];
 }
@@ -185,6 +196,8 @@ export function editorExtensions(doc: Doc, settings: Settings): Extension {
     indentUnit.of(detectIndent(doc.text, unit)),
     languageExtension(doc.large),
     storeSync,
+    remoteCommands,
+    formatToolbar,
     editorKeymap(),
     keymap.of([...closeBracketsKeymap, ...historyKeymap, ...searchKeymap, ...defaultKeymap]),
   ];

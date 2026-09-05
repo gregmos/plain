@@ -2,6 +2,8 @@
 // Broken JSON falls back to defaults and raises a banner; a single bad value
 // falls back to that key's default and the rest of the file still applies.
 
+import { invoke } from "@tauri-apps/api/core";
+import { appDataDir, join } from "@tauri-apps/api/path";
 import { BaseDirectory, exists, readTextFile } from "@tauri-apps/plugin-fs";
 import { inTauri } from "./env";
 
@@ -110,4 +112,64 @@ export async function loadSettings(): Promise<ParsedSettings> {
   } catch {
     return { settings: DEFAULTS, invalid: true };
   }
+}
+
+/* ------------------------------------------------------------------ write */
+
+/**
+ * The whole file, all eight keys, indented by two — writing only what changed
+ * would need a diff against the file on disk, and the file is eight lines.
+ */
+export function serializeSettings(settings: Settings): string {
+  return JSON.stringify(
+    {
+      appearance: {
+        theme: settings.appearance.theme,
+        fontSize: settings.appearance.fontSize,
+        contentWidth: settings.appearance.contentWidth,
+      },
+      read: { codeWrap: settings.read.codeWrap },
+      edit: {
+        lineNumbers: settings.edit.lineNumbers,
+        indentUnit: settings.edit.indentUnit,
+      },
+      files: { newFileEol: settings.files.newFileEol },
+      library: { extensions: settings.library.extensions },
+    },
+    null,
+    2,
+  );
+}
+
+export async function settingsPath(): Promise<string> {
+  return join(await appDataDir(), SETTINGS_FILE);
+}
+
+const SAVE_DEBOUNCE = 300;
+let timer: ReturnType<typeof setTimeout> | undefined;
+let pending: Settings | null = null;
+
+/**
+ * Debounced: the settings screen changes a value on every click, and the
+ * `−/+` buttons are held down. Goes through the same temp-and-replace as
+ * every other file we write. Not imported by store.ts's dependencies, so
+ * this module stays free of the fs.ts -> store.ts cycle.
+ */
+export function saveSettings(settings: Settings): void {
+  if (!inTauri) return;
+  pending = settings;
+  clearTimeout(timer);
+  timer = setTimeout(() => {
+    const next = pending;
+    pending = null;
+    if (!next) return;
+    void (async () => {
+      try {
+        const path = await settingsPath();
+        await invoke("write_text_atomic", { path, text: serializeSettings(next) });
+      } catch (error) {
+        console.error("couldn't write settings.json", error);
+      }
+    })();
+  }, SAVE_DEBOUNCE);
 }

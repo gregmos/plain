@@ -3,6 +3,7 @@ import { EditorSelection, EditorState, type StateCommand } from "@codemirror/sta
 import { indentUnit } from "@codemirror/language";
 import { indentLess, indentMore } from "@codemirror/commands";
 import {
+  clearHeading,
   cycleList,
   detectIndent,
   insertLink,
@@ -12,6 +13,7 @@ import {
   toggleHeading,
   toggleItalic,
   toggleQuote,
+  toggleStrike,
 } from "./commands";
 
 /** Runs a command over a document; `|` marks the caret, `«»` the selection. */
@@ -129,5 +131,20 @@ describe("indent", () => {
     expect(detectIndent("- one\n    - two\n", "  ")).toBe("    ");
     expect(detectIndent("- one\n\t- two\n", "  ")).toBe("\t");
     expect(detectIndent("no indent here\n", "  ")).toBe("  ");
+  });
+});
+
+describe("strikethrough (the floating panel, spec §5.2)", () => {
+  it("wraps the selection in ~~ and takes it back off", () => {
+    expect(run(toggleStrike, "one «two» three")).toBe("one ~~«two»~~ three");
+    expect(run(toggleStrike, "one «~~two~~» three")).toBe("one «two» three");
+    expect(run(toggleStrike, "one ~~«two»~~ three")).toBe("one «two» three");
+  });
+});
+
+describe("heading off (the menu, spec §4)", () => {
+  it("takes any level off every selected line", () => {
+    expect(run(clearHeading, "### one|")).toBe("one|");
+    expect(run(clearHeading, "«# one\n###### two»")).toBe("«one\ntwo»");
   });
 });

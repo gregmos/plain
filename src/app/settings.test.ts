@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULTS, parseSettings } from "./settings";
+import { DEFAULTS, parseSettings, serializeSettings, type Settings } from "./settings";
+import { useStore } from "./store";
 
 describe("parseSettings", () => {
   it("falls back to defaults on broken JSON and flags it", () => {
@@ -34,5 +35,63 @@ describe("parseSettings", () => {
     expect(invalid).toBe(false);
     expect(settings.appearance.theme).toBe("system");
     expect(settings.appearance.contentWidth).toBe(620);
+  });
+});
+
+const CHANGED: Settings = {
+  appearance: { theme: "dark", fontSize: 15, contentWidth: 700 },
+  read: { codeWrap: true },
+  edit: { lineNumbers: false, indentUnit: "tab" },
+  files: { newFileEol: "lf" },
+  library: { extensions: [".md", ".txt"] },
+};
+
+describe("serializeSettings", () => {
+  it("writes all eight keys, indented by two", () => {
+    const text = serializeSettings(CHANGED);
+    expect(text.split("\n")[1]).toBe('  "appearance": {');
+    for (const key of [
+      "theme",
+      "fontSize",
+      "contentWidth",
+      "codeWrap",
+      "lineNumbers",
+      "indentUnit",
+      "newFileEol",
+      "extensions",
+    ]) {
+      expect(text).toContain(`"${key}"`);
+    }
+  });
+
+  it("survives a round trip through parseSettings", () => {
+    const { settings, invalid } = parseSettings(serializeSettings(CHANGED));
+    expect(invalid).toBe(false);
+    expect(settings).toEqual(CHANGED);
+    expect(parseSettings(serializeSettings(DEFAULTS)).settings).toEqual(DEFAULTS);
+  });
+});
+
+describe("theme as a setting (spec §10)", () => {
+  it("turns a toggle out of \"system\" into the opposite of what is on screen", () => {
+    useStore.getState().applySettings(DEFAULTS);
+    useStore.setState({ resolvedTheme: "light" });
+    useStore.getState().toggleTheme();
+    expect(useStore.getState().theme).toBe("dark");
+    // The toggle is a settings change, so the file gets it too.
+    expect(useStore.getState().settings.appearance.theme).toBe("dark");
+
+    useStore.getState().toggleTheme();
+    expect(useStore.getState().theme).toBe("light");
+    expect(useStore.getState().settings.appearance.theme).toBe("light");
+  });
+
+  it("keeps the rest of the settings when only the theme moves", () => {
+    useStore.getState().applySettings(CHANGED);
+    useStore.getState().setTheme("system");
+    expect(useStore.getState().settings).toEqual({
+      ...CHANGED,
+      appearance: { ...CHANGED.appearance, theme: "system" },
+    });
   });
 });

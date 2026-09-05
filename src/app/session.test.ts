@@ -12,7 +12,7 @@ import { makeDoc, useStore } from "./store";
 
 beforeEach(() => {
   clearBuffers();
-  useStore.setState({ docs: [], activeId: null, recent: [], libraryPath: null });
+  useStore.setState({ docs: [], activeId: null, recent: [], libraryPath: null, collapsed: [] });
 });
 
 describe("state.json", () => {
@@ -33,8 +33,16 @@ describe("state.json", () => {
     expect(back?.active).toBe("C:/notes/b.md");
     expect(back?.library).toBe("C:/notes");
     expect(back?.rail.view).toBe("outline");
+    expect(back?.collapsed).toEqual([]);
     expect(back?.recent).toEqual(["C:/notes/b.md", "C:/notes/a.md"]);
     expect(back?.reading).toContainEqual(["c:/notes/a.md", "intro"]);
+  });
+
+  it("remembers which folders of the tree were folded shut (spec §6)", () => {
+    useStore.getState().setLibraryPath("C:/notes");
+    useStore.getState().toggleCollapsed("archive");
+    const back = parseSession(JSON.stringify(toSession()));
+    expect(back?.collapsed).toEqual(["archive"]);
   });
 
   it("leaves the nameless buffer out — it has no path to reopen", () => {

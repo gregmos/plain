@@ -2,7 +2,13 @@
 // was asked to open or the session that was open last time (spec §6, §8).
 
 import { listen } from "@tauri-apps/api/event";
-import { drainPendingPaths, openPaths, pendingPaths } from "./commands";
+import {
+  drainPendingPaths,
+  openLibraryPath,
+  openPaths,
+  pendingFolders,
+  pendingPaths,
+} from "./commands";
 import { listDrafts } from "./drafts";
 import { inTauri } from "./env";
 import { pathKey } from "./paths";
@@ -56,22 +62,29 @@ export async function bootstrap(): Promise<void> {
   // the event is only a nudge to read the queue — the paths live in Rust.
   await listen("open-path", () => void drainPendingPaths());
   const args = await pendingPaths();
+  const folders = await pendingFolders();
 
   // The library, the recent list and the reading positions come back either
   // way; only the list of open files depends on the arguments (spec §6).
   const session = await loadSession();
   if (session) {
-    store.setLibraryPath(session.library);
+    if (session.library) await openLibraryPath(session.library, false);
+    store.setCollapsed(session.collapsed);
     store.setRecent(session.recent);
     store.setRailView(session.rail.view);
     store.setRailCollapsed(session.rail.collapsed);
   }
 
   const open = async () => {
+    // A folder argument is the library, and it replaces the last session's
+    // open files — you asked for that folder, not for yesterday (spec §6).
+    const folder = folders[0];
+    if (folder) await openLibraryPath(folder);
     if (args.length > 0) {
-      if (await openPaths(args)) useStore.getState().setRailCollapsed(true);
+      if ((await openPaths(args)) && !folder) useStore.getState().setRailCollapsed(true);
       return;
     }
+    if (folder) return;
     if (session && session.files.length > 0) await restore(session);
   };
 

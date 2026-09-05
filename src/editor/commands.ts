@@ -36,6 +36,7 @@ export function selectedLines(state: EditorState): Line[] {
 const BOLD = "**";
 const ITALIC = "*";
 const CODE = "`";
+const STRIKE = "~~";
 
 /** True when a `*` next to the range is really half of a `**`. */
 function partOfBold(state: EditorState, from: number, to: number): boolean {
@@ -94,6 +95,8 @@ function toggleInline(mark: string): StateCommand {
 export const toggleBold = toggleInline(BOLD);
 export const toggleItalic = toggleInline(ITALIC);
 export const toggleInlineCode = toggleInline(CODE);
+/** GFM `~~strike~~`; no chord, it only exists on the floating panel (§5.2). */
+export const toggleStrike = toggleInline(STRIKE);
 
 /** `[selection](  )` with the caret where the url goes. */
 export const insertLink: StateCommand = ({ state, dispatch }) => {
@@ -247,6 +250,18 @@ export function toggleHeading(level: number): StateCommand {
     return true;
   };
 }
+
+/** `heading → off` in the menu (spec §4): any `#` prefix comes off. */
+export const clearHeading: StateCommand = ({ state, dispatch }) => {
+  const changes: ChangeSpec[] = [];
+  for (const line of selectedLines(state)) {
+    const m = /^(#{1,6}) +/.exec(line.text);
+    if (m) changes.push({ from: line.from, to: line.from + m[0].length });
+  }
+  if (changes.length === 0) return false;
+  dispatch(state.update({ changes, userEvent: "input", scrollIntoView: true }));
+  return true;
+};
 
 /* ------------------------------------------------------------------- tab */
 

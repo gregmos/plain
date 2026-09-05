@@ -1,4 +1,6 @@
 mod fs;
+mod search;
+mod tree;
 mod watch;
 
 use std::path::{Path, PathBuf};
@@ -13,15 +15,20 @@ use tauri_plugin_fs::FsExt;
 #[derive(Default)]
 struct PendingPaths(Mutex<Vec<String>>);
 
+/// The same, for folders: a folder given as an argument opens as the library
+/// (spec §6).
+#[derive(Default)]
+struct PendingFolders(Mutex<Vec<String>>);
+
 /// argv -> absolute paths. A relative argument belongs to the working
 /// directory of the process that produced it, which for a second launch is
 /// not our own, so the cwd is always passed in. Only arguments that really
 /// are files survive: `tauri dev` passes `--color always`, and dropping
 /// anything that starts with `-` would still leave `always` behind.
-fn path_args<I: IntoIterator<Item = String>>(argv: I, cwd: &Path) -> Vec<String> {
+fn resolved_args<I: IntoIterator<Item = String>>(argv: I, cwd: &Path) -> Vec<PathBuf> {
     argv.into_iter()
         .skip(1)
-        .filter_map(|arg| {
+        .map(|arg| {
             let path = PathBuf::from(arg);
             let absolute = if path.is_absolute() {
                 path
@@ -29,11 +36,25 @@ fn path_args<I: IntoIterator<Item = String>>(argv: I, cwd: &Path) -> Vec<String>
                 cwd.join(path)
             };
             // Drops the "." components a shell leaves behind.
-            let cleaned: PathBuf = absolute.components().collect();
-            cleaned
-                .is_file()
-                .then(|| cleaned.to_string_lossy().into_owned())
+            absolute.components().collect()
         })
+        .collect()
+}
+
+fn path_args<I: IntoIterator<Item = String>>(argv: I, cwd: &Path) -> Vec<String> {
+    resolved_args(argv, cwd)
+        .into_iter()
+        .filter(|path| path.is_file())
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect()
+}
+
+/// A folder argument is a library, not a document (spec §6).
+fn folder_args<I: IntoIterator<Item = String>>(argv: I, cwd: &Path) -> Vec<String> {
+    resolved_args(argv, cwd)
+        .into_iter()
+        .filter(|path| path.is_dir())
+        .map(|path| path.to_string_lossy().into_owned())
         .collect()
 }
 
@@ -53,10 +74,34 @@ fn queue_paths<R: Runtime, M: Manager<R>>(manager: &M, paths: Vec<String>) {
     }
 }
 
+/// Parks folder arguments the same way, and widens the scope they need.
+fn queue_folders<R: Runtime, M: Manager<R>>(manager: &M, folders: Vec<String>) {
+    if folders.is_empty() {
+        return;
+    }
+    if let Some(scope) = manager.try_fs_scope() {
+        for folder in &folders {
+            let _ = scope.allow_directory(folder, true);
+        }
+    }
+    if let Ok(mut queue) = manager.state::<PendingFolders>().0.lock() {
+        queue.extend(folders);
+    }
+}
+
 /// Drained by the frontend at startup and again on every `open-path` signal,
 /// so a path that arrives before the listener exists is never lost.
 #[tauri::command]
 fn take_pending_paths(pending: State<'_, PendingPaths>) -> Vec<String> {
+    pending
+        .0
+        .lock()
+        .map(|mut queue| std::mem::take(&mut *queue))
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn take_pending_folders(pending: State<'_, PendingFolders>) -> Vec<String> {
     pending
         .0
         .lock()
@@ -110,9 +155,12 @@ pub fn run() {
                 let _ = window.show();
                 let _ = window.set_focus();
             }
-            let paths = path_args(argv, Path::new(&cwd));
-            if !paths.is_empty() {
+            let cwd = Path::new(&cwd);
+            let paths = path_args(argv.clone(), cwd);
+            let folders = folder_args(argv, cwd);
+            if !paths.is_empty() || !folders.is_empty() {
                 queue_paths(app, paths);
+                queue_folders(app, folders);
                 // No payload: the event only says "there is something to take".
                 let _ = app.emit("open-path", ());
             }
@@ -124,14 +172,18 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(navigation_guard())
         .manage(PendingPaths::default())
+        .manage(PendingFolders::default())
         .manage(watch::Watcher::default())
         .setup(|app| {
             let cwd = std::env::current_dir().unwrap_or_default();
-            queue_paths(app.handle(), path_args(std::env::args(), &cwd));
+            let argv: Vec<String> = std::env::args().collect();
+            queue_paths(app.handle(), path_args(argv.clone(), &cwd));
+            queue_folders(app.handle(), folder_args(argv, &cwd));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             take_pending_paths,
+            take_pending_folders,
             allow_asset_dir,
             fs::read_file,
             fs::write_file_atomic,
@@ -139,7 +191,12 @@ pub fn run() {
             fs::hash_file,
             fs::trash_path,
             watch::watch,
-            watch::unwatch
+            watch::unwatch,
+            tree::read_tree,
+            tree::path_kind,
+            tree::rename_path,
+            tree::create_dir,
+            search::search_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running Plain");
@@ -147,7 +204,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::path_args;
+    use super::{folder_args, path_args};
 
     /// `tauri dev` hands us `--color always`; only real files may survive.
     #[test]
@@ -181,13 +238,18 @@ mod tests {
         );
     }
 
+    /// A folder argument is a library, and never a document (spec §6).
     #[test]
-    fn a_folder_is_not_a_file_argument() {
+    fn a_folder_argument_goes_to_the_other_queue() {
         let dir = tempfile::tempdir().unwrap();
         let argv = vec![
             "plain.exe".to_string(),
             dir.path().to_string_lossy().into_owned(),
         ];
-        assert!(path_args(argv, dir.path()).is_empty());
+        assert!(path_args(argv.clone(), dir.path()).is_empty());
+        assert_eq!(
+            folder_args(argv, dir.path()),
+            vec![dir.path().to_string_lossy().into_owned()]
+        );
     }
 }

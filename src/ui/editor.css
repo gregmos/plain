@@ -13,6 +13,54 @@
   padding-left: 64px;
 }
 
+/* floating format panel (spec §5.2, mockup 1d) */
+
+.format-toolbar {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 4px;
+  gap: 2px;
+  background: var(--toolbar-bg);
+  color: var(--toolbar-fg);
+  font-size: 11.5px;
+  line-height: 1;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.format-toolbar button {
+  height: 100%;
+  padding: 0 9px;
+  color: inherit;
+  opacity: 0.75;
+}
+
+.format-toolbar button:hover {
+  opacity: 1;
+}
+
+.format-toolbar .tb-bold {
+  font-weight: 600;
+}
+
+.format-toolbar .tb-italic {
+  font-style: italic;
+}
+
+.format-toolbar .tb-strike {
+  text-decoration: line-through;
+}
+
+.format-toolbar .tb-sep {
+  width: 1px;
+  height: 14px;
+  margin: 0 4px;
+  background: var(--toolbar-sep);
+}
+
 /* find / replace */
 
 .find {

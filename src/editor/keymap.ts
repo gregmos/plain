@@ -11,13 +11,7 @@ import {
   undo,
 } from "@codemirror/commands";
 import { foldCode, unfoldCode } from "@codemirror/language";
-import {
-  findNext,
-  findPrevious,
-  gotoLine,
-  openSearchPanel,
-  selectNextOccurrence,
-} from "@codemirror/search";
+import { selectNextOccurrence } from "@codemirror/search";
 import type { Extension } from "@codemirror/state";
 import { ViewPlugin, type Command } from "@codemirror/view";
 import { matchesChord, parseChord } from "../app/chords";
@@ -33,7 +27,6 @@ import {
   toggleItalic,
   toggleQuote,
 } from "./commands";
-import { openReplace } from "./findPanel";
 
 export interface CodeBinding {
   chord: string;
@@ -99,12 +92,8 @@ export function editorKeymap(): Extension {
     { chord: "Ctrl+Shift+[", run: foldCode },
     { chord: "Ctrl+Shift+]", run: unfoldCode },
 
-    // find (§5.2)
-    { chord: "Ctrl+F", run: openSearchPanel },
-    { chord: "Ctrl+H", run: openReplace },
-    { chord: "Ctrl+G", run: gotoLine },
-    { chord: "F3", run: findNext },
-    { chord: "Shift+F3", run: findPrevious },
+    // Find, replace and go-to-line are app commands now: the registry owns
+    // their chords and remote.ts answers the events (spec §12).
 
     // Ctrl+/ is the app's read/edit switch, not CodeMirror's comment toggle.
     { chord: "Ctrl+/", run: yieldToApp },

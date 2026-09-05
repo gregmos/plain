@@ -11,13 +11,33 @@
     "core:window:allow-set-always-on-top",
     "core:window:allow-close",
     "core:window:allow-destroy",
+    "core:webview:allow-set-webview-zoom",
+    "core:menu:default",
+    "core:menu:allow-new",
+    "core:menu:allow-append",
+    "core:menu:allow-items",
+    "core:menu:allow-remove",
+    "core:menu:allow-remove-at",
+    "core:menu:allow-set-text",
+    "core:menu:allow-set-checked",
+    "core:menu:allow-set-enabled",
+    "core:menu:allow-set-accelerator",
+    "core:menu:allow-set-as-app-menu",
+    "core:menu:allow-set-as-window-menu",
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-message",
-    "opener:allow-open-url",
     "opener:allow-default-urls",
     {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "ms-settings:*" }, { "url": "https://*" }]
+    },
+    {
       "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "opener:allow-reveal-item-in-dir",
       "allow": [{ "path": "**" }]
     },
     "fs:allow-exists",

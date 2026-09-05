@@ -1,7 +1,7 @@
 import { closeDocs } from "../app/close";
-import { openLibrary } from "../app/commands";
-import { basename } from "../app/paths";
+import { openQuickSearch } from "../app/commands";
 import { activeDoc, useStore } from "../app/store";
+import { FileTree } from "./FileTree";
 import { Outline } from "./Outline";
 import "./rail.css";
 
@@ -11,17 +11,18 @@ export function Rail() {
   const doc = useStore(activeDoc);
   const railView = useStore((s) => s.railView);
   const libraryPath = useStore((s) => s.libraryPath);
+  const treeFiles = useStore((s) => s.treeFiles);
   const activate = useStore((s) => s.activate);
   const setRailView = useStore((s) => s.setRailView);
 
   return (
     <aside className="rail">
-      <div className="rail-search">
+      <button className="rail-search" onClick={() => openQuickSearch()}>
         <span>⌕ search</span>
         <span className="rail-hint">ctrl k</span>
-      </div>
+      </button>
 
-      <section className="rail-section">
+      <section className="rail-section rail-open">
         <div className="section-title rail-heading">open</div>
         {docs.length === 0 ? (
           <div className="rail-empty">nothing open</div>
@@ -42,23 +43,24 @@ export function Rail() {
         )}
       </section>
 
-      <section className="rail-section">
-        <div className="section-title rail-heading">{railView}</div>
-        {railView === "files" ? (
-          libraryPath ? (
-            <div className="rail-empty">{basename(libraryPath)}</div>
-          ) : (
-            <button className="rail-empty link" onClick={() => void openLibrary()}>
-              open a library
-            </button>
-          )
-        ) : (
-          <Outline doc={doc} />
+      <section className="rail-section rail-main">
+        {/* Folder headings label the tree themselves (mockup 1a); the
+            outline has nothing else to say what it is. */}
+        {(railView === "outline" || !libraryPath) && (
+          <div className="section-title rail-heading">{railView}</div>
         )}
+        {railView === "files" ? <FileTree /> : <Outline doc={doc} />}
       </section>
 
       <footer className="rail-footer">
-        {libraryPath && <div className="rail-path">{libraryPath}</div>}
+        {libraryPath && (
+          <>
+            <div>{treeFiles === 1 ? "1 file" : `${treeFiles} files`}</div>
+            <div className="rail-path" title={libraryPath}>
+              {libraryPath}
+            </div>
+          </>
+        )}
         <div className="rail-switch">
           <button
             className={railView === "files" ? "is-active" : "link"}

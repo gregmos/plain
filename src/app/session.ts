@@ -19,6 +19,8 @@ export interface SessionFile {
   active: string | null;
   rail: { collapsed: boolean; view: RailView };
   library: string | null;
+  /** Relative paths of the folded folders in the tree (spec §6). */
+  collapsed: string[];
   recent: string[];
   /** path -> heading id, oldest first. */
   reading: [string, string][];
@@ -59,6 +61,7 @@ export function toSession(): SessionFile {
     active: active?.path ?? null,
     rail: { collapsed: state.railCollapsed, view: state.railView },
     library: state.libraryPath,
+    collapsed: state.collapsed,
     recent: state.recent,
     reading: [...positions.entries()],
   };
@@ -91,6 +94,9 @@ export function parseSession(text: string): SessionFile | null {
       view: value.rail?.view === "outline" ? "outline" : "files",
     },
     library: typeof value.library === "string" ? value.library : null,
+    collapsed: Array.isArray(value.collapsed)
+      ? value.collapsed.filter((rel) => typeof rel === "string")
+      : [],
     recent: Array.isArray(value.recent) ? value.recent.filter((p) => typeof p === "string") : [],
     reading: reading
       .filter((pair) => Array.isArray(pair) && typeof pair[0] === "string" && typeof pair[1] === "string")
@@ -149,6 +155,7 @@ export function installSession(): () => void {
       state.railCollapsed === previous.railCollapsed &&
       state.railView === previous.railView &&
       state.libraryPath === previous.libraryPath &&
+      state.collapsed === previous.collapsed &&
       state.recent === previous.recent
     ) {
       return;
