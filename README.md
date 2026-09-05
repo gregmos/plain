@@ -6,6 +6,8 @@ Double-click a `.md` file and you are reading. Make a change, and the file stays
 
 ![Plain in reading mode](docs/screenshot-light.png)
 
+![Plain in rich mode, dark theme](docs/screenshot-rich-dark.png)
+
 ## What it does
 
 - **Three views of one document.** `read` renders the text, `edit` shows the source with syntax highlighting, and `rich` shows the source with the markup hidden, the way Typora does. Switch with `Ctrl+/` or by clicking the mode bar.
