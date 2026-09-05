@@ -2,6 +2,8 @@
 // Russian layout (spec §12). This turns readable chords like "Ctrl+Shift+F"
 // into a physical-key description, and into a tinykeys pattern.
 
+import { isMac } from "./platform";
+
 export interface Chord {
   ctrl: boolean;
   shift: boolean;
@@ -67,6 +69,16 @@ export function toCode(token: string): string {
   throw new Error(`unknown key token: ${token}`);
 }
 
+/**
+ * Modifier vocabulary (spec §13a):
+ *
+ * - `Ctrl` — the platform's primary modifier: `Ctrl` on Windows, ⌘ on macOS.
+ *   Almost every chord in the registry is written with it.
+ * - `Cmd` / `Meta` / `Win` — literally the meta key, on both platforms.
+ * - `Control` — literally the control key, on both. Only macOS needs it, for
+ *   the handful of system chords that really are ⌃ (fullscreen).
+ * - `Alt` / `Option` — ⌥ on macOS.
+ */
 export function parseChord(chord: string): Chord {
   const parts = chord.split("+").map((p) => p.trim());
   const last = parts.pop();
@@ -82,6 +94,10 @@ export function parseChord(chord: string): Chord {
   for (const part of parts) {
     switch (part.toLowerCase()) {
       case "ctrl":
+      case "mod":
+        if (isMac()) out.meta = true;
+        else out.ctrl = true;
+        break;
       case "control":
         out.ctrl = true;
         break;
@@ -102,6 +118,56 @@ export function parseChord(chord: string): Chord {
     }
   }
   return out;
+}
+
+/* --------------------------------------------------------------- display */
+
+/** `KeyB` -> `B`, `Comma` -> `,`, `ArrowLeft` -> `←`, for the macOS glyphs. */
+const KEY_GLYPHS: Record<string, string> = {
+  ArrowLeft: "←",
+  ArrowRight: "→",
+  ArrowUp: "↑",
+  ArrowDown: "↓",
+  Enter: "↩",
+  Tab: "⇥",
+  Escape: "⎋",
+  Backspace: "⌫",
+  Delete: "⌦",
+  Space: "space",
+};
+
+function keyLabel(code: string): string {
+  const glyph = KEY_GLYPHS[code];
+  if (glyph) return glyph;
+  if (code.startsWith("Key")) return code.slice(3);
+  if (code.startsWith("Digit")) return code.slice(5);
+  if (/^F\d+$/.test(code)) return code;
+  for (const [punct, name] of Object.entries(PUNCT)) {
+    if (name === code) return punct;
+  }
+  return code;
+}
+
+/**
+ * How a chord is written in the menu, the palette and the shortcuts screen.
+ * Windows spells it out in the app's lowercase microcopy (`ctrl shift s`);
+ * macOS uses the glyphs in Apple's order, ⌃⌥⇧⌘, with nothing between them.
+ */
+export function chordText(chord: string): string {
+  if (!isMac()) {
+    return chord
+      .split("+")
+      .map((part) => part.trim().toLowerCase())
+      .join(" ");
+  }
+  const c = parseChord(chord);
+  return (
+    (c.ctrl ? "⌃" : "") +
+    (c.alt ? "⌥" : "") +
+    (c.shift ? "⇧" : "") +
+    (c.meta ? "⌘" : "") +
+    keyLabel(c.code)
+  );
 }
 
 /** Exact match, including "no other modifier is held". */

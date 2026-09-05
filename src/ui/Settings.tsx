@@ -4,7 +4,7 @@
 
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { openSettingsFile } from "../app/commands";
-import { AUTOSAVE, DEFAULTS, type Settings } from "../app/settings";
+import { AUTOSAVE, DEFAULTS, defaultEol, type Settings } from "../app/settings";
 import { useStore } from "../app/store";
 import { TREE_CHANGED } from "../app/watcher";
 import { spellConf, spellExtension, syncLineNumbers } from "../editor/setup";
@@ -249,7 +249,7 @@ export function SettingsScreen() {
           />
         </Row>
 
-        <Row name="files.newFileEol" about="line endings for files plain creates">
+        <Row name="files.newFileEol" about={`line endings for files plain creates; ${defaultEol()} here`}>
           <Choice
             value={settings.files.newFileEol}
             options={[

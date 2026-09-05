@@ -49,9 +49,19 @@ In `%APPDATA%\Plain` (that is `C:\Users\<you>\AppData\Roaming\Plain`):
 | `state.json` | open files, reading positions, the last folder |
 | `history\` | snapshots of what you saved, kept for thirty days |
 
-Put a folder called `data` next to `plain.exe` and all four live in it instead — that is portable mode.
+Put a folder called `data` next to `plain.exe` and all four live in it instead — that is portable mode. On macOS the same four live in `~/Library/Application Support/Plain`; the app is a bundle, so there is no portable mode there.
 
 Plain keeps no indexes, caches, or hidden service files in your folders. The only things it writes there are the documents you save and, if you paste an image, the `assets/` folder next to the document.
+
+## macOS
+
+Download the `.dmg` from the releases page, open it, and drag Plain into Applications.
+
+The app is not signed or notarised, so the first launch needs one extra step: right-click it in Applications and choose **Open**, then confirm. Once done, it opens normally from then on. If macOS refuses outright, `xattr -cr /Applications/Plain.app` in Terminal clears the quarantine flag and the right-click trick works again.
+
+Shortcuts use `⌘` where this page says `Ctrl`: `⌘S` saves, `⌘O` opens, `⌘/` switches between reading and editing, `⌘,` opens settings, `⌘⇧P` is the command palette. A few differ where macOS already owns the combination — `⌘[` and `⌘]` go back and forward, `⌃⌘F` is fullscreen. The full list is in the app under `help → shortcuts`.
+
+Double-clicking a `.md` file in Finder opens it in Plain once you have chosen Plain in **Get Info → Open with**; the bundle offers itself for `.md` and `.markdown` from the first launch.
 
 ## How it treats your files
 
@@ -72,5 +82,7 @@ npm run pack          # release build, produces dist-win\Plain-0.2.0-win-x64.zip
 ```
 
 Checks: `npm run build`, `npx vitest run`, and `cargo test` inside `src-tauri`. The manual checklist used before a release is in `CHECKLIST.md`.
+
+The macOS build happens on CI only (`.github/workflows/macos.yml`, on a `v*` tag or by hand): it runs the same three checks on `macos-latest` and attaches a universal `.dmg` to the release. Cross-checking it from Windows is not possible — one of Tauri's macOS dependencies compiles a C shim and needs an Apple toolchain.
 
 Stack: Tauri 2, React, CodeMirror 6, unified (remark and rehype), Shiki, KaTeX, Mermaid. Rust handles the file system, folder watching, and search.

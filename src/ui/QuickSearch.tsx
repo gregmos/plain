@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Command } from "cmdk";
 import { openInEdit, openLibraryPath, openPaths } from "../app/commands";
+import { chordText } from "../app/chords";
 import { basename, dirname } from "../app/paths";
 import { availableCommands, type Command as AppCommand } from "../app/registry";
 import { useStore } from "../app/store";
@@ -40,7 +41,7 @@ function commandEntries(query: string, close: () => void): Entry[] {
     .map((command: AppCommand) => ({
       key: `action:${command.id}`,
       label: plain(command.title),
-      where: (command.chord ?? command.hint ?? "").toLowerCase(),
+      where: command.chord ?? command.hint ? chordText((command.chord ?? command.hint) as string) : "",
       run: () => {
         close();
         void command.run();

@@ -5,6 +5,7 @@
 
 use std::fs;
 use std::io::Write;
+#[cfg(windows)]
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -13,7 +14,9 @@ use std::time::UNIX_EPOCH;
 use chardetng::{EncodingDetector, Iso2022JpDetection, Utf8Detection};
 use encoding_rs::{Encoding, UTF_16BE, UTF_16LE, UTF_8};
 use serde::{Deserialize, Serialize};
+#[cfg(windows)]
 use windows::core::PCWSTR;
+#[cfg(windows)]
 use windows::Win32::Storage::FileSystem::{ReplaceFileW, REPLACEFILE_IGNORE_MERGE_ERRORS};
 
 /// The three cases the front end tells apart: `conflict` stops the save and
@@ -179,9 +182,18 @@ fn line_endings(text: &str) -> (&'static str, &'static str) {
 
 /* ------------------------------------------------------ one path per file */
 
+/// Elsewhere `canonicalize` already hands back an ordinary path, and a
+/// backslash is a legal character in a POSIX file name — so nothing is
+/// stripped there (spec §13a).
+#[cfg(not(windows))]
+fn plain_path(path: PathBuf) -> PathBuf {
+    path
+}
+
 /// `fs::canonicalize` hands back a verbatim path (`\\?\C:\…`) that no user
 /// ever types and half of Windows will not take. This puts it back into the
 /// ordinary form without giving up what canonicalizing found.
+#[cfg(windows)]
 fn plain_path(path: PathBuf) -> PathBuf {
     let text = path.as_os_str().to_string_lossy();
     if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
@@ -323,6 +335,7 @@ fn apply_eol(text: &str, eol: &str) -> String {
     }
 }
 
+#[cfg(windows)]
 fn wide(path: &Path) -> Vec<u16> {
     path.as_os_str().encode_wide().chain(Some(0)).collect()
 }
@@ -341,6 +354,7 @@ pub fn stage(dir: &Path, bytes: &[u8]) -> FsResult<PathBuf> {
     Ok(path)
 }
 
+#[cfg(windows)]
 /// `ReplaceFileW` can fail after it has already moved the original aside
 /// (ERROR_UNABLE_TO_MOVE_REPLACEMENT). If the target is gone, the staged file
 /// is the only copy of the text left and it goes back under the target name;
@@ -358,11 +372,35 @@ fn recover_replacement(target: &Path, temp: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// POSIX `rename` is atomic and replaces whatever is there, so one call
+/// covers both cases. The mode has to be carried over by hand: a temp file is
+/// created 0600 and the file being replaced may be more permissive (§13a).
+///
+/// Compiled on every platform, not only the one that uses it, so a Windows
+/// build still type-checks it and a Windows test can still run it — there is
+/// no Mac here to find out on.
+fn commit_by_rename(target: &Path, temp: &Path, existed: bool) -> FsResult<()> {
+    if existed {
+        if let Ok(meta) = fs::metadata(target) {
+            // Best effort: a read-only target would otherwise hand the copy
+            // permissions the original never had.
+            let _ = fs::set_permissions(temp, meta.permissions());
+        }
+    }
+    fs::rename(temp, target).map_err(FsError::from)
+}
+
+#[cfg(not(windows))]
+pub fn commit(target: &Path, temp: &Path, existed: bool) -> FsResult<()> {
+    commit_by_rename(target, temp, existed)
+}
+
 /// ReplaceFileW keeps the creation time and the attributes of the original;
 /// a file that is not there yet is just renamed into place (spec §8).
+#[cfg(windows)]
 pub fn commit(target: &Path, temp: &Path, existed: bool) -> FsResult<()> {
     if !existed {
-        return fs::rename(temp, target).map_err(FsError::from);
+        return commit_by_rename(target, temp, existed);
     }
     let replaced = wide(target);
     let replacement = wide(temp);
@@ -916,6 +954,7 @@ mod tests {
 
     /// The 8.3 alias Windows keeps for a long folder name, or `None` when the
     /// volume has short names turned off.
+    #[cfg(windows)]
     fn short_name(path: &Path) -> Option<PathBuf> {
         use windows::Win32::Storage::FileSystem::GetShortPathNameW;
         let wide_path = wide(path);
@@ -932,7 +971,9 @@ mod tests {
     }
 
     /// One file, one identity: the short name, the wrong case and the wrong
-    /// separator all have to land on the same string (spec §8).
+    /// separator all have to land on the same string (spec §8). 8.3 aliases
+    /// and case-insensitive paths are a Windows story.
+    #[cfg(windows)]
     #[test]
     fn a_canonical_path_is_the_one_the_disk_uses() {
         let dir = tempfile::tempdir().unwrap();
@@ -961,6 +1002,11 @@ mod tests {
 
     #[test]
     fn a_file_that_does_not_exist_yet_is_resolved_through_its_folder() {
+        #[cfg(not(windows))]
+        fn short_name(_path: &Path) -> Option<PathBuf> {
+            None
+        }
+
         let dir = tempfile::tempdir().unwrap();
         let folder = dir.path().join("Another Long Folder");
         fs::create_dir(&folder).unwrap();
@@ -973,6 +1019,32 @@ mod tests {
         }
     }
 
+    /// The macOS write path, run here because there is no Mac to run it on.
+    /// `rename` replaces the target on Windows too, so the behaviour this
+    /// asserts is the same behaviour macOS will get (spec §13a).
+    #[test]
+    fn a_rename_commit_replaces_the_target_and_keeps_its_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("note.md");
+
+        // Nothing there yet: the staged file simply becomes the file.
+        let temp = stage(dir.path(), b"first
+").unwrap();
+        commit_by_rename(&target, &temp, false).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"first
+");
+        assert!(!temp.exists());
+
+        // Something there: it is replaced, and only it is left behind.
+        let temp = stage(dir.path(), b"second
+").unwrap();
+        commit_by_rename(&target, &temp, true).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"second
+");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[cfg(windows)]
     #[test]
     fn a_verbatim_prefix_is_taken_back_off() {
         assert_eq!(

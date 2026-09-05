@@ -2,6 +2,8 @@
 // the source: this searches what is on screen, and paints with the CSS
 // Custom Highlight API so the DOM is never touched.
 
+import { hasHighlights } from "../app/platform";
+
 interface Chunk {
   node: Text;
   start: number;
@@ -91,9 +93,14 @@ interface HighlightRegistryLike {
   delete(name: string): void;
 }
 
-const registry = (CSS as unknown as { highlights?: HighlightRegistryLike }).highlights;
-const HighlightCtor = (globalThis as unknown as { Highlight?: new (...ranges: Range[]) => object })
-  .Highlight;
+// Safari has the Custom Highlight API only from 17.2; without it find still
+// finds and scrolls, it just does not paint (spec §13a).
+const registry = hasHighlights()
+  ? (CSS as unknown as { highlights?: HighlightRegistryLike }).highlights
+  : undefined;
+const HighlightCtor = hasHighlights()
+  ? (globalThis as unknown as { Highlight?: new (...ranges: Range[]) => object }).Highlight
+  : undefined;
 
 export const ALL = "plain-find";
 export const CURRENT = "plain-find-active";

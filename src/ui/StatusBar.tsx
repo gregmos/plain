@@ -2,24 +2,9 @@ import { Fragment, useEffect, useState } from "react";
 import { encodingLabel } from "../app/eol";
 import { reopenAs } from "../app/save";
 import { countWords } from "../read/words";
+import { idle } from "../app/platform";
 import { activeDoc, useStore, type Doc } from "../app/store";
 import "./dialogs.css";
-
-interface IdleWindow {
-  requestIdleCallback?: (fn: () => void, options?: { timeout: number }) => number;
-  cancelIdleCallback?: (handle: number) => void;
-}
-
-/** Runs `fn` when the browser has a moment; returns its canceller. */
-function idle(fn: () => void): () => void {
-  const host = window as unknown as IdleWindow;
-  if (host.requestIdleCallback && host.cancelIdleCallback) {
-    const handle = host.requestIdleCallback(fn, { timeout: 2000 });
-    return () => host.cancelIdleCallback?.(handle);
-  }
-  const handle = window.setTimeout(fn, 50);
-  return () => window.clearTimeout(handle);
-}
 
 /** Spec §4, in the order the spec lists them. */
 function state(doc: Doc): string {
@@ -88,7 +73,8 @@ export function StatusBar() {
     const count = () => {
       if (live) setWords(countWords(text));
     };
-    const cancel = idle(count);
+    // The word count can wait longer than a text flush can.
+    const cancel = idle(count, 2000);
     return () => {
       live = false;
       cancel();

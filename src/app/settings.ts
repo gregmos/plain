@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { exists, readTextFile } from "@tauri-apps/plugin-fs";
 import { inTauri } from "./env";
+import { isMac } from "./platform";
 
 export type Theme = "system" | "light" | "dark";
 export type IndentUnit = "tab" | 2 | 4;
@@ -20,6 +21,11 @@ export interface Settings {
 }
 
 export const SETTINGS_FILE = "settings.json";
+
+/** macOS writes LF, Windows writes CRLF (spec §13a). */
+export function defaultEol(): Eol {
+  return isMac() ? "lf" : "crlf";
+}
 
 export const DEFAULTS: Settings = {
   appearance: { theme: "system", fontSize: 13.5, contentWidth: 560 },

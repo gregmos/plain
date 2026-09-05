@@ -46,6 +46,7 @@ import {
   emitGotoLinePrompt,
   emitReplace,
 } from "../read/events";
+import { isMac } from "./platform";
 import { activeDoc, useStore } from "./store";
 
 export interface Command {
@@ -323,6 +324,33 @@ export const commands: Command[] = [
   },
   { id: "app.about", title: "about", run: () => void showAbout() },
 ];
+
+/**
+ * The only chords macOS spells differently (spec §13a). Everything else is
+ * the same string, because `Ctrl` already means ⌘ there (chords.ts).
+ *
+ * | id                | windows       | macOS   | why                        |
+ * |-------------------|---------------|---------|----------------------------|
+ * | nav.back          | Alt+Left      | ⌘⌥←     | ⌥←/→ move by word on macOS |
+ * | nav.forward       | Alt+Right     | ⌘⌥→     | and ⌘[/⌘] is the editor's  |
+ * | view.fullscreen   | F11           | ⌃⌘F     | the system chord           |
+ *
+ * ⌘[ / ⌘] stay with the editor'''s indent, the way VS Code has them: indenting
+ * is a per-keystroke thing and history is not. Both would also collide —
+ * the editor keymap and the app layer would each fire once.
+ */
+const macOverrides: Record<string, string> = {
+  "nav.back": "Ctrl+Alt+Left",
+  "nav.forward": "Ctrl+Alt+Right",
+  "view.fullscreen": "Control+Cmd+F",
+};
+
+if (isMac()) {
+  for (const command of commands) {
+    const override = macOverrides[command.id];
+    if (override) command.chord = override;
+  }
+}
 
 const byId = new Map(commands.map((command) => [command.id, command]));
 

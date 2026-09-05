@@ -3,7 +3,7 @@
 // out of the command registry, so this page cannot drift from the bindings.
 
 import { Fragment, useEffect } from "react";
-import { chordText } from "../app/menu";
+import { chordText } from "../app/chords";
 import { commands } from "../app/registry";
 import { useStore } from "../app/store";
 import "./dialogs.css";

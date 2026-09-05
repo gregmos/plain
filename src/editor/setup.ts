@@ -15,6 +15,7 @@ import type { SyntaxNode } from "@lezer/common";
 import { search, searchKeymap } from "@codemirror/search";
 import { commands } from "../app/registry";
 import { parseChord, toCode, type Chord } from "../app/chords";
+import { isMac } from "../app/platform";
 import {
   Compartment,
   EditorState,
@@ -200,7 +201,12 @@ function cmChord(key: string): Chord | null {
   if (!last) return null;
   const chord: Chord = { ctrl: false, shift: false, alt: false, meta: false, code: "" };
   for (const part of parts) {
-    if (part === "Mod" || part === "Ctrl" || part === "Control") chord.ctrl = true;
+    // CodeMirror's `Mod` is ⌘ on macOS and Ctrl everywhere else — the same
+    // rule the registry's `Ctrl` follows (spec §13a).
+    if (part === "Mod") {
+      if (isMac()) chord.meta = true;
+      else chord.ctrl = true;
+    } else if (part === "Ctrl" || part === "Control") chord.ctrl = true;
     else if (part === "Shift") chord.shift = true;
     else if (part === "Alt") chord.alt = true;
     else if (part === "Meta" || part === "Cmd") chord.meta = true;
@@ -222,7 +228,9 @@ function appKeymap(): readonly KeyBinding[] {
   for (const command of commands) {
     if (!command.chord) continue;
     try {
-      owned.add(chordKey(parseChord(command.chord)));
+      for (const chord of [command.chord, ...(command.chords ?? [])]) {
+        if (chord) owned.add(chordKey(parseChord(chord)));
+      }
     } catch {
       // A chord the app cannot parse cannot collide either.
     }
@@ -241,7 +249,8 @@ function appKeymap(): readonly KeyBinding[] {
   ].filter(
     (binding) =>
       !taken(binding.key, binding.shift !== undefined) &&
-      !taken(binding.win, binding.shift !== undefined),
+      // Each platform has its own override field in a CM6 binding.
+      !taken(isMac() ? binding.mac : binding.win, binding.shift !== undefined),
   );
   return shared;
 }

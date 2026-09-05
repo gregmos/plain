@@ -6,6 +6,7 @@
 // written once and the palette, the keyboard layer and the menu agree.
 
 import { openLibraryPath, openPaths } from "./commands";
+import { chordText } from "./chords";
 import { basename } from "./paths";
 import { command } from "./registry";
 import { reopenAs } from "./save";
@@ -48,14 +49,6 @@ export interface MenuSection {
   key: string;
   label: string;
   items: MenuNode[];
-}
-
-/** "Ctrl+Shift+S" -> "ctrl shift s", the way the spec writes chords. */
-export function chordText(chord: string): string {
-  return chord
-    .split("+")
-    .map((part) => part.trim().toLowerCase())
-    .join(" ");
 }
 
 let separators = 0;

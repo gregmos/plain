@@ -58,8 +58,16 @@ pub fn pick_data_dir(beside_exe: Option<&Path>, app_data: &Path) -> PathBuf {
     }
 }
 
+/// Windows only: on macOS the app is a bundle and a folder next to it is
+/// not something a user can rely on (spec §13a).
+#[cfg(windows)]
 fn beside_exe() -> Option<PathBuf> {
     Some(std::env::current_exe().ok()?.parent()?.join("data"))
+}
+
+#[cfg(not(windows))]
+fn beside_exe() -> Option<PathBuf> {
+    None
 }
 
 /// The one folder every file of ours lives in. Rust and the front end have to
@@ -257,8 +265,33 @@ pub fn run() {
             history::snapshot_text,
             history::delete_snapshot
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Plain");
+        .build(tauri::generate_context!())
+        .expect("error while building Plain")
+        .run(|_app, _event| {
+            // Finder does not pass a path in argv: it sends the app an Apple
+            // Event, which Tauri turns into this (spec §13a). Same queue the
+            // command line uses, same nudge to the front end.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = _event {
+                let paths: Vec<String> = urls
+                    .iter()
+                    .filter_map(|url| url.to_file_path().ok())
+                    .filter(|path| path.is_file())
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .collect();
+                let folders: Vec<String> = urls
+                    .iter()
+                    .filter_map(|url| url.to_file_path().ok())
+                    .filter(|path| path.is_dir())
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .collect();
+                if !paths.is_empty() || !folders.is_empty() {
+                    queue_paths(_app, paths);
+                    queue_folders(_app, folders);
+                    let _ = _app.emit("open-path", ());
+                }
+            }
+        });
 }
 
 #[cfg(test)]

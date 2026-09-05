@@ -6,6 +6,7 @@
 import { EditorView } from "@codemirror/view";
 import type { EditorState } from "@codemirror/state";
 import type { Doc } from "../app/store";
+import { idle } from "../app/platform";
 import { useStore } from "../app/store";
 import { headingsOf } from "../read/headings";
 import { isDirty } from "./buffers";
@@ -30,7 +31,8 @@ export function caretOf(state: EditorState): { line: number; col: number } {
   return { line: line.number, col: head - line.from + 1 };
 }
 
-let idle: number | null = null;
+/** The canceller the shared idle wrapper handed back, or null. */
+let stopIdle: (() => void) | null = null;
 let frame: number | null = null;
 
 /**
@@ -50,10 +52,8 @@ export function syncTarget(): string | null {
 }
 
 function cancelIdle(): void {
-  if (idle === null) return;
-  if (typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(idle);
-  else window.clearTimeout(idle);
-  idle = null;
+  stopIdle?.();
+  stopIdle = null;
 }
 
 function cancelFrame(): void {
@@ -94,15 +94,11 @@ export function flushText(view: EditorView, id: string): void {
 }
 
 function scheduleText(view: EditorView, id: string): void {
-  if (idle !== null) return;
-  const run = () => {
-    idle = null;
+  if (stopIdle !== null) return;
+  stopIdle = idle(() => {
+    stopIdle = null;
     flushText(view, id);
-  };
-  idle =
-    typeof window.requestIdleCallback === "function"
-      ? window.requestIdleCallback(run, { timeout: 500 })
-      : window.setTimeout(run, 200);
+  }, 500);
 }
 
 /** Caret, plus the dirty dot — it shouldn't wait for the text flush. */

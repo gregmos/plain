@@ -1,0 +1,65 @@
+# The macOS build, which is also the only place it is built at all: there is
+# no Mac on the development machine (spec §13a). Runs the tests first, then
+# bundles a .dmg. On a v* tag the .dmg is attached to that release; on a manual
+# run it is uploaded as a workflow artifact so the build can be checked without
+# cutting a release.
+name: macOS
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      # The suites the development machine cannot vouch for on this platform.
+      - run: npx vitest run
+
+      - run: cargo test
+        working-directory: src-tauri
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Ad-hoc: unsigned and un-notarised on purpose (spec §13a). Without
+          # an identity the universal binary would not be signed at all and
+          # Gatekeeper would refuse it outright rather than ask.
+          APPLE_SIGNING_IDENTITY: "-"
+        with:
+          # Empty on a manual run: tauri-action then only builds.
+          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('Plain {0}', github.ref_name) || '' }}
+          releaseDraft: false
+          prerelease: false
+          # One .dmg for both architectures; the Windows zip is attached to
+          # the same release by hand.
+          args: --target universal-apple-darwin --bundles dmg
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        with:
+          name: Plain-macos-dmg
+          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
