@@ -19,7 +19,7 @@ Double-click a `.md` file and you are reading. Make a change, and the file stays
 
 ## Installation
 
-1. Unpack `Plain-0.1.0-win-x64.zip` into any folder, for example `C:\Program Files\Plain` or `%LOCALAPPDATA%\Programs\Plain`. It contains a single `plain.exe`; there is no installer.
+1. Unpack `Plain-0.2.0-win-x64.zip` into any folder, for example `C:\Program Files\Plain` or `%LOCALAPPDATA%\Programs\Plain`. It contains a single `plain.exe`; there is no installer.
 2. Run `plain.exe`. On first launch, Windows SmartScreen shows a blue "Windows protected your PC" dialog because the program is not code-signed. Click **More info → Run anyway**. Windows remembers the decision for that copy of the file; a new version may ask once more.
 3. To open `.md` files in Plain with a double-click: right-click any `.md` file → **Open with → Choose another app → Plain → Always**. Plain appears in that list after its first launch, but it never makes itself the default on its own.
 
@@ -68,7 +68,7 @@ You need Node.js 22, Rust (`rustup` with the `stable-x86_64-pc-windows-msvc` too
 ```
 npm install
 npm run tauri dev     # development build with live reload
-npm run pack          # release build, produces dist-win\Plain-0.1.0-win-x64.zip
+npm run pack          # release build, produces dist-win\Plain-0.2.0-win-x64.zip
 ```
 
 Checks: `npm run build`, `npx vitest run`, and `cargo test` inside `src-tauri`. The manual checklist used before a release is in `CHECKLIST.md`.
