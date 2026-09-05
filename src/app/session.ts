@@ -22,7 +22,7 @@ export interface SessionFile {
   /** Relative paths of the folded folders in the tree (spec §6). */
   collapsed: string[];
   recent: string[];
-  /** path -> heading id, oldest first. */
+  /** path -> heading id, oldest first; `""` is the top of the file. */
   reading: [string, string][];
 }
 
@@ -30,7 +30,11 @@ export interface SessionFile {
 
 const positions = new Map<string, string>();
 
-/** Read view calls this while scrolling; re-inserting keeps the LRU order. */
+/**
+ * Read view calls this while scrolling; re-inserting keeps the LRU order.
+ * An empty heading means the top of the document, which is not the same as
+ * the first heading — see `restoreTarget` in read/outline.ts.
+ */
 export function rememberReading(path: string, heading: string): void {
   const key = pathKey(path);
   if (positions.get(key) === heading) return;

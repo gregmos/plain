@@ -224,6 +224,8 @@ interface AppState {
   setDialog: (dialog: Dialog | null) => void;
   setRecovery: (recovery: Recovery[] | null) => void;
   setRecent: (recent: string[]) => void;
+  /** Drops a path that turned out not to exist any more (spec §4). */
+  forgetRecent: (path: string) => void;
 
   setTree: (tree: TreeNode[]) => void;
   setCollapsed: (collapsed: string[]) => void;
@@ -414,6 +416,13 @@ export const useStore = create<AppState>()((set, get) => ({
   setDialog: (dialog) => set({ dialog }),
   setRecovery: (recovery) => set({ recovery }),
   setRecent: (recent) => set({ recent }),
+  forgetRecent: (path) =>
+    set((s) => {
+      const key = pathKey(path);
+      const recent = s.recent.filter((p) => pathKey(p) !== key);
+      // The session only writes when something changed, so keep identity.
+      return recent.length === s.recent.length ? {} : { recent };
+    }),
 
   setTree: (tree) => set({ tree, treeFiles: countFiles(tree) }),
   setCollapsed: (collapsed) => set({ collapsed }),

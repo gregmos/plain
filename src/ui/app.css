@@ -156,9 +156,13 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  /* `safe` is the point: a centred flex column that overflows pushes its
+     first row off the top, out of reach. This falls back to the top edge
+     instead, and the second declaration is the one that counts. */
   justify-content: center;
+  justify-content: safe center;
   gap: 34px;
-  padding: 0 20px 60px;
+  padding: 36px 20px 60px;
 }
 
 .empty-actions {

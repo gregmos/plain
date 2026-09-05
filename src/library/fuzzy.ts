@@ -11,8 +11,23 @@ export interface Hit {
   ranges: number[];
 }
 
-/** One inserted character per term is enough typo room for file names. */
-const engine = new uFuzzy({ intraIns: 1 });
+/**
+ * One inserted character per term is enough typo room for file names.
+ *
+ * The rest is uFuzzy's own recipe for anything that is not plain latin: its
+ * defaults are written in `[A-Za-z]`, so a Cyrillic file name matched
+ * nothing at all. `\p{L}` classes need the unicode flag, which is what
+ * `unicode: true` turns on.
+ */
+const engine = new uFuzzy({
+  intraIns: 1,
+  unicode: true,
+  interSplit: "[^\\p{L}\\d']+",
+  intraSplit: "\\p{Ll}\\p{Lu}",
+  intraBound: "\\p{L}\\d|\\d\\p{L}|\\p{Ll}\\p{Lu}",
+  intraChars: "[\\p{L}\\d']",
+  intraContr: "'\\p{L}{1,2}\\b",
+});
 
 /**
  * Ranked matches, best first. An empty needle matches nothing — the modal

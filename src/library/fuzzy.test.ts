@@ -45,6 +45,61 @@ describe("rank", () => {
   });
 });
 
+// uFuzzy's defaults are spelled `[A-Za-z]`, so without the unicode options
+// a Cyrillic library found nothing at all.
+const cyrillic = [
+  "проекты/plain/тз.md",
+  "recipes/борщ.md",
+  "дневник/2026-01.md",
+  "дневник/2026-02.md",
+  "заметки/дневник чтения.md",
+  "notes/overview.md",
+];
+
+function found(needle: string): string[] {
+  return rank(cyrillic, needle).map((hit) => cyrillic[hit.index] as string);
+}
+
+describe("rank, in Cyrillic", () => {
+  it("finds a file whose whole name is Cyrillic", () => {
+    expect(found("тз")).toEqual(["проекты/plain/тз.md"]);
+  });
+
+  it("finds one inside a latin path", () => {
+    expect(found("борщ")).toEqual(["recipes/борщ.md"]);
+  });
+
+  it("finds every file the word appears in", () => {
+    expect(found("дневник")).toEqual([
+      "дневник/2026-01.md",
+      "дневник/2026-02.md",
+      "заметки/дневник чтения.md",
+    ]);
+  });
+
+  it("matches a folder and a name across the separator", () => {
+    expect(found("заметки чтения")).toEqual(["заметки/дневник чтения.md"]);
+  });
+
+  it("still says nothing when the word is not there", () => {
+    expect(found("щщщ")).toEqual([]);
+  });
+
+  it("leaves latin matching as it was", () => {
+    expect(found("overview")).toEqual(["notes/overview.md"]);
+    expect(found("plain")).toEqual(["проекты/plain/тз.md"]);
+  });
+
+  it("paints the Cyrillic characters it matched", () => {
+    const hit = rank(["дневник/2026-01.md"], "дневник")[0];
+    const shown = pieces("дневник/2026-01.md", hit?.ranges ?? [])
+      .filter((piece) => piece.hit)
+      .map((piece) => piece.text)
+      .join("");
+    expect(shown).toBe("дневник");
+  });
+});
+
 describe("pieces", () => {
   it("puts the string back together, matched parts marked", () => {
     const parts = pieces("abcdef", [2, 4]);

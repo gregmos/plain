@@ -16,7 +16,7 @@ import {
   shortPath,
   type LinkTarget,
 } from "./links";
-import { setActiveHeading } from "./outline";
+import { restoreTarget, setActiveHeading } from "./outline";
 import { render } from "./pipeline";
 import { readingMinutes } from "./words";
 import "katex/dist/katex.min.css";
@@ -123,11 +123,19 @@ export function ReadView({ doc }: { doc: Doc }) {
     return map;
   }, [headings]);
 
+  const headingIds = useMemo(() => (headings ?? []).map((heading) => heading.id), [headings]);
+
   useEffect(() => {
     if (headings) useStore.getState().updateDoc(docId, { headings });
   }, [docId, headings]);
 
-  const trackHeading = useCallback(() => {
+  /**
+   * `remember` is only ever true for a real scroll. The pass that runs when a
+   * document is built has to update the outline, but it runs before the
+   * restore effect below and at offset zero — writing from there would erase
+   * the position it is about to restore.
+   */
+  const trackHeading = useCallback((remember = false) => {
     const frame = scroller.current;
     const content = body.current;
     if (!frame || !content) return;
@@ -141,8 +149,11 @@ export function ReadView({ doc }: { doc: Doc }) {
     const id = seen?.id ?? content.querySelector("h1,h2,h3,h4,h5,h6")?.id ?? null;
     setActiveHeading(id || null);
     topLine.current = (id ? lines.get(id) : undefined) ?? 1;
-    // Where you were reading is remembered per file, LRU 300 (spec §8).
-    if (id && doc.path) rememberReading(doc.path, id);
+    // Where you were reading is remembered per file, LRU 300 (spec §8). What
+    // the outline highlights and where you are reading are not the same
+    // thing: above the first heading the position is the top, `""`, or
+    // reopening the file would hide the meta line above H1.
+    if (remember && doc.path) rememberReading(doc.path, seen?.id ?? "");
   }, [lines, doc.path]);
 
   /* --------------------------------------------------------------- scope */
@@ -241,9 +252,10 @@ export function ReadView({ doc }: { doc: Doc }) {
       return;
     }
     // First time this session: pick up where the last one left off (§8).
-    const heading = doc.path ? readingPosition(doc.path) : null;
-    if (!heading || !scrollToId(heading)) frame.scrollTop = 0;
-  }, [docId, doc.path, html, scrollToId]);
+    const saved = doc.path ? readingPosition(doc.path) : null;
+    const target = restoreTarget(saved, headingIds);
+    if (!target || !scrollToId(target)) frame.scrollTop = 0;
+  }, [docId, doc.path, html, headingIds, scrollToId]);
 
   useEffect(() => {
     const onGoto = (event: Event) => {
@@ -400,7 +412,7 @@ export function ReadView({ doc }: { doc: Doc }) {
           ticking.current = true;
           requestAnimationFrame(() => {
             ticking.current = false;
-            trackHeading();
+            trackHeading(true);
           });
         }}
       >

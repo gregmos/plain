@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { EditorView, type Command as EditorCommand } from "@codemirror/view";
-import type { Doc, Heading } from "../app/store";
+import type { Doc } from "../app/store";
 import { useStore } from "../app/store";
 import { buffer, keepBuffer, markSaved, moveBuffer, setBufferText } from "./buffers";
 import { headingsOf } from "../read/headings";
+import { headingAbove } from "./headings";
 import { richConf, richExtension } from "./rich";
 import { gutterConf, gutterExtension, lineNumbersOn, onLineNumbers } from "./setup";
 import { flushText, setSyncTarget, syncCaret } from "./sync";
@@ -124,32 +125,46 @@ if (typeof window !== "undefined") {
   window.addEventListener(GOTO_LINE, onGotoLine);
 }
 
-function takePending(view: EditorView): void {
-  if (pending && Date.now() - pending.at < PENDING_MS) jump(view, pending.goto);
+/**
+ * Hands the waiting jump to a freshly mounted view. It returns what it gave,
+ * because a view that is thrown away before CodeMirror ever measures it never
+ * scrolls anywhere — React's StrictMode builds and drops one on every mount —
+ * and the jump has to survive that.
+ */
+function takePending(view: EditorView): Goto | null {
+  if (!pending || Date.now() - pending.at >= PENDING_MS) {
+    pending = null;
+    return null;
+  }
+  const { goto } = pending;
   pending = null;
+  jump(view, goto);
+  return goto;
 }
 
 /**
- * Leaving edit: tell read which heading the top of the screen was under. The
- * ids come from the same parse read uses, or the two would disagree about
- * what a heading is called (review #9).
+ * Leaving edit: tell read which heading the top of the screen was under.
+ *
+ * The scroll position is passed in because by the time React runs this
+ * cleanup the editor is already out of the document: every rect reads zero
+ * and the answer would always be the first heading. The height map still
+ * works while detached, so the line comes from the position we kept.
+ *
+ * The ids come from the same parse read uses, or the two would disagree
+ * about what a heading is called (review #9).
  */
-function announceHeading(view: EditorView, id: string): void {
+function announceHeading(view: EditorView, id: string, scrollTop: number): void {
   const store = useStore.getState();
   const doc = store.docs.find((d) => d.id === id);
   if (store.activeId !== id || doc?.mode !== "read" || doc.large) return;
   let line = 1;
   try {
-    const top = view.scrollDOM.getBoundingClientRect().top - view.documentTop;
+    const top = Math.max(0, scrollTop - view.documentPadding.top);
     line = view.state.doc.lineAt(view.lineBlockAtHeight(top).from).number;
   } catch {
     return;
   }
-  let heading: Heading | null = null;
-  for (const candidate of headingsOf(view.state.doc.toString())) {
-    if (candidate.line > line) break;
-    heading = candidate;
-  }
+  const heading = headingAbove(headingsOf(view.state.doc.toString()), line);
   if (!heading) return;
   const target = heading.id;
   // After the current commit, so the read view is already listening.
@@ -163,9 +178,23 @@ export function EditView({ doc, rich = false }: { doc: Doc; rich?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const shown = useRef(doc.id);
+  /** Last scroll position seen while the editor was still on screen. */
+  const scrolled = useRef(0);
   const [numbers, setNumbers] = useState(lineNumbersOn);
 
   useEffect(() => onLineNumbers(() => setNumbers(lineNumbersOn())), []);
+
+  /**
+   * Layout cleanups run while the DOM is still in the document; the passive
+   * cleanup below, where the editor is torn down, runs after React has taken
+   * it out — and a detached element reports no scroll position at all.
+   */
+  useLayoutEffect(() => {
+    return () => {
+      const current = view.current;
+      if (current?.scrollDOM.isConnected) scrolled.current = current.scrollDOM.scrollTop;
+    };
+  }, []);
 
   useEffect(() => {
     const parent = host.current;
@@ -183,13 +212,26 @@ export function EditView({ doc, rich = false }: { doc: Doc; rich?: boolean }) {
     // to the scroll position has to come after it.
     created.focus();
     created.scrollDOM.scrollTop = opened.scrollTop;
-    takePending(created);
+    scrolled.current = opened.scrollTop;
+    // React detaches the editor before this component's cleanup runs, so the
+    // scroll position has to be kept while it is still on screen.
+    const onScroll = () => (scrolled.current = created.scrollDOM.scrollTop);
+    created.scrollDOM.addEventListener("scroll", onScroll);
+    const jumped = takePending(created);
+    // A scroll only lands once the view has been measured.
+    let measured = false;
+    created.requestMeasure({ read: () => (measured = true) });
 
     return () => {
+      if (jumped && !measured) pending = { goto: jumped, at: Date.now() };
+      created.scrollDOM.removeEventListener("scroll", onScroll);
       const id = shown.current;
+      const scrollTop = created.scrollDOM.isConnected
+        ? created.scrollDOM.scrollTop
+        : scrolled.current;
       flushText(created, id);
-      keepBuffer(id, created.state, created.scrollDOM.scrollTop);
-      announceHeading(created, id);
+      keepBuffer(id, created.state, scrollTop);
+      announceHeading(created, id, scrollTop);
       live = null;
       liveId = null;
       setSyncTarget(null);
@@ -209,6 +251,7 @@ export function EditView({ doc, rich = false }: { doc: Doc; rich?: boolean }) {
     keepBuffer(previous, current.state, current.scrollDOM.scrollTop);
 
     const next = buffer(doc, useStore.getState().settings);
+    scrolled.current = next.scrollTop;
     current.setState(next.state);
     current.dispatch({
       effects: [

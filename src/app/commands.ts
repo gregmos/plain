@@ -55,14 +55,28 @@ export async function openPaths(paths: string[]): Promise<boolean> {
       if (fields.decodeErrors) useStore.getState().setNote("decoded with errors");
       opened = true;
     } catch (error) {
+      const failure = fsError(error);
+      // A `recent` entry that points at nothing is worth less than the row
+      // it takes up, and it will fail again next time it is clicked.
+      if (isGone(failure)) useStore.getState().forgetRecent(path);
       showBanner({
         id: "open-failed",
-        text: `couldn't open ${basename(path)} — ${fsError(error).message}`,
+        text: `couldn't open ${basename(path)} — ${failure.message}`,
         actions: [{ label: "dismiss", run: () => useStore.getState().dismissBanner("open-failed") }],
       });
     }
   }
+  // The complaint was about a file that is no longer the one on screen.
+  if (opened) useStore.getState().dismissBanner("open-failed");
   return opened;
+}
+
+/**
+ * The file is not there. Rust hands back the OS message, and on Windows a
+ * missing file is error 2 and a missing folder on the way is error 3.
+ */
+function isGone(failure: { kind: string; message: string }): boolean {
+  return failure.kind === "missing" || /\(os error [23]\)/.test(failure.message);
 }
 
 /**
