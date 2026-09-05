@@ -13,6 +13,8 @@ import { languages } from "@codemirror/language-data";
 import { codeFolding, indentUnit, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
 import { search, searchKeymap } from "@codemirror/search";
+import { commands } from "../app/registry";
+import { parseChord, toCode, type Chord } from "../app/chords";
 import {
   Compartment,
   EditorState,
@@ -30,6 +32,7 @@ import {
   keymap,
   lineNumbers,
   type DecorationSet,
+  type KeyBinding,
   type ViewUpdate,
 } from "@codemirror/view";
 import type { Settings } from "../app/settings";
@@ -46,6 +49,8 @@ import { formatToolbar } from "./toolbar";
 import { editorTheme, highlightStyle } from "./theme";
 
 export const gutterConf = new Compartment();
+/** Save As turns a read-only copy into an editable file (review #5). */
+export const readOnlyConf = new Compartment();
 
 /* ------------------------------------------------- soft wrap continuation */
 
@@ -167,11 +172,70 @@ const markupKeymap = Prec.high(
   ]),
 );
 
-// Find, replace and go to line belong to the command registry (spec §12);
-// leaving them in CodeMirror's keymap would run each of them twice, once
-// through the registry and once here (review #12).
-const REGISTRY_CHORDS = new Set(["Mod-f", "Mod-h", "F3", "Shift-F3", "Mod-g", "Shift-Mod-g", "Mod-Alt-g"]);
-const ownSearchKeymap = searchKeymap.filter((binding) => !REGISTRY_CHORDS.has(binding.key ?? ""));
+/* ------------------------------------------------------------- key sharing */
+
+/**
+ * Whatever the command registry binds is the registry's (spec §12): leaving
+ * the same chord in CodeMirror's own keymaps runs it twice, once through
+ * tinykeys and once here (review #12, #16, #8). The list is taken from the
+ * registry itself, so a new chord there cannot go on to collide quietly.
+ */
+function chordKey(chord: Chord): string {
+  return `${chord.ctrl ? 1 : 0}${chord.shift ? 1 : 0}${chord.alt ? 1 : 0}${chord.meta ? 1 : 0}:${chord.code}`;
+}
+
+/** CodeMirror spells them `Mod-f`, `Shift-Alt-ArrowUp`, `F3`. */
+function cmChord(key: string): Chord | null {
+  const parts = key.split("-");
+  const last = parts.pop() || (parts.length > 0 ? "-" : "");
+  if (!last) return null;
+  const chord: Chord = { ctrl: false, shift: false, alt: false, meta: false, code: "" };
+  for (const part of parts) {
+    if (part === "Mod" || part === "Ctrl" || part === "Control") chord.ctrl = true;
+    else if (part === "Shift") chord.shift = true;
+    else if (part === "Alt") chord.alt = true;
+    else if (part === "Meta" || part === "Cmd") chord.meta = true;
+    else if (part !== "") return null;
+  }
+  try {
+    chord.code = toCode(last);
+  } catch {
+    return null;
+  }
+  return chord;
+}
+
+let shared: readonly KeyBinding[] | null = null;
+
+function appKeymap(): readonly KeyBinding[] {
+  if (shared) return shared;
+  const owned = new Set<string>();
+  for (const command of commands) {
+    if (!command.chord) continue;
+    try {
+      owned.add(chordKey(parseChord(command.chord)));
+    } catch {
+      // A chord the app cannot parse cannot collide either.
+    }
+  }
+  const taken = (key: string | undefined, shift: boolean): boolean => {
+    if (!key) return false;
+    const chord = cmChord(key);
+    if (!chord) return false;
+    return owned.has(chordKey(chord)) || (shift && owned.has(chordKey({ ...chord, shift: true })));
+  };
+  shared = [
+    ...closeBracketsKeymap,
+    ...historyKeymap,
+    ...searchKeymap,
+    ...defaultKeymap,
+  ].filter(
+    (binding) =>
+      !taken(binding.key, binding.shift !== undefined) &&
+      !taken(binding.win, binding.shift !== undefined),
+  );
+  return shared;
+}
 
 /** The first image on the clipboard, if that is what was copied (§2a). */
 function clipboardImage(data: DataTransfer | null): File | null {
@@ -235,7 +299,7 @@ export function editorExtensions(doc: Doc, settings: Settings): Extension {
     dropCursor(),
     EditorState.allowMultipleSelections.of(true),
     EditorView.clickAddsSelectionRange.of((event) => event.altKey),
-    EditorState.readOnly.of(doc.readOnly),
+    readOnlyConf.of(EditorState.readOnly.of(doc.readOnly)),
     // Microcopy is lowercase latin (spec §1.4); this is CodeMirror's own.
     EditorState.phrases.of({ "Go to line": "go to line", go: "go", close: "×" }),
     EditorView.lineWrapping,
@@ -254,6 +318,6 @@ export function editorExtensions(doc: Doc, settings: Settings): Extension {
     remoteCommands,
     formatToolbar,
     editorKeymap(),
-    keymap.of([...closeBracketsKeymap, ...historyKeymap, ...ownSearchKeymap, ...defaultKeymap]),
+    keymap.of([...appKeymap()]),
   ];
 }

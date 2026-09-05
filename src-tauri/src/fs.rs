@@ -39,6 +39,12 @@ impl FsError {
         }
     }
 
+    /// For callers that report a failure without being one, such as a
+    /// snapshot that could not be kept beside a save that worked.
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
     fn missing(path: &Path) -> Self {
         Self {
             kind: "missing",
@@ -324,7 +330,7 @@ fn wide(path: &Path) -> Vec<u16> {
 /// Writes the bytes into a temp file next to the target and flushes them to
 /// the platter (`sync_all` is FlushFileBuffers). Creates the folder, so it is
 /// only ever called once the write is known to be allowed.
-fn stage(dir: &Path, bytes: &[u8]) -> FsResult<PathBuf> {
+pub fn stage(dir: &Path, bytes: &[u8]) -> FsResult<PathBuf> {
     fs::create_dir_all(dir)?;
     let mut temp = tempfile::NamedTempFile::new_in(dir)?;
     temp.write_all(bytes)?;
@@ -354,7 +360,7 @@ fn recover_replacement(target: &Path, temp: &Path) -> std::io::Result<()> {
 
 /// ReplaceFileW keeps the creation time and the attributes of the original;
 /// a file that is not there yet is just renamed into place (spec §8).
-fn commit(target: &Path, temp: &Path, existed: bool) -> FsResult<()> {
+pub fn commit(target: &Path, temp: &Path, existed: bool) -> FsResult<()> {
     if !existed {
         return fs::rename(temp, target).map_err(FsError::from);
     }
@@ -403,8 +409,12 @@ pub struct WriteRequest {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WriteResult {
     hash: String,
+    /// The document was written; keeping a copy of it in the history was not.
+    /// Two different pieces of news, reported separately (review #5).
+    snapshot_error: Option<String>,
 }
 
 /// One lock for every write. A personal editor with one window does not need
@@ -479,11 +489,18 @@ fn write_written(request: &WriteRequest) -> FsResult<(String, Vec<u8>)> {
 #[tauri::command]
 pub fn write_file_atomic(app: tauri::AppHandle, request: WriteRequest) -> FsResult<WriteResult> {
     let (hash, bytes) = write_written(&request)?;
-    // Keeping a copy is a courtesy; failing at it must not fail the save.
-    if let Some(id) = request.snapshot_id.as_deref() {
-        let _ = crate::history::keep(&app, id, &bytes);
-    }
-    Ok(WriteResult { hash })
+    // Keeping a copy must not fail the save, but it must not be silent about
+    // failing either (review #5).
+    let snapshot_error = match request.snapshot_id.as_deref() {
+        Some(id) => crate::history::keep(&app, id, &bytes)
+            .err()
+            .map(|error| error.message().to_string()),
+        None => None,
+    };
+    Ok(WriteResult {
+        hash,
+        snapshot_error,
+    })
 }
 
 /// Drafts and state.json: same temp-and-replace, always UTF-8, never

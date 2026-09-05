@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { EditorSelection, EditorState, type StateCommand } from "@codemirror/state";
-import { indentUnit } from "@codemirror/language";
+import { ensureSyntaxTree, indentUnit } from "@codemirror/language";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import type { EditorView } from "@codemirror/view";
+import type { TransactionSpec } from "@codemirror/state";
 import { indentLess, indentMore } from "@codemirror/commands";
 import {
   clearHeading,
@@ -11,6 +14,7 @@ import {
   selectedLines,
   toggleBold,
   toggleCheckbox,
+  toggleCheckboxAt,
   toggleCodeBlock,
   toggleHeading,
   toggleItalic,
@@ -267,5 +271,41 @@ describe("pasting a url", () => {
     expect(paste("«x»", "https://a.example https://b.example")).toBe(null);
     expect(paste("x|", "https://example.com")).toBe(null);
     expect(paste("«x»", "https://example.com", true)).toBe(null);
+  });
+});
+
+describe("ticking a box the parser found (review #7)", () => {
+  function tick(doc: string, at = 0): string {
+    const state = EditorState.create({
+      doc,
+      extensions: markdown({ base: markdownLanguage }),
+    });
+    ensureSyntaxTree(state, state.doc.length, 5000);
+    let next = state;
+    const view = {
+      state,
+      dispatch: (spec: TransactionSpec) => (next = state.update(spec).state),
+    } as unknown as EditorView;
+    expect(toggleCheckboxAt(view, at)).toBe(true);
+    return next.doc.toString();
+  }
+
+  it("works wherever the item sits", () => {
+    expect(tick("- [ ] task")).toBe("- [x] task");
+    expect(tick("1. [ ] task")).toBe("1. [x] task");
+    expect(tick("> - [ ] task")).toBe("> - [x] task");
+    expect(tick("-  [ ] task")).toBe("-  [x] task");
+    expect(tick("  - [x] done")).toBe("  - [ ] done");
+  });
+
+  it("takes the box the click landed on", () => {
+    const doc = ["- [ ] one", "- [x] two"].join("\n");
+    expect(tick(doc, doc.indexOf("[x]"))).toBe(["- [ ] one", "- [ ] two"].join("\n"));
+  });
+
+  it("says no when the line has no box", () => {
+    const state = EditorState.create({ doc: "- plain item" });
+    const view = { state, dispatch: () => undefined } as unknown as EditorView;
+    expect(toggleCheckboxAt(view, 0)).toBe(false);
   });
 });

@@ -86,13 +86,17 @@ function rows(): Record<Group, Row[]> {
   for (const command of commands) {
     // `hint` is a chord the editor's keymap or WebView2 owns; it is still a
     // key the reader can press, so it belongs on this page.
-    const chord = command.chord ?? command.hint;
-    if (!chord || SKIP.has(command.id)) continue;
+    // A command can answer to more than one chord (`F8` is taken by a global
+    // hotkey on some machines), and every one of them belongs on this page.
+    const all = [command.chord ?? command.hint, ...(command.chords ?? [])].filter(
+      (chord): chord is string => Boolean(chord),
+    );
+    if (all.length === 0 || SKIP.has(command.id)) continue;
     const heading = command.id === HEADINGS;
     out[groupOf(command.id)].push({
       key: command.id,
       label: heading ? "heading 1–6" : command.title,
-      keys: heading ? "ctrl 1 … ctrl 6" : chordText(chord),
+      keys: heading ? "ctrl 1 … ctrl 6" : all.map(chordText).join(" · "),
     });
   }
 

@@ -4,7 +4,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { mkdir } from "@tauri-apps/plugin-fs";
-import { appDataDir, join } from "@tauri-apps/api/path";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { flushActiveEditor } from "../editor";
 import { isDirty } from "../editor/buffers";
@@ -14,9 +13,9 @@ import { countWords } from "../read/words";
 import { serialize } from "./eol";
 import { inTauri } from "./env";
 import { docFields, fsError, hashFile, readFile, writeTextAtomic } from "./fs";
-import { basename, pathKey } from "./paths";
+import { basename, dirname, pathKey } from "./paths";
 import { reloadFromDisk } from "./save";
-import { SETTINGS_FILE, serializeSettings } from "./settings";
+import { serializeSettings, settingsPath } from "./settings";
 import { activeDoc, makeDoc, useStore, type Doc } from "./store";
 
 /**
@@ -273,10 +272,11 @@ export function openFolderSearch(): void {
  */
 export async function openSettingsFile(): Promise<void> {
   if (!inTauri) return;
-  const dir = await appDataDir();
-  const file = await join(dir, SETTINGS_FILE);
+  // settingsPath() knows about portable mode; appDataDir() does not, and a
+  // portable instance would then edit a file it never reads (spec §10).
+  const file = await settingsPath();
   try {
-    await mkdir(dir, { recursive: true }).catch(() => undefined);
+    await mkdir(dirname(file), { recursive: true }).catch(() => undefined);
     if ((await hashFile(file)) === null) {
       // What is in force right now, not the defaults: the settings screen
       // may already have moved things the file never got to hold.
@@ -344,125 +344,138 @@ export async function exitApp(): Promise<void> {
 /* -------------------------------------------------- plain text (wave 5b) */
 
 /** Chrome the reader sees but a paste should not carry. */
-const DROP_CLASSES = ["code-bar", "h-anchor", "img-holder"];
+const DROP = ".code-bar, .h-anchor, .img-holder";
 
 /** A blank line around them, the way a paragraph reads. */
 const PARAGRAPH_TAGS = new Set([
-  "p", "div", "h1", "h2", "h3", "h4", "h5", "h6",
-  "pre", "blockquote", "section", "article", "figure", "table", "hr", "details",
+  "p",
+  "div",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "blockquote",
+  "section",
+  "article",
+  "figure",
+  "table",
+  "hr",
+  "details",
 ]);
 
 /** One line each — a list is a list, not a stack of paragraphs. */
-const LINE_TAGS = new Set([
-  "li", "ul", "ol", "tr", "dl", "dt", "dd", "figcaption", "summary",
-]);
+const LINE_TAGS = new Set(["li", "ul", "ol", "dl", "dt", "dd", "figcaption", "summary"]);
 
-const ENTITIES: Record<string, string> = {
-  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", hellip: "…", mdash: "—", ndash: "–",
-};
+/**
+ * The text as it is assembled. `push` is for prose, which collapses; `raw`
+ * is for separators; `keep` parks text that must survive the tidy-up.
+ */
+class Sink {
+  text = "";
+  /** `<pre>` blocks, behind a placeholder so the clean-up cannot reach them. */
+  readonly kept: string[] = [];
 
-function decode(text: string): string {
-  return text.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (whole, body: string) => {
-    if (body.startsWith("#")) {
-      const code = body[1] === "x" || body[1] === "X"
-        ? parseInt(body.slice(2), 16)
-        : parseInt(body.slice(1), 10);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : whole;
-    }
-    return ENTITIES[body.toLowerCase()] ?? whole;
-  });
+  push(part: string): void {
+    // A collapsed space right after a line break belongs to the markup.
+    this.text += this.text.endsWith("\n") ? part.replace(/^[ \t]+/, "") : part;
+  }
+
+  raw(part: string): void {
+    this.text += part;
+  }
+
+  keep(part: string): void {
+    this.kept.push(part);
+    this.text += `\u0000${this.kept.length - 1}\u0000`;
+  }
+
+  /** At least `n` line breaks here — never more than are wanted. */
+  brk(n: number): void {
+    if (this.text === "") return;
+    this.text = this.text.replace(/[ \t]+$/, "");
+    const have = /\n*$/.exec(this.text)?.[0].length ?? 0;
+    this.text += "\n".repeat(Math.max(0, n - have));
+  }
 }
 
-function attribute(tag: string, name: string): string | null {
-  const m = new RegExp(`\\s${name}\\s*=\\s*("([^"]*)"|'([^']*)')`, "i").exec(tag);
-  return m ? decode(m[2] ?? m[3] ?? "") : null;
+const TEXT_NODE = 3;
+const ELEMENT_NODE = 1;
+
+function walk(node: Node, out: Sink): void {
+  for (const child of Array.from(node.childNodes)) {
+    if (child.nodeType === TEXT_NODE) {
+      out.push((child.nodeValue ?? "").replace(/\s+/g, " "));
+      continue;
+    }
+    if (child.nodeType !== ELEMENT_NODE) continue;
+
+    const el = child as Element;
+    const name = el.tagName.toLowerCase();
+
+    if (name === "img") {
+      out.push(el.getAttribute("alt") ?? "");
+      continue;
+    }
+    if (name === "br") {
+      out.brk(1);
+      continue;
+    }
+    if (name === "pre") {
+      // Code keeps its indentation, its trailing spaces and its blank lines.
+      // The one newline the closing fence leaves behind is not the author's,
+      // and the placeholder puts it out of reach of the trim below.
+      out.brk(2);
+      out.keep((el.textContent ?? "").replace(/\n$/, ""));
+      out.brk(2);
+      continue;
+    }
+    if (name === "tr") {
+      const cells = Array.from(el.children).filter((c) => /^(td|th)$/i.test(c.tagName));
+      cells.forEach((cell, index) => {
+        if (index > 0) out.raw(" | ");
+        walk(cell, out);
+      });
+      out.brk(1);
+      continue;
+    }
+    if (PARAGRAPH_TAGS.has(name)) {
+      out.brk(2);
+      walk(el, out);
+      out.brk(2);
+      continue;
+    }
+    if (LINE_TAGS.has(name)) {
+      out.brk(1);
+      walk(el, out);
+      out.brk(1);
+      continue;
+    }
+    walk(el, out);
+  }
 }
 
 /**
  * The rendered HTML as text a mail client would accept: no `#`, no `*`, one
- * list item per line. Done on the string rather than through a DOM, so it
- * needs no layout, no document, and runs the same in a test as in the app.
+ * list item per line, table cells kept apart. Parsed rather than scanned — a
+ * hand-rolled tokenizer trips over `title="a > b"` and entity edge cases.
  */
 export function htmlToPlainText(html: string): string {
-  let out = "";
-  let pre = 0;
-  let i = 0;
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  for (const junk of Array.from(parsed.querySelectorAll(DROP))) junk.remove();
 
-  const push = (text: string) => {
-    // A collapsed space right after a line break is the markup's, not the
-    // author's — except inside `pre`, where every space is the author's.
-    out += pre === 0 && out.endsWith("\n") ? text.replace(/^[ \t]+/, "") : text;
-  };
-  /** At least `n` line breaks here — never more than are wanted. */
-  const brk = (n: number) => {
-    if (out === "") return;
-    out = out.replace(/[ \t]+$/, "");
-    const have = /\n*$/.exec(out)?.[0].length ?? 0;
-    out += "\n".repeat(Math.max(0, n - have));
-  };
+  const out = new Sink();
+  walk(parsed.body, out);
 
-  while (i < html.length) {
-    const lt = html.indexOf("<", i);
-    if (lt < 0) {
-      push(pre > 0 ? decode(html.slice(i)) : decode(html.slice(i)).replace(/\s+/g, " "));
-      break;
-    }
-    if (lt > i) {
-      const text = decode(html.slice(i, lt));
-      push(pre > 0 ? text : text.replace(/\s+/g, " "));
-    }
-    const gt = html.indexOf(">", lt);
-    if (gt < 0) break;
-
-    const tag = html.slice(lt, gt + 1);
-    const name = /^<\/?\s*([a-z0-9]+)/i.exec(tag)?.[1]?.toLowerCase() ?? "";
-    const closing = tag[1] === "/";
-
-    // A comment or a doctype carries nothing.
-    if (tag.startsWith("<!")) {
-      i = gt + 1;
-      continue;
-    }
-
-    const classes = closing ? null : attribute(tag, "class");
-    if (classes && DROP_CLASSES.some((c) => classes.split(/\s+/).includes(c))) {
-      i = skipElement(html, gt + 1, name);
-      continue;
-    }
-
-    if (name === "img") push(attribute(tag, "alt") ?? "");
-    else if (name === "br") brk(1);
-    else if (name === "pre") pre += closing ? -1 : 1;
-
-    if (PARAGRAPH_TAGS.has(name)) brk(2);
-    else if (LINE_TAGS.has(name)) brk(1);
-    i = gt + 1;
-  }
-
-  return out
+  const tidied = out.text
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+  // Only now do the code blocks come back, untouched by any of that.
+  return tidied.replace(/\u0000(\d+)\u0000/g, (_, index: string) => out.kept[Number(index)] ?? "");
 }
 
-/** Position just past the matching close tag of an element already opened. */
-function skipElement(html: string, from: number, name: string): number {
-  let depth = 1;
-  let i = from;
-  const tags = new RegExp(`<(/?)${name}\\b[^>]*>`, "gi");
-  tags.lastIndex = from;
-  for (let m = tags.exec(html); m; m = tags.exec(html)) {
-    depth += m[1] ? -1 : 1;
-    i = tags.lastIndex;
-    if (depth === 0) return i;
-  }
-  return html.length;
-}
-
-/**
- * The document as it looks, not as it is written. Null when it is too big to
- * render at all (spec §8).
- */
 export function plainTextOf(doc: Doc): string | null {
   if (doc.large) return null;
   return htmlToPlainText(render(doc.text).html);
@@ -520,22 +533,52 @@ export async function exportPlainText(): Promise<void> {
 
 /* ------------------------------------------------------- pdf (spec §4) */
 
+/** Two frames: React has committed and the browser has laid the page out. */
+function afterRender(): Promise<void> {
+  return new Promise((done) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => done()));
+  });
+}
+
 /**
- * `Ctrl+P`. Printing prints what is on screen, so the document has to be in
- * read first; the mode goes back after the dialog closes.
+ * `Ctrl+P`. Printing prints what is on screen, so the document has to be the
+ * thing on screen: every full-area screen closes and the mode goes to read.
+ * The mode is put back once the dialog is done with; the screens are not,
+ * because printing is a deliberate detour, not a mode.
  */
 export async function exportPdf(): Promise<void> {
   const store = useStore.getState();
   const doc = activeDoc(store);
   if (!doc) return;
 
+  // Settings, shortcuts, library, history, compare and folder search all take
+  // over the content area — any of them would be what got printed.
+  const covered =
+    store.settingsOpen ||
+    store.shortcutsOpen ||
+    store.libraryOpen ||
+    store.folderSearch ||
+    store.history !== null ||
+    store.comparison !== null;
+  store.setSettingsOpen(false);
+  store.setShortcutsOpen(false);
+  store.setLibraryOpen(false);
+  store.setFolderSearch(false);
+  store.setHistory(null);
+  store.setComparison(null);
+
   const was = doc.mode;
   if (was !== "read") {
     flushActiveEditor();
     store.setMode("read");
-    // The read view builds the document on entry; printing before it is
-    // ready would print an empty page.
+  }
+
+  await afterRender();
+  // The read view builds its document asynchronously; printing before it is
+  // ready would print an empty page.
+  if (covered || was !== "read") {
     await new Promise((done) => setTimeout(done, 400));
+    await afterRender();
   }
 
   const restore = () => {
@@ -557,11 +600,15 @@ export async function exportPdf(): Promise<void> {
  * The build lives in read/export.ts; this is the dialog and the write.
  */
 export async function exportHtmlFile(): Promise<void> {
-  const store = useStore.getState();
-  const current = store.docs.find((d) => d.id === store.activeId);
-  if (!current) return;
+  // Whatever was typed a moment ago belongs in the file (review #15).
+  flushActiveEditor();
+
+  const before = useStore.getState();
+  const id = before.activeId;
+  const opening = before.docs.find((d) => d.id === id);
+  if (!opening) return;
   if (!inTauri) {
-    store.setMessage("export needs the app");
+    before.setMessage("export needs the app");
     return;
   }
 
@@ -571,20 +618,30 @@ export async function exportHtmlFile(): Promise<void> {
     import("./paths"),
   ]);
 
-  const name = current.title.replace(/\.[^.]+$/, "");
-  const folder = current.path ? dirname(current.path) : store.libraryPath;
+  const name = opening.title.replace(/\.[^.]+$/, "");
+  const folder = opening.path ? dirname(opening.path) : before.libraryPath;
   const picked = await save({
-    defaultPath: folder ? `${folder}\${name}.html` : `${name}.html`,
+    defaultPath: folder ? `${folder}/${name}.html` : `${name}.html`,
     filters: [{ name: "html", extensions: ["html"] }],
   });
   if (typeof picked !== "string") return;
 
+  // The dialog took time; the document may have been edited or closed since.
+  const store = useStore.getState();
+  const current = store.docs.find((d) => d.id === id);
+  if (!current) {
+    store.setMessage("the document was closed");
+    return;
+  }
+
   try {
+    // Read is on screen in `read` and in `split` alike, and `exportHtml`
+    // checks for itself that what is drawn belongs to this document.
     const html = await exportHtml(
       current.text,
       name,
       current.path ? dirname(current.path) : null,
-      { useDrawnDiagrams: current.mode === "read" && current.id === store.activeId },
+      { useDrawnDiagrams: current.id === store.activeId },
     );
     await invoke("write_text_atomic", { path: picked, text: html });
     useStore.getState().setMessage(`exported ${basename(picked)}`);

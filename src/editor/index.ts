@@ -8,5 +8,6 @@ export {
   renameBuffer,
   replaceText,
   runEditorCommand,
+  setReadOnly,
 } from "./EditView";
 export { dropBuffer, isDirty, markSaved } from "./buffers";

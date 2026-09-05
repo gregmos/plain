@@ -9,6 +9,7 @@ import { dirname } from "../app/paths";
 import { inTauri } from "../app/env";
 import { useStore, type Doc } from "../app/store";
 import { allowAssetDir } from "../read/assets";
+import { syncTarget } from "./sync";
 
 const FOLDER = "assets";
 
@@ -50,9 +51,27 @@ export function uniqueName(name: string, taken: (candidate: string) => boolean):
   return `${stem}-${Date.now()}${extension}`;
 }
 
-/** What goes into the document. Posix separator: it is a markdown path. */
+/** The characters that would end a markdown link early (review #8). */
+const LINK_ESCAPES: Record<string, string> = {
+  " ": "%20",
+  "(": "%28",
+  ")": "%29",
+  "<": "%3C",
+  ">": "%3E",
+  '"': "%22",
+  "'": "%27",
+  "`": "%60",
+  "\\": "%5C",
+};
+
+/**
+ * What goes into the document. Posix separator: it is a markdown path, and
+ * only what would break the link is escaped — the file on disk keeps its own
+ * name, and a Cyrillic one stays readable in the source (review #8).
+ */
 export function imageMarkdown(name: string): string {
-  return `![](${FOLDER}/${name})`;
+  const safe = name.replace(/[ ()<>"'`\\]/g, (ch) => LINK_ESCAPES[ch] ?? ch);
+  return `![](${FOLDER}/${safe})`;
 }
 
 /** Windows paths, since that is what the file system hands us (spec §13). */
@@ -75,6 +94,21 @@ async function assetsFolder(doc: Doc): Promise<string | null> {
   return folder;
 }
 
+/**
+ * Two pastes in the same second would pick the same free name, so the whole
+ * name-then-write runs one after another (review #7).
+ */
+let queue: Promise<unknown> = Promise.resolve();
+
+export function queueAssetWork<T>(work: () => Promise<T>): Promise<T> {
+  const next = queue.then(work, work);
+  queue = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
+}
+
 async function freeName(folder: string, wanted: string): Promise<string> {
   const seen = new Set<string>();
   let name = wanted;
@@ -84,6 +118,20 @@ async function freeName(folder: string, wanted: string): Promise<string> {
     name = uniqueName(wanted, (candidate) => seen.has(candidate));
   }
   return name;
+}
+
+/**
+ * The write took a moment, and in that moment the editor may have moved to
+ * another document — or left the screen. The link belongs to the document it
+ * was pasted into and nowhere else (review #3).
+ */
+export function landing(target: string | null, id: string): "insert" | "message" {
+  return target === id ? "insert" : "message";
+}
+
+function place(view: EditorView, doc: Doc, name: string): void {
+  if (landing(syncTarget(), doc.id) === "insert") insert(view, name);
+  else useStore.getState().setMessage(`image saved to ${FOLDER}/${name}`);
 }
 
 function insert(view: EditorView, name: string): void {
@@ -112,10 +160,13 @@ export async function pasteImage(view: EditorView, doc: Doc, file: File): Promis
   try {
     const folder = await assetsFolder(doc);
     if (!folder) return false;
-    const name = await freeName(folder, stampName(new Date()));
     const bytes = new Uint8Array(await file.arrayBuffer());
-    await writeFile(childPath(folder, name), bytes);
-    insert(view, name);
+    const name = await queueAssetWork(async () => {
+      const free = await freeName(folder, stampName(new Date()));
+      await writeFile(childPath(folder, free), bytes);
+      return free;
+    });
+    place(view, doc, name);
     return true;
   } catch (error) {
     useStore.getState().setMessage(`couldn't save the image — ${reason(error)}`);
@@ -136,9 +187,12 @@ export async function dropImages(view: EditorView, doc: Doc, paths: string[]): P
     if (!folder) return false;
     for (const path of paths) {
       const wanted = path.split(/[\\/]/).pop() ?? "image.png";
-      const name = await freeName(folder, wanted);
-      await copyFile(path, childPath(folder, name));
-      insert(view, name);
+      const name = await queueAssetWork(async () => {
+        const free = await freeName(folder, wanted);
+        await copyFile(path, childPath(folder, free));
+        return free;
+      });
+      place(view, doc, name);
     }
     return true;
   } catch (error) {

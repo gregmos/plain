@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  deleteSnapshot,
-  listSnapshots,
-  openSnapshot,
-  restoreSnapshot,
-  type Snapshot,
-} from "../app/history";
+import { deleteSnapshot, listSnapshots, openSnapshot, type Snapshot } from "../app/history";
+import { restoreSnapshot } from "../app/save";
 import { normalizeEol } from "../app/eol";
 import { readFile } from "../app/fs";
 import { activeDoc, useStore } from "../app/store";
@@ -117,7 +112,9 @@ export function HistoryScreen({ id }: { id: string }) {
                        "what the buffer holds now is kept as a version of its own."],
                       "restore",
                       () => {
-                        void restoreSnapshot(id, snapshot).then(() => setHistory(null));
+                        void restoreSnapshot(id, snapshot.path).then((done) => {
+                          if (done) setHistory(null);
+                        });
                       },
                     )
                   }

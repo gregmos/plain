@@ -81,6 +81,46 @@ describe("reloadBacklinks", () => {
     expect(rust.calls).toHaveLength(0);
   });
 
+  it("throws away an answer the folder changed under (review #11)", async () => {
+    useStore.getState().setLibraryPath(ROOT);
+    open(DOC);
+    // The walk is in flight when the tree changes and the cache is dropped.
+    const walking = reloadBacklinks();
+    clearBacklinks();
+    await walking;
+
+    expect(useStore.getState().backlinks).toEqual([]);
+    // And it did not sneak into the cache either: the next ask is a real one.
+    await reloadBacklinks();
+    expect(rust.calls).toHaveLength(2);
+  });
+
+  it("keeps the library in the key, so another folder is another answer", async () => {
+    useStore.getState().setLibraryPath(ROOT);
+    open(DOC);
+    await reloadBacklinks();
+
+    // Same document, different library: what links to it is different too.
+    useStore.getState().setLibraryPath("C:\\other");
+    await reloadBacklinks();
+    expect(rust.calls).toHaveLength(2);
+    expect(rust.calls[1]).toMatchObject({ root: "C:\\other" });
+  });
+
+  it("keeps the extensions in the key, because they change what is walked", async () => {
+    useStore.getState().setLibraryPath(ROOT);
+    open(DOC);
+    await reloadBacklinks();
+
+    const settings = useStore.getState().settings;
+    useStore.setState({
+      settings: { ...settings, library: { ...settings.library, extensions: [".md", ".txt"] } },
+    });
+    await reloadBacklinks();
+    expect(rust.calls).toHaveLength(2);
+    expect(rust.calls[1]).toMatchObject({ extensions: [".md", ".txt"] });
+  });
+
   it("empties the section rather than showing another document's links", async () => {
     rust.answer = [];
     useStore.setState({ backlinks: found });

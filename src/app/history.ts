@@ -5,7 +5,6 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { diffLines } from "diff";
-import { markSaved, replaceText } from "../editor";
 import { documentKey } from "./drafts";
 import { inTauri } from "./env";
 import { normalizeEol } from "./eol";
@@ -32,22 +31,29 @@ export async function listSnapshots(doc: Pick<Doc, "id" | "path">): Promise<Snap
 /**
  * A copy of what the buffer holds right now, whatever the five-minute rule
  * would say. Taken before a restore, so the text being replaced is never the
- * only copy (spec §2a).
+ * only copy (spec §2a). Says whether it worked: a restore that goes ahead
+ * without it can destroy the last copy of that text (review #1).
  */
-export async function snapshotBuffer(doc: Doc): Promise<void> {
-  if (!inTauri) return;
-  try {
-    await invoke("snapshot_text", {
-      request: {
-        id: documentKey(doc),
-        text: normalizeEol(doc.text),
-        encoding: doc.encoding,
-        bom: doc.bom,
-        eol: doc.eol,
-      },
+export async function snapshotBuffer(doc: Doc): Promise<boolean> {
+  if (!inTauri) return true;
+  const text = normalizeEol(doc.text);
+  const attempt = (encoding: string, bom: boolean) =>
+    invoke("snapshot_text", {
+      request: { id: documentKey(doc), text, encoding, bom, eol: doc.eol },
     });
+  try {
+    await attempt(doc.encoding, doc.bom);
+    return true;
   } catch {
-    /* a missing safety copy must not stop the restore the user asked for */
+    // cp1251 cannot hold an emoji the buffer picked up, and a safety copy is
+    // worth more than matching the file's encoding. Reading it back detects
+    // the encoding anyway (review #1).
+    try {
+      await attempt("utf-8", false);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -59,32 +65,6 @@ export async function deleteSnapshot(snapshot: Snapshot): Promise<boolean> {
   } catch (error) {
     useStore.getState().setMessage(`couldn't delete — ${fsError(error).message}`);
     return false;
-  }
-}
-
-/**
- * Into the buffer, not onto the disk: one undo step, and the document is
- * left `unsaved` so the user still decides (spec §2a).
- */
-export async function restoreSnapshot(id: string, snapshot: Snapshot): Promise<void> {
-  const store = useStore.getState();
-  const doc = store.docs.find((d) => d.id === id);
-  if (!doc) return;
-  try {
-    const info = await readFile(snapshot.path);
-    // The text about to be replaced gets a snapshot of its own first, so
-    // nothing the user had is only in the buffer (spec §2a).
-    await snapshotBuffer(doc);
-    const text = normalizeEol(info.text);
-    replaceText(id, text);
-    // `replaceText` takes the new text as the saved one, which is right for a
-    // reload from disk and wrong here: this text is not on disk yet. Putting
-    // the mark back on the file's own text leaves the document `unsaved`.
-    markSaved(id, doc.savedText);
-    store.updateDoc(id, { text, dirty: text !== doc.savedText });
-    store.setNote("restored");
-  } catch (error) {
-    store.setMessage(`couldn't restore — ${fsError(error).message}`);
   }
 }
 

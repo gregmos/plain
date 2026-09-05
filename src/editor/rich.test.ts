@@ -105,3 +105,38 @@ describe("only what is visible", () => {
     expect(out).toHaveLength(2);
   });
 });
+
+describe("what must not be hidden", () => {
+  it("cuts a multi-line link title at the line break", () => {
+    const doc = ['[link](url "hello', 'world")'].join("\n");
+    const state = stateOf(doc);
+    const out = richRanges(state, 0, state.doc.length, new Set());
+    for (const range of out) {
+      if (range.kind !== "hide") continue;
+      expect(state.sliceDoc(range.from, range.to)).not.toContain("\n");
+      expect(state.doc.lineAt(range.from).number).toBe(state.doc.lineAt(range.to).number);
+    }
+  });
+
+  it("leaves the active line of a multi-line construct alone", () => {
+    const doc = ['[link](url "hello', 'world")'].join("\n");
+    const state = stateOf(doc);
+    const out = richRanges(state, 0, state.doc.length, new Set([2]));
+    const second = state.doc.line(2);
+    expect(out.every((r) => r.kind !== "hide" || r.to <= second.from)).toBe(true);
+  });
+
+  it("keeps `==` and `[[` literal inside code and after a backslash", () => {
+    expect(ranges("`a ==b== c`")).toEqual(['hide("`")', 'hide("`")']);
+    expect(ranges("`[[wiki]]`")).toEqual(['hide("`")', 'hide("`")']);
+    expect(ranges(String.raw`a \==b== c`)).toEqual([]);
+    expect(ranges("[text](x.md?a==b)")).toEqual([
+      'hide("[")',
+      'link("text")',
+      'hide("]")',
+      'hide("(")',
+      'hide("x.md?a==b")',
+      'hide(")")',
+    ]);
+  });
+});

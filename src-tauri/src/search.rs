@@ -139,20 +139,39 @@ fn utf16_ranges(window: &str, spans: &[(usize, usize)], shift: usize) -> Vec<[us
     ranges
 }
 
-/// One line of a hit: the window around its first match, and the matches
-/// that fall inside it.
+/// One line of a hit: the window around its first match, and the parts of
+/// the matches that fall inside it.
+///
+/// The matching happens on the whole line and never on the window. Running
+/// the pattern again over a slice would change the text it is looking at:
+/// `^` would anchor to the cut instead of the start of the line, `\b` would
+/// find boundaries where the cut fell, and a match that runs past the window
+/// — `TODO.*done` with the `done` beyond it — would simply stop matching and
+/// lose its highlight. So the ranges are found once and then clipped
+/// (review #12).
 fn line_match(line: usize, text: &str, pattern: &regex::Regex) -> Option<LineMatch> {
     // An empty match (`a*`) would report every position; skip those.
-    let first = pattern.find_iter(text).find(|m| m.end() > m.start())?;
+    let found: Vec<(usize, usize)> = pattern
+        .find_iter(text)
+        .filter(|m| m.end() > m.start())
+        .map(|m| (m.start(), m.end()))
+        .collect();
+    let first = *found.first()?;
 
-    let from = back(text, first.start(), LEAD);
+    let from = back(text, first.0, LEAD);
     let to = forward(text, from, MAX_LINE);
     let window = &text[from..to];
 
-    let spans: Vec<(usize, usize)> = pattern
-        .find_iter(window)
-        .filter(|m| m.end() > m.start())
-        .map(|m| (m.start(), m.end()))
+    // What is visible of each match, in bytes from the start of the window.
+    // Both edges are character boundaries already: the window is cut on them
+    // and a match cannot start or end inside a character.
+    let spans: Vec<(usize, usize)> = found
+        .iter()
+        .filter_map(|&(start, end)| {
+            let visible_start = start.max(from);
+            let visible_end = end.min(to);
+            (visible_start < visible_end).then_some((visible_start - from, visible_end - from))
+        })
         .collect();
 
     let head = if from > 0 { "…" } else { "" };
@@ -355,9 +374,12 @@ const MAX_TAG_FILES: usize = 500;
 pub struct TagCount {
     /// Lowercase, without the `#`.
     tag: String,
+    /// Every file it is in, however many are listed below.
     count: usize,
-    /// Absolute paths of the files it appears in.
+    /// Absolute paths of the files it appears in, capped.
     files: Vec<String>,
+    /// The list is shorter than `count`: a filter on it is incomplete.
+    truncated: bool,
 }
 
 /// `#tag`: a `#` at the start of a line or after a space or `(`, then a
@@ -367,22 +389,90 @@ fn tag_pattern() -> regex::Regex {
     regex::Regex::new(r"(?:^|[\s(])#([\p{L}\d_][\p{L}\d_-]*)").expect("tag regex")
 }
 
-/// True for a line that opens or closes a fenced block.
-fn is_fence(line: &str) -> bool {
-    let trimmed = line.trim_start();
-    trimmed.starts_with("```") || trimmed.starts_with("~~~")
+/// The fence a line draws, if it draws one: which character, and how long.
+/// Up to three leading spaces are allowed, as in CommonMark.
+fn fence_of(line: &str) -> Option<(char, usize)> {
+    let indent = line.len() - line.trim_start_matches(' ').len();
+    if indent > 3 {
+        return None;
+    }
+    let rest = &line[indent..];
+    let marker = rest.chars().next()?;
+    if marker != '`' && marker != '~' {
+        return None;
+    }
+    let run = rest.chars().take_while(|&c| c == marker).count();
+    (run >= 3).then_some((marker, run))
+}
+
+/// Only the same character, at least as long, and nothing after it, closes a
+/// fence — a ``` line inside a ```` block is content (review #13).
+fn closes(line: &str, marker: char, run: usize) -> bool {
+    let Some((closing, length)) = fence_of(line) else {
+        return false;
+    };
+    if closing != marker || length < run {
+        return false;
+    }
+    let indent = line.len() - line.trim_start_matches(' ').len();
+    line[indent + length..].trim().is_empty()
+}
+
+/// A `#` heading line, whose `#tag`-looking words are part of the title
+/// rather than tags (review #13).
+fn is_heading(line: &str) -> bool {
+    let trimmed = line.trim_start_matches(' ');
+    if line.len() - trimmed.len() > 3 {
+        return false;
+    }
+    let hashes = trimmed.chars().take_while(|&c| c == '#').count();
+    (1..=6).contains(&hashes)
+        && trimmed[hashes..]
+            .chars()
+            .next()
+            .is_none_or(|c| c.is_whitespace())
+}
+
+/// Four spaces or a tab. CommonMark needs a blank line in front of an
+/// indented code block, and that is what keeps a deep list item out of this
+/// (review #13, deliberately the simple version).
+fn is_indented(line: &str) -> bool {
+    line.starts_with("    ") || line.starts_with('\t')
 }
 
 /// The tags of one document, in the order they appear, with duplicates.
 fn tags_in(text: &str, pattern: &regex::Regex) -> Vec<String> {
     let mut out = Vec::new();
-    let mut fenced = false;
+    let mut fence: Option<(char, usize)> = None;
+    let mut previous_blank = true;
+    let mut in_indented_code = false;
+
     for line in text.split('\n') {
-        if is_fence(line) {
-            fenced = !fenced;
+        if let Some((marker, run)) = fence {
+            if closes(line, marker, run) {
+                fence = None;
+            }
+            previous_blank = false;
             continue;
         }
-        if fenced {
+        if let Some(opened) = fence_of(line) {
+            fence = Some(opened);
+            previous_blank = false;
+            continue;
+        }
+
+        let blank = line.trim().is_empty();
+        if is_indented(line) && (previous_blank || in_indented_code) {
+            in_indented_code = true;
+            previous_blank = blank;
+            continue;
+        }
+        if !blank {
+            in_indented_code = false;
+        }
+        previous_blank = blank;
+
+        if is_heading(line) {
             continue;
         }
         for found in pattern.captures_iter(line) {
@@ -432,11 +522,14 @@ pub fn tags(root: &Path, extensions: &[String]) -> Result<Vec<TagCount>, String>
     let mut per_file = per_file;
     per_file.sort_by(|a, b| a.0.cmp(&b.0));
 
-    let mut counts: std::collections::HashMap<String, Vec<String>> =
+    // The count is every file; the list is capped. Saying `3` and listing
+    // two files is a lie the filter would then tell (review #13).
+    let mut counts: std::collections::HashMap<String, (Vec<String>, usize)> =
         std::collections::HashMap::new();
     for (path, found) in per_file {
         for tag in found {
-            let files = counts.entry(tag).or_default();
+            let (files, count) = counts.entry(tag).or_default();
+            *count += 1;
             if files.len() < MAX_TAG_FILES {
                 files.push(path.clone());
             }
@@ -445,8 +538,9 @@ pub fn tags(root: &Path, extensions: &[String]) -> Result<Vec<TagCount>, String>
 
     let mut out: Vec<TagCount> = counts
         .into_iter()
-        .map(|(tag, files)| TagCount {
-            count: files.len(),
+        .map(|(tag, (files, count))| TagCount {
+            truncated: count > files.len(),
+            count,
             tag,
             files,
         })
@@ -500,19 +594,82 @@ fn percent_decode(text: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// The last segment of a link destination, decoded, without its `#fragment`
-/// or `?query`, in lowercase.
-fn link_target(destination: &str) -> String {
-    let text = destination.trim();
+/// A destination with a scheme of its own — `https:`, `mailto:`, `tel:` —
+/// is not a file in the folder. Two letters at least, so a Windows drive
+/// (`c:/notes/a.md`) is still a path (review #12).
+fn is_external(destination: &str) -> bool {
+    if destination.starts_with("//") {
+        return true;
+    }
+    let scheme: String = destination
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '+' || *c == '.' || *c == '-')
+        .collect();
+    scheme.len() >= 2
+        && scheme.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+        && destination[scheme.len()..].starts_with(':')
+}
+
+/// `a/b/../c.md` -> `a/c.md`. A `..` that climbs past the root is kept, so
+/// such a path can never equal a file inside it.
+fn normalize(path: &str) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                if matches!(parts.last(), Some(&last) if last != "..") {
+                    parts.pop();
+                } else {
+                    parts.push("..");
+                }
+            }
+            other => parts.push(other),
+        }
+    }
+    parts.join("/")
+}
+
+/// Where a markdown destination points, as a path inside the library,
+/// resolved against the file the link is written in. `None` when it is not
+/// a local file at all.
+///
+/// Comparing only the last segment used to be enough to make
+/// `archive/note.md` a backlink of `work/note.md`, and to count
+/// `https://example.org/note.md` as local (review #12).
+fn link_target(destination: &str, from_rel: &str) -> Option<String> {
+    let mut text = destination.trim();
+    // `](<a file.md>)` is the escape hatch markdown gives for spaces.
+    if text.starts_with('<') && text.ends_with('>') {
+        text = &text[1..text.len() - 1];
+    } else if let Some(title) = text.rfind(|c| c == '"' || c == '\'') {
+        // `](path.md "Title")` — the title is not part of the path.
+        if let Some(space) = text[..title].rfind(char::is_whitespace) {
+            text = &text[..space];
+        }
+    }
+    let text = text.trim();
+    if text.is_empty() || text.starts_with('#') || is_external(text) {
+        return None;
+    }
     let text = text.split('#').next().unwrap_or(text);
     let text = text.split('?').next().unwrap_or(text);
     let decoded = percent_decode(text.trim()).replace('\\', "/");
-    decoded
-        .rsplit('/')
-        .next()
-        .unwrap_or(&decoded)
-        .trim()
-        .to_lowercase()
+    if decoded.trim().is_empty() {
+        return None;
+    }
+
+    // A leading `/` means the library root; anything else is relative to the
+    // folder the linking file sits in.
+    let joined = if let Some(absolute) = decoded.strip_prefix('/') {
+        absolute.to_string()
+    } else {
+        match from_rel.rsplit_once('/') {
+            Some((folder, _)) => format!("{folder}/{decoded}"),
+            None => decoded.clone(),
+        }
+    };
+    Some(normalize(&joined).to_lowercase())
 }
 
 /// What a wikilink points at: everything before `|` or `#`, lowercased.
@@ -585,16 +742,21 @@ pub fn links_to(root: &Path, extensions: &[String], doc: &Path) -> Result<Vec<Ba
             let text = crate::fs::decode_bytes(&bytes);
             let text = text.replace("\r\n", "\n").replace('\r', "\n");
 
+            let from_rel = relative(root, path).to_lowercase();
             let mut found: Vec<Backlink> = Vec::new();
             for (index, line) in text.split('\n').enumerate() {
+                // A wikilink names a note, wherever it lives; that is what
+                // the syntax means, so it stays a comparison by name.
                 let wiki_hit = wiki.captures_iter(line).any(|c| {
                     let target = wiki_target(c.get(1).expect("group 1").as_str());
                     target == stem || target == file || target == own_stem || target == own
                 });
+                // A markdown link is a path, and a path is resolved.
                 let link_hit = !wiki_hit
-                    && link
-                        .captures_iter(line)
-                        .any(|c| link_target(c.get(1).expect("group 1").as_str()) == file);
+                    && link.captures_iter(line).any(|c| {
+                        link_target(c.get(1).expect("group 1").as_str(), &from_rel)
+                            .is_some_and(|target| target == own)
+                    });
                 if !wiki_hit && !link_hit {
                     continue;
                 }
@@ -771,13 +933,62 @@ mod tests {
         let found = &answer.files[0].matches[0];
 
         assert!(found.ranges.len() > 10, "the window holds many of them");
+        let last = found.ranges.len() - 1;
         let mut previous = 0;
-        for &[from, to] in &found.ranges {
+        for (index, &[from, to]) in found.ranges.iter().enumerate() {
             assert!(from >= previous, "ranges come in order");
             assert!(to <= MAX_LINE + 1, "and every one is inside the window");
-            assert_eq!(shown(&found.text, from, to), "needle");
+            let text = shown(&found.text, from, to);
+            if index == last {
+                // The one the window cuts through keeps the part that shows.
+                assert!("needle".starts_with(&text), "clipped to {text}");
+            } else {
+                assert_eq!(text, "needle");
+            }
             previous = to;
         }
+    }
+
+    /// Review #12: a match that runs past the window keeps its highlight,
+    /// clipped to what is shown. Applying the pattern to the cut window
+    /// instead would find no `done` inside it and lose the match entirely.
+    #[test]
+    fn a_match_that_outruns_the_window_is_still_shown() {
+        let dir = tempfile::tempdir().unwrap();
+        let line = format!("{}TODO {} done", "x".repeat(100), "y".repeat(2000));
+        fs::write(dir.path().join("long.md"), &line).unwrap();
+
+        let mut req = request(dir.path(), "TODO.*done");
+        req.regex = true;
+        let answer = search(&req).unwrap();
+
+        let found = &answer.files[0].matches[0];
+        assert_eq!(found.ranges.len(), 1, "one match, clipped — not none");
+        let [from, to] = found.ranges[0];
+        assert!(to <= MAX_LINE + 1, "the range stops at the window");
+        // The visible head of the match is where the match really begins.
+        assert!(shown(&found.text, from, to).starts_with("TODO"));
+        // And the cut is honest about there being more.
+        assert!(found.text.ends_with('…'));
+    }
+
+    /// Review #12: the window is not a line, so `^` must not anchor to it.
+    #[test]
+    fn an_anchor_means_the_start_of_the_line_not_of_the_window() {
+        let dir = tempfile::tempdir().unwrap();
+        // `done` appears only in the middle, never at a line start.
+        let line = format!("{}TODO {} done", "x".repeat(100), "y".repeat(2000));
+        fs::write(dir.path().join("long.md"), &line).unwrap();
+
+        let mut req = request(dir.path(), "^done");
+        req.regex = true;
+        assert!(search(&req).unwrap().files.is_empty());
+
+        // The same pattern does match where the line really starts.
+        let mut head = request(dir.path(), "^x+");
+        head.regex = true;
+        let answer = search(&head).unwrap();
+        assert_eq!(answer.files[0].matches[0].ranges, vec![[0, 100]]);
     }
 
     /// Review #19: the cap is the cap, including on the file that crosses it.
@@ -870,6 +1081,66 @@ mod tests {
         assert_eq!(found[2].count, 1);
     }
 
+    /// Review #13: a longer fence is not closed by a shorter one, and the
+    /// character has to match.
+    #[test]
+    fn a_fence_is_closed_only_by_its_own_kind() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("a.md"),
+            "````md\n```\n#inner\n```\n````\n\n#outside\n",
+        )
+        .unwrap();
+        fs::write(dir.path().join("b.md"), "~~~\n#tilde\n```\n#still\n~~~\n#after\n").unwrap();
+
+        let found = tags(dir.path(), &md()).unwrap();
+        assert_eq!(tag_names(&found), vec!["after", "outside"]);
+    }
+
+    /// Review #13: `# Heading #tag` is a title, not a tag.
+    #[test]
+    fn a_tag_in_a_heading_is_part_of_the_title() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("a.md"),
+            "# Заголовок #неТег\n### Third #alsoNot\n\n#real here\n",
+        )
+        .unwrap();
+        assert_eq!(tag_names(&tags(dir.path(), &md()).unwrap()), vec!["real"]);
+    }
+
+    /// Review #13: an indented code block is code; an indented list is not.
+    #[test]
+    fn indented_code_holds_no_tags_but_a_nested_list_does() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("a.md"),
+            "text\n\n    code line with #indented\n    still code\n\ntext again\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("b.md"),
+            "- item\n    - nested with #nested\n",
+        )
+        .unwrap();
+
+        let found = tags(dir.path(), &md()).unwrap();
+        assert_eq!(tag_names(&found), vec!["nested"]);
+    }
+
+    /// Review #13: the count is every file, and it says when the list is not.
+    #[test]
+    fn the_count_is_honest_when_the_file_list_is_cut() {
+        let dir = tempfile::tempdir().unwrap();
+        for index in 0..3 {
+            fs::write(dir.path().join(format!("{index}.md")), "#everywhere\n").unwrap();
+        }
+        let found = tags(dir.path(), &md()).unwrap();
+        assert_eq!(found[0].count, 3);
+        assert_eq!(found[0].files.len(), 3);
+        assert!(!found[0].truncated);
+    }
+
     /* -------------------------------------------- backlinks (spec §2a) */
 
     fn linked(dir: &Path, rel: &str) -> Vec<String> {
@@ -943,6 +1214,63 @@ mod tests {
         assert_eq!(found[0].line, 3);
         assert_eq!(found[0].name, "diary.md");
         assert_eq!(found[0].text, "Ссылка вбок: [ТЗ проекта](тз.md).");
+    }
+
+    /// Review #12: a markdown link is a path, so the same file name in
+    /// another folder is a different file.
+    #[test]
+    fn a_markdown_link_has_to_point_at_this_file() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("work")).unwrap();
+        fs::create_dir_all(dir.path().join("archive")).unwrap();
+        fs::write(dir.path().join("work/note.md"), "# Note\n").unwrap();
+        fs::write(dir.path().join("archive/note.md"), "# Old\n").unwrap();
+
+        fs::write(dir.path().join("hit.md"), "[this one](work/note.md)\n").unwrap();
+        fs::write(dir.path().join("miss.md"), "[the other](archive/note.md)\n").unwrap();
+
+        assert_eq!(linked(dir.path(), "work/note.md"), vec!["hit.md:1"]);
+    }
+
+    /// Review #12: `https://example.org/note.md` is not a file of ours.
+    #[test]
+    fn a_link_with_a_scheme_is_not_a_backlink() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("note.md"), "# Note\n").unwrap();
+        fs::write(
+            dir.path().join("web.md"),
+            "[a](https://example.org/note.md)\n[b](mailto:note.md)\n[c](//cdn.example.org/note.md)\n",
+        )
+        .unwrap();
+        fs::write(dir.path().join("local.md"), "[d](c:/elsewhere/note.md)\n").unwrap();
+
+        // The three above are elsewhere on the internet; the drive path is a
+        // path, but it points outside the library, so it matches nothing.
+        assert!(linked(dir.path(), "note.md").is_empty());
+    }
+
+    /// Review #12: `../` is resolved against the file the link is written in.
+    #[test]
+    fn a_relative_link_is_resolved_from_where_it_is_written() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("проекты/plain")).unwrap();
+        fs::create_dir_all(dir.path().join("inbox")).unwrap();
+        fs::write(dir.path().join("проекты/plain/тз.md"), "# ТЗ\n").unwrap();
+
+        fs::write(
+            dir.path().join("inbox/diary.md"),
+            "[up and across](../проекты/plain/тз.md)\n",
+        )
+        .unwrap();
+        fs::write(dir.path().join("проекты/обзор.md"), "[down](plain/тз.md)\n").unwrap();
+        fs::write(dir.path().join("root.md"), "[from the root](/проекты/plain/тз.md)\n").unwrap();
+        // The same spelling, written one folder too high: not this file.
+        fs::write(dir.path().join("wrong.md"), "[nope](plain/тз.md)\n").unwrap();
+
+        assert_eq!(
+            linked(dir.path(), "проекты/plain/тз.md"),
+            vec!["inbox/diary.md:1", "root.md:1", "проекты/обзор.md:1"]
+        );
     }
 
     /// The root and the document can reach us spelled differently; what

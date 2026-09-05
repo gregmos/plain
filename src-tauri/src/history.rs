@@ -99,8 +99,10 @@ pub fn due(dir: &Path, now: SystemTime) -> bool {
     }
 }
 
+/// Through the same temp-and-rename a document write uses. A half-written
+/// snapshot would look like a version in the history and, with its fresh
+/// mtime, block the next attempt for five minutes (review #5).
 fn write_snapshot(dir: &Path, bytes: &[u8], now: SystemTime) -> FsResult<PathBuf> {
-    fs::create_dir_all(dir)?;
     let mut target = dir.join(format!("{}.md", stamp(now)));
     // A second save inside the same second only happens on a forced snapshot.
     for extra in 1..100 {
@@ -109,7 +111,11 @@ fn write_snapshot(dir: &Path, bytes: &[u8], now: SystemTime) -> FsResult<PathBuf
         }
         target = dir.join(format!("{}-{extra}.md", stamp(now)));
     }
-    fs::write(&target, bytes)?;
+    let temp = crate::fs::stage(dir, bytes)?;
+    if let Err(error) = crate::fs::commit(&target, &temp, target.exists()) {
+        let _ = fs::remove_file(&temp);
+        return Err(error);
+    }
     Ok(target)
 }
 
@@ -196,10 +202,19 @@ pub fn list_snapshots(app: AppHandle, id: String) -> FsResult<Vec<Snapshot>> {
 
 /// Plain deletion, not the Recycle Bin: a snapshot is already a copy.
 /// Only inside our own history folder, whatever path the front end sends.
+/// `history/../settings.json` has the history folder among its components
+/// but is not inside it; both sides are resolved before they are compared
+/// (review #18).
+fn inside(root: &Path, target: &Path) -> bool {
+    let resolved_root = crate::fs::canonical(root);
+    let resolved = crate::fs::canonical(target);
+    resolved != resolved_root && resolved.starts_with(&resolved_root)
+}
+
 #[tauri::command]
 pub fn delete_snapshot(app: AppHandle, path: String) -> FsResult<()> {
     let target = PathBuf::from(&path);
-    if !target.starts_with(root(&app)) {
+    if !inside(&root(&app), &target) {
         return Err(FsError::io("not a snapshot"));
     }
     fs::remove_file(&target)?;
@@ -343,6 +358,45 @@ mod tests {
         age(&fresh, KEEP + Duration::from_secs(60 * 60));
         sweep(history.path(), now);
         assert!(!doc.exists());
+    }
+
+    /// §2a keeps versions; a half-written one is not a version, and with its
+    /// fresh mtime it would block the next attempt for five minutes.
+    #[test]
+    fn a_snapshot_appears_whole_or_not_at_all() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = SystemTime::now();
+        let body = "x".repeat(200_000);
+
+        let written = write_snapshot(dir.path(), body.as_bytes(), now).unwrap();
+        assert_eq!(fs::read(&written).unwrap().len(), body.len());
+        // Nothing but the finished snapshot: no temp file left over.
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+
+        // A folder that cannot be written to leaves nothing behind either.
+        let blocked = dir.path().join("file-not-a-folder");
+        fs::write(&blocked, b"in the way").unwrap();
+        assert!(write_snapshot(&blocked.join("inside"), b"x", now).is_err());
+    }
+
+    /// The command's own boundary: `history/../settings.json` has the folder
+    /// among its components but is not inside it (review #18).
+    #[test]
+    fn the_history_boundary_is_not_fooled_by_dot_dot() {
+        let dir = tempfile::tempdir().unwrap();
+        let history = dir.path().join("history");
+        let doc = history.join("66e039ef");
+        fs::create_dir_all(&doc).unwrap();
+        let snapshot = doc.join("2026-09-05T12-00-00.md");
+        fs::write(&snapshot, b"a version").unwrap();
+        let outside = dir.path().join("settings.json");
+        fs::write(&outside, b"not a snapshot").unwrap();
+
+        assert!(inside(&history, &snapshot));
+        assert!(!inside(&history, &outside));
+        assert!(!inside(&history, &history.join("..").join("settings.json")));
+        // The folder itself is not something to delete.
+        assert!(!inside(&history, &history));
     }
 
     #[test]

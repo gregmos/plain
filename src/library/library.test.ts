@@ -90,8 +90,13 @@ describe("sortRows", () => {
 
 describe("filterByTag", () => {
   const tags = [
-    { tag: "writing", count: 2, files: ["C:\\lib\\notes\\b.md", "C:\\LIB\\c.md"] },
-    { tag: "tools", count: 0, files: [] },
+    {
+      tag: "writing",
+      count: 2,
+      files: ["C:\\lib\\notes\\b.md", "C:\\LIB\\c.md"],
+      truncated: false,
+    },
+    { tag: "tools", count: 0, files: [], truncated: false },
   ];
 
   it("keeps only the files the tag is in", () => {

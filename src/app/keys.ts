@@ -29,8 +29,9 @@ const SWALLOW = [
 export function bindings(): Record<string, () => void> {
   const map: Record<string, () => void> = {};
   for (const command of commands) {
-    if (!command.chord) continue;
-    map[command.chord] = () => void command.run();
+    for (const chord of [command.chord, ...(command.chords ?? [])]) {
+      if (chord) map[chord] = () => void command.run();
+    }
   }
   return map;
 }

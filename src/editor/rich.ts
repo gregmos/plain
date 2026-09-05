@@ -68,6 +68,22 @@ function inCode(state: EditorState, pos: number): boolean {
  * can be tested without a DOM: the view plugin only turns these into
  * decorations.
  */
+/** Nodes whose text is not prose: `==` and `[[ ]]` inside them are literal. */
+const GUARDED = new Set([
+  "InlineCode",
+  "CodeText",
+  "CodeMark",
+  "Escape",
+  "URL",
+  "Autolink",
+  "LinkMark",
+  "LinkTitle",
+  "LinkLabel",
+  "HTMLTag",
+  "Comment",
+  "CommentBlock",
+]);
+
 export function richRanges(
   state: EditorState,
   from: number,
@@ -75,13 +91,23 @@ export function richRanges(
   active: ReadonlySet<number>,
 ): RichRange[] {
   const out: RichRange[] = [];
+  const guarded: { from: number; to: number }[] = [];
   const doc = state.doc;
   const awake = (pos: number) => active.has(doc.lineAt(pos).number);
 
+  /**
+   * A replacing decoration may not cross a line break (CodeMirror throws),
+   * and the line being edited keeps its markers — so what is hidden is cut
+   * into per-line pieces and any active line among them is left alone.
+   */
   const hide = (node: { from: number; to: number }, space = false) => {
-    if (awake(node.from)) return;
     const end = space && doc.sliceString(node.to, node.to + 1) === " " ? node.to + 1 : node.to;
-    if (end > node.from) out.push({ from: node.from, to: end, kind: "hide" });
+    for (let at = node.from; at < end; ) {
+      const line = doc.lineAt(at);
+      const stop = Math.min(end, line.to);
+      if (stop > at && !active.has(line.number)) out.push({ from: at, to: stop, kind: "hide" });
+      at = line.to + 1;
+    }
   };
 
   syntaxTree(state).iterate({
@@ -91,7 +117,11 @@ export function richRanges(
       const name = ref.name;
 
       // Fenced code keeps its fences and its content untouched (§5.3).
-      if (name === "FencedCode" || name === "CodeBlock") return false;
+      if (name === "FencedCode" || name === "CodeBlock") {
+        guarded.push({ from: ref.from, to: ref.to });
+        return false;
+      }
+      if (GUARDED.has(name)) guarded.push({ from: ref.from, to: ref.to });
 
       const heading = HEADING.exec(name);
       if (heading) {
@@ -171,7 +201,11 @@ export function richRanges(
   });
 
   // `==mark==` and `[[wikilinks]]` are not part of the GFM grammar, so they
-  // are matched on the visible lines instead (spec §11 keeps both).
+  // are matched on the visible lines instead (spec §11 keeps both). Only
+  // prose is searched: inside code, a link target or after a backslash the
+  // characters are themselves (review #6).
+  const literal = (start: number, end: number) =>
+    guarded.some((range) => range.from < end && start < range.to);
   const firstLine = doc.lineAt(from).number;
   const lastLine = doc.lineAt(to).number;
   for (let n = firstLine; n <= lastLine; n += 1) {
@@ -183,6 +217,7 @@ export function richRanges(
     if ((!wiki && !highlight) || active.has(n) || inCode(state, line.from)) continue;
     if (wiki) for (const match of line.text.matchAll(WIKILINK)) {
       const at = line.from + (match.index ?? 0);
+      if (literal(at, at + match[0].length)) continue;
       const alias = match[3];
       const label = alias ?? match[1] ?? "";
       const labelFrom = at + 2 + (alias ? (match[1] ?? "").length + 1 : 0);
@@ -192,6 +227,7 @@ export function richRanges(
     }
     if (highlight) for (const match of line.text.matchAll(HIGHLIGHT)) {
       const at = line.from + (match.index ?? 0);
+      if (literal(at, at + match[0].length)) continue;
       const inner = match[1] ?? "";
       out.push({ from: at, to: at + 2, kind: "hide" });
       out.push({ from: at + 2, to: at + 2 + inner.length, kind: "highlight" });

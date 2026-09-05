@@ -7,6 +7,7 @@
 import { exists } from "@tauri-apps/plugin-fs";
 import { inTauri } from "../app/env";
 import { libraryFiles } from "../library/tree";
+import { useStore } from "../app/store";
 import { allowAssetDir, assetUrl, isAllowedPath } from "./assets";
 import { highlight } from "./highlight";
 import { decode, folderOf, isAbsolutePath, joinPath, resolveWikiLink } from "./links";
@@ -18,7 +19,12 @@ export interface EnhanceOptions {
   theme: "light" | "dark";
 }
 
-const SAFE_DATA_IMAGE = /^data:image\/(png|jpeg|jpg|gif|webp|avif|bmp|x-icon);/i;
+/**
+ * The only image data URIs that ever load, in read and in an export alike:
+ * raster formats. SVG is a document, and a document can carry script — §14
+ * keeps it out, so nothing may quietly re-admit it.
+ */
+export const SAFE_DATA_IMAGE = /^data:image\/(png|jpeg|jpg|gif|webp|avif|bmp|x-icon);/i;
 
 function holder(text: string, action: string, attrs: Record<string, string>): HTMLElement {
   const node = document.createElement("span");
@@ -174,18 +180,45 @@ function diagrams(root: HTMLElement, theme: "light" | "dark"): IntersectionObser
 }
 
 /**
+ * Bumped whenever the library tree changes — which is exactly when a
+ * `[[name]]` can start or stop resolving, because a file appeared, went away
+ * or was renamed. Registered at import time, so it has already run by the
+ * time any `enhance` subscriber sees the same change (review #11).
+ */
+let treeRevision = 0;
+
+useStore.subscribe((state, previous) => {
+  if (state.tree !== previous.tree) treeRevision += 1;
+});
+
+/**
+ * Whether a link still has a valid answer. `stamp` is the revision it was
+ * checked against; anything else means the library has moved under it.
+ */
+export function needsRecheck(stamp: string | undefined, revision: number): boolean {
+  return stamp !== String(revision);
+}
+
+/**
  * A wikilink to a file that is not there is muted and dead (spec §5.1). The
- * check is lazy and one file at a time — a document has a handful of them.
+ * check is lazy and one file at a time — a document has a handful of them —
+ * and it runs again whenever the library changes, so a note created after
+ * the document was built stops being dead without a re-render (review #11).
  */
 async function wikilinks(
   root: HTMLElement,
   dir: string | null,
   alive: () => boolean,
 ): Promise<void> {
+  const revision = treeRevision;
   const index = libraryFiles();
   for (const link of root.querySelectorAll<HTMLElement>("a.wikilink")) {
-    if (link.dataset["checked"]) continue;
-    link.dataset["checked"] = "1";
+    if (!needsRecheck(link.dataset["checked"], revision)) continue;
+    link.dataset["checked"] = String(revision);
+    // The previous answer is out of date, not merely unconfirmed.
+    link.classList.remove("is-missing");
+    delete link.dataset["path"];
+
     const target = resolveWikiLink(link.dataset["wiki"] ?? "", null, dir, index);
     if (target.kind !== "file") {
       link.classList.add("is-missing");
@@ -195,7 +228,7 @@ async function wikilinks(
     if (!inTauri) continue;
     // A path we cannot even ask about stays clickable; opening it will say why.
     const there = await exists(target.path).catch(() => true);
-    if (!alive()) return;
+    if (!alive() || needsRecheck(link.dataset["checked"], treeRevision)) return;
     if (!there) link.classList.add("is-missing");
   }
 }
@@ -209,8 +242,15 @@ export function enhance(root: HTMLElement, options: EnhanceOptions): () => void 
   void wikilinks(root, options.dir, () => live);
   const observer = diagrams(root, options.theme);
 
+  // The tree arrives after the first pass on a cold start, and changes
+  // whenever a file is made or removed; both make old answers wrong.
+  const unsubscribe = useStore.subscribe((state, previous) => {
+    if (state.tree !== previous.tree) void wikilinks(root, options.dir, () => live);
+  });
+
   return () => {
     live = false;
     observer?.disconnect();
+    unsubscribe();
   };
 }

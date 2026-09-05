@@ -3,6 +3,7 @@
 
 import { create } from "zustand";
 import { normalizeEol, type Eol } from "./eol";
+import type { FileInfo } from "./fs";
 import { DEFAULTS, saveSettings, type Settings, type Theme } from "./settings";
 import { applyAppearance, applyReading, applyTheme, flipTheme, resolveTheme } from "./theme";
 import { basename, pathKey } from "./paths";
@@ -132,8 +133,11 @@ export type LibrarySort = "modified" | "name" | "created";
 export interface TagCount {
   /** Lowercase, without the `#`. */
   tag: string;
+  /** Every file it is in, however many are listed in `files`. */
   count: number;
   files: string[];
+  /** `files` is shorter than `count`: filtering on it shows only part. */
+  truncated: boolean;
 }
 
 /** A line in another file that points at the open one (spec §2a). */
@@ -168,6 +172,11 @@ export interface Comparison {
    * base hash and all. A snapshot only replaces the buffer (spec §2a).
    */
   fromDisk: boolean;
+  /**
+   * The file exactly as it was read for this comparison. Taking it applies
+   * this version, not whatever the disk holds by then (review #2).
+   */
+  diskInfo?: FileInfo;
 }
 
 /** `Ctrl+K`; `seed` is `>` when the palette was asked for (spec §4). */

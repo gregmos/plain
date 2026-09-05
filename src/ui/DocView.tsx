@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Group, Panel, Separator, type Layout } from "react-resizable-panels";
 import { useStore, type Doc } from "../app/store";
 import { ReadView } from "../read/ReadView";
@@ -19,11 +19,36 @@ export function DocView({ doc }: { doc: Doc }) {
 const EDITOR_PANEL = "split-editor";
 const READER_PANEL = "split-reader";
 
+/** The preview waits for a pause in the typing (spec §2a, review #9). */
+const PREVIEW_MS = 300;
+
+function usePreview(doc: Doc): Doc {
+  const [text, setText] = useState(doc.text);
+  const shown = useRef(doc.id);
+
+  useEffect(() => {
+    // A different document is not a keystroke: show it at once.
+    if (shown.current !== doc.id) {
+      shown.current = doc.id;
+      setText(doc.text);
+      return;
+    }
+    if (doc.text === text) return;
+    const timer = window.setTimeout(() => setText(doc.text), PREVIEW_MS);
+    return () => window.clearTimeout(timer);
+  }, [doc.id, doc.text, text]);
+
+  // Everything else about the document is current; only the text lags, so
+  // the read pipeline's own cache sees no change while typing.
+  return useMemo(() => ({ ...doc, text }), [doc, text]);
+}
+
 function SplitView({ doc }: { doc: Doc }) {
   // Read once: the store keeps the width for the session, but re-rendering
   // the group with a new default would fight whoever is dragging it.
   const start = useRef(useStore.getState().splitRatio);
   const setSplitRatio = useStore((s) => s.setSplitRatio);
+  const preview = usePreview(doc);
 
   const onLayoutChanged = useCallback(
     (layout: Layout) => {
@@ -50,7 +75,7 @@ function SplitView({ doc }: { doc: Doc }) {
       </Panel>
       <Separator className="split-handle" />
       <Panel id={READER_PANEL} className="split-panel" minSize="20%">
-        <ReadView doc={doc} />
+        <ReadView doc={preview} />
       </Panel>
     </Group>
   );

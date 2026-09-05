@@ -32,6 +32,29 @@ import { activeDoc, useStore } from "./store";
 import { watchSystemTheme } from "./theme";
 import { installWatcher } from "./watcher";
 
+
+/**
+ * Anything on screen that already means something by `Esc`: a modal, a
+ * screen that closes, a search that cancels, a panel inside the editor.
+ * While one of these is up, `Esc` belongs to it and to nothing else.
+ */
+function escapeIsTaken(): boolean {
+  const store = useStore.getState();
+  return Boolean(
+    store.dialog ||
+      store.recovery ||
+      store.settingsOpen ||
+      store.shortcutsOpen ||
+      store.libraryOpen ||
+      store.history ||
+      store.comparison ||
+      store.quickSearch !== null ||
+      store.folderSearch ||
+      // The read find bar and CodeMirror's own panels close on `Esc` too.
+      document.querySelector(".findbar, .cm-panel"),
+  );
+}
+
 export function App() {
   const railCollapsed = useStore((s) => s.railCollapsed);
   const banner = useStore((s) => s.banner);
@@ -63,17 +86,15 @@ export function App() {
     [],
   );
 
-  // Focus mode (spec §2a): `Esc` leaves it, but only when it is the only
-  // thing `Esc` could mean — a dialog, a panel or a find field answers first.
+  // Focus mode (spec §2a): `Esc` leaves it, but only once nothing else wants
+  // that key. Everything that answers `Esc` first is listed in one place, so
+  // adding a screen cannot quietly make one `Esc` do two things (review #17).
   useEffect(() => {
     if (!focus) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
-      const store = useStore.getState();
-      if (store.dialog || store.recovery || store.settingsOpen || store.shortcutsOpen) return;
-      if (store.quickSearch !== null || store.folderSearch) return;
-      if (document.querySelector(".findbar, .cm-panel")) return;
-      store.setFocus(false);
+      if (escapeIsTaken()) return;
+      useStore.getState().setFocus(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

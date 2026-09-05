@@ -556,3 +556,7 @@
   font-size: var(--fs-small);
   color: var(--muted);
 }
+
+.library-more {
+  color: var(--muted);
+}

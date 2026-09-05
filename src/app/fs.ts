@@ -54,11 +54,16 @@ export function readFile(path: string, encoding?: string): Promise<FileInfo> {
   return invoke<FileInfo>("read_file", { path, encoding: encoding ?? null });
 }
 
-export async function writeFileAtomic(request: WriteRequest): Promise<string> {
-  const { hash } = await invoke<{ hash: string }>("write_file_atomic", {
+export interface WriteResult {
+  hash: string;
+  /** The document was written; keeping a copy of it was not (review #5). */
+  snapshotError: string | null;
+}
+
+export function writeFileAtomic(request: WriteRequest): Promise<WriteResult> {
+  return invoke<WriteResult>("write_file_atomic", {
     request: { allowMissing: false, ...request },
   });
-  return hash;
 }
 
 /**

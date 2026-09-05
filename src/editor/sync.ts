@@ -44,6 +44,11 @@ export function setSyncTarget(id: string | null): void {
   shownId = id;
 }
 
+/** Which document the mounted editor is showing, if any. */
+export function syncTarget(): string | null {
+  return shownId;
+}
+
 function cancelIdle(): void {
   if (idle === null) return;
   if (typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(idle);

@@ -32,6 +32,12 @@ export interface Draft {
   bom: boolean;
   eol: Eol;
   finalNewline: boolean;
+  /**
+   * The buffer holds replacement characters where the encoding could not read
+   * the file. Recovery has to bring the warning back with the text, or the
+   * first save after a restore makes the damage permanent (review #1).
+   */
+  decodeErrors: boolean;
   caret: { line: number; col: number } | null;
   savedAt: number;
 }
@@ -184,6 +190,7 @@ export function writeDraft(id: string): Promise<void> {
       bom: doc.bom,
       eol: doc.eol,
       finalNewline: doc.finalNewline,
+      decodeErrors: doc.decodeErrors,
       caret: doc.caret,
       savedAt: Date.now(),
     };
@@ -275,13 +282,20 @@ export async function restoreDraft(entry: Recovery): Promise<{ id: string; confl
   let readOnly = false;
   let deleted = false;
   let conflict = false;
+  // Either source may know: the draft carries the flag, and a draft written
+  // before it did gets the answer from the file itself (review #1).
+  let decodeErrors = draft.decodeErrors === true;
 
   if (draft.path) {
     try {
-      const info = await readFile(draft.path);
+      // Read the way the buffer was: `reopen as…` may have forced an encoding
+      // that detection would not choose, and that is the frame `savedText`
+      // and the decode warning both belong to.
+      const info = await readFile(draft.path, draft.encoding);
       savedText = normalizeEol(info.text);
       readOnly = info.readOnly;
       conflict = info.hash !== draft.baseHash;
+      decodeErrors = decodeErrors || info.decodeErrors;
     } catch {
       deleted = true;
     }
@@ -304,6 +318,7 @@ export async function restoreDraft(entry: Recovery): Promise<{ id: string; confl
     bom: draft.bom ?? false,
     eol: draft.eol ?? "crlf",
     finalNewline: draft.finalNewline ?? false,
+    decodeErrors,
     baseHash: draft.baseHash ?? null,
     caret: draft.caret ?? null,
   });

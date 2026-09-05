@@ -2,12 +2,26 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { EditorView, type Command as EditorCommand } from "@codemirror/view";
 import type { Doc } from "../app/store";
 import { useStore } from "../app/store";
-import { buffer, keepBuffer, markSaved, moveBuffer, setBufferText } from "./buffers";
+import {
+  buffer,
+  keepBuffer,
+  markSaved,
+  moveBuffer,
+  setBufferReadOnly,
+  setBufferText,
+} from "./buffers";
 import { headingsOf } from "../read/headings";
 import { dropImages, isImagePath } from "./images";
 import { headingAbove } from "./headings";
 import { richConf, richExtension } from "./rich";
-import { gutterConf, gutterExtension, lineNumbersOn, onLineNumbers } from "./setup";
+import { EditorState } from "@codemirror/state";
+import {
+  gutterConf,
+  gutterExtension,
+  lineNumbersOn,
+  onLineNumbers,
+  readOnlyConf,
+} from "./setup";
 import { flushText, setSyncTarget, syncCaret } from "./sync";
 import "../ui/editor.css";
 
@@ -71,6 +85,18 @@ export function replaceText(id: string, text: string): void {
   }
   setBufferText(id, text);
   markSaved(id, text);
+}
+
+/**
+ * A saved-as copy of a read-only file is editable, and the editor on screen
+ * has to hear about it (review #5). Wave 4 calls this after the rename.
+ */
+export function setReadOnly(id: string, readOnly: boolean): void {
+  setBufferReadOnly(id, readOnly);
+  if (live && liveId === id) {
+    live.dispatch({ effects: readOnlyConf.reconfigure(EditorState.readOnly.of(readOnly)) });
+    keepBuffer(id, live.state, live.scrollDOM.scrollTop);
+  }
 }
 
 /**

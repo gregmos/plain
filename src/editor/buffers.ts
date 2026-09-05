@@ -6,7 +6,8 @@ import { normalizeEol } from "../app/eol";
 import type { Doc } from "../app/store";
 import { useStore } from "../app/store";
 import type { Settings } from "../app/settings";
-import { editorExtensions } from "./setup";
+import { EditorState as State } from "@codemirror/state";
+import { editorExtensions, readOnlyConf } from "./setup";
 
 export interface Buffer {
   state: EditorState;
@@ -67,6 +68,15 @@ export function isDirty(id: string, text: string): boolean {
 }
 
 /** An external reload, applied as one change so undo has a single step. */
+/** Read-only follows the document, not the buffer it was created with. */
+export function setBufferReadOnly(id: string, readOnly: boolean): void {
+  const existing = buffers.get(id);
+  if (!existing) return;
+  existing.state = existing.state.update({
+    effects: readOnlyConf.reconfigure(State.readOnly.of(readOnly)),
+  }).state;
+}
+
 export function setBufferText(id: string, text: string): void {
   const existing = buffers.get(id);
   if (!existing) return;

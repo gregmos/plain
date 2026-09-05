@@ -56,6 +56,11 @@ export interface Command {
   /** Spelled the way the spec spells it; parsed by chords.ts. */
   chord?: string;
   /**
+   * Extra chords that do the same thing. `F8` is taken by a global hotkey on
+   * some machines, so focus mode answers to two.
+   */
+  chords?: string[];
+  /**
    * A chord somebody else already owns — the editor's keymap (spec §5.2) or
    * WebView2 (§12). The menu shows it; binding it here would run it twice.
    */
@@ -207,6 +212,7 @@ export const commands: Command[] = [
     id: "view.focus",
     title: "focus",
     chord: "F8",
+    chords: ["Ctrl+Alt+F"],
     run: () => store().setFocus(!store().focus),
   },
   { id: "view.zoomIn", title: "zoom in", hint: "Ctrl+=", run: () => zoomIn() },

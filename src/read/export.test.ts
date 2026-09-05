@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { APP_STYLES, buildExportHtml, escapeHtml } from "./export";
+import { alignDiagrams, APP_STYLES, buildExportHtml, escapeHtml } from "./export";
+import { SAFE_DATA_IMAGE } from "./dom";
 import { render } from "./pipeline";
 
 // Vitest stubs every CSS import, `?raw` included, so the styles are handed in
@@ -104,5 +105,59 @@ describe("what the export starts from", () => {
 describe("escapeHtml", () => {
   it("covers the four that matter", () => {
     expect(escapeHtml('<&">')).toBe("&lt;&amp;&quot;&gt;");
+  });
+});
+
+// Review #14: the export used to collect only the diagrams that had been
+// drawn and pair them with the blocks by index, so the second diagram's SVG
+// landed on the first block whenever the first one was broken or off-screen.
+describe("alignDiagrams", () => {
+  it("keeps every diagram on its own block, gaps and all", () => {
+    expect(alignDiagrams(3, [null, "<svg>two</svg>", null])).toEqual([
+      null,
+      "<svg>two</svg>",
+      null,
+    ]);
+  });
+
+  it("does not slide a later diagram onto an earlier block", () => {
+    const aligned = alignDiagrams(2, [null, "<svg>second</svg>"]);
+    expect(aligned?.[0]).toBeNull();
+    expect(aligned?.[1]).toBe("<svg>second</svg>");
+  });
+
+  it("keeps the first when the second is the one missing", () => {
+    expect(alignDiagrams(2, ["<svg>first</svg>", null])).toEqual(["<svg>first</svg>", null]);
+  });
+
+  it("throws the lot away when the screen is showing another document", () => {
+    expect(alignDiagrams(3, ["<svg>a</svg>", "<svg>b</svg>"])).toBeNull();
+    expect(alignDiagrams(1, ["<svg>a</svg>", "<svg>b</svg>"])).toBeNull();
+  });
+
+  it("has nothing to align when the document has no diagrams", () => {
+    expect(alignDiagrams(0, [])).toEqual([]);
+  });
+});
+
+// Review #16: an export must not be a way back in for an SVG data URI, and
+// it must not manufacture one out of a local `.svg` either.
+describe("image data urls", () => {
+  it("admits the raster formats and nothing else", () => {
+    expect(SAFE_DATA_IMAGE.test("data:image/png;base64,AAAA")).toBe(true);
+    expect(SAFE_DATA_IMAGE.test("data:image/jpeg;base64,AAAA")).toBe(true);
+    expect(SAFE_DATA_IMAGE.test("data:image/gif;base64,AAAA")).toBe(true);
+    expect(SAFE_DATA_IMAGE.test("data:image/webp;base64,AAAA")).toBe(true);
+  });
+
+  it("refuses svg however it is spelled", () => {
+    expect(SAFE_DATA_IMAGE.test("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=")).toBe(false);
+    expect(SAFE_DATA_IMAGE.test("data:image/svg+xml,<svg onload=alert(1)>")).toBe(false);
+    expect(SAFE_DATA_IMAGE.test("DATA:IMAGE/SVG+XML;base64,AAAA")).toBe(false);
+  });
+
+  it("refuses anything that is not an image at all", () => {
+    expect(SAFE_DATA_IMAGE.test("data:text/html;base64,AAAA")).toBe(false);
+    expect(SAFE_DATA_IMAGE.test("javascript:alert(1)")).toBe(false);
   });
 });

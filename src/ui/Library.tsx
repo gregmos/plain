@@ -40,6 +40,12 @@ export function Library() {
     return filterByTag(all, filesOf(tags, filterTag));
   }, [tree, sort, filterTag, tags]);
 
+  // How many files of the tag are not on the list Rust could hand over.
+  const cut = useMemo(() => {
+    const entry = tags.find((one) => one.tag === filterTag);
+    return entry?.truncated ? entry.count - entry.files.length : null;
+  }, [tags, filterTag]);
+
   const dirty = useMemo(() => {
     const set = new Set<string>();
     for (const doc of docs) if (doc.dirty && doc.path) set.add(pathKey(doc.path));
@@ -121,6 +127,9 @@ export function Library() {
       {filterTag && (
         <div className="library-filter">
           <span className="library-tag">#{filterTag}</span>
+          {/* A tag in more files than Rust lists can only be filtered on in
+              part, and the screen says so rather than looking complete. */}
+          {cut !== null && cut > 0 && <span className="library-more">+{cut} more</span>}
           <button className="link" onClick={() => useStore.getState().toggleLibraryFilter(null)}>
             show all
           </button>

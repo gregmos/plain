@@ -1,7 +1,6 @@
 import { useEffect, useMemo } from "react";
-import { markSaved, replaceText } from "../editor";
 import { diffRows } from "../app/history";
-import { reloadFromDisk } from "../app/save";
+import { takeComparison } from "../app/save";
 import { useStore, type Comparison } from "../app/store";
 import "./dialogs.css";
 
@@ -29,30 +28,13 @@ export function DiffScreen({ comparison }: { comparison: Comparison }) {
 
   const changed = rows.filter((row) => row.kind !== "same").length;
 
+  // The screen stays up until the text is really in the buffer: closing it
+  // first would hand the editor back while the swap was still being decided,
+  // and anything typed in between would be overwritten (review #2).
   const take = () => {
-    const store = useStore.getState();
-    // The disk version taken in full: base hash, saved text and the banner go
-    // with it, so the next save is not a conflict all over again.
-    if (comparison.fromDisk) {
-      void reloadFromDisk(comparison.id, { force: true, note: "took the disk version" });
-      close(null);
-      return;
-    }
-    const doc = store.docs.find((d) => d.id === comparison.id);
-    if (!doc) {
-      close(null);
-      return;
-    }
-    replaceText(comparison.id, comparison.left);
-    // The left side is the disk or a snapshot; only the disk makes the buffer
-    // clean, and that is what `savedText` already says.
-    markSaved(comparison.id, doc.savedText);
-    store.updateDoc(comparison.id, {
-      text: comparison.left,
-      dirty: comparison.left !== doc.savedText,
+    void takeComparison(comparison).then((done) => {
+      if (done) close(null);
     });
-    store.dismissBanner("conflict");
-    close(null);
   };
 
   return (

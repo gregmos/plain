@@ -10,7 +10,7 @@ import {
   type StateCommand,
   type TransactionSpec,
 } from "@codemirror/state";
-import { indentUnit } from "@codemirror/language";
+import { indentUnit, syntaxTree } from "@codemirror/language";
 import type { Command, EditorView } from "@codemirror/view";
 
 /** Every line touched by the selection, once, in document order. */
@@ -343,16 +343,41 @@ export const toggleCheckbox: StateCommand = editing(({ state, dispatch }) => {
  * is a click target, and it must not move the caret to do it (spec §5.3).
  */
 export function toggleCheckboxAt(view: EditorView, pos: number): boolean {
-  if (view.state.readOnly) return false;
-  const line = view.state.doc.lineAt(pos);
-  const task = /^(\s*[-*+] )\[([ xX])\]/.exec(line.text);
-  if (!task) return false;
-  const at = line.from + (task[1]?.length ?? 0) + 1;
+  const { state } = view;
+  if (state.readOnly) return false;
+  const line = state.doc.lineAt(pos);
+
+  // The parser knows a task marker wherever it sits — under an ordered item,
+  // inside a quote, behind two spaces (review #7). The line regex is only the
+  // fallback for a file too big to parse.
+  let marker: { from: number; to: number } | null = null;
+  syntaxTree(state).iterate({
+    from: line.from,
+    to: line.to,
+    enter(ref) {
+      if (ref.name !== "TaskMarker") return;
+      if (!marker || (ref.from <= pos && pos <= ref.to)) {
+        marker = { from: ref.from, to: ref.to };
+      }
+    },
+  });
+  const box: { from: number; to: number } | null =
+    marker ?? fallbackTaskMarker(line.text, line.from);
+  if (!box) return false;
+
+  const at = box.from + 1;
+  const ticked = /[xX]/.test(state.sliceDoc(at, at + 1));
   view.dispatch({
-    changes: { from: at, to: at + 1, insert: task[2] === " " ? "x" : " " },
+    changes: { from: at, to: at + 1, insert: ticked ? " " : "x" },
     userEvent: "input",
   });
   return true;
+}
+
+/** `[ ]` on a line, when there is no syntax tree to ask (spec §8). */
+function fallbackTaskMarker(text: string, from: number): { from: number; to: number } | null {
+  const match = /\[[ xX]\]/.exec(text);
+  return match ? { from: from + match.index, to: from + match.index + 3 } : null;
 }
 
 /** `#` * level on every selected line; the same level again takes it off. */

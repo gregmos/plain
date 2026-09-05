@@ -12,7 +12,7 @@ import readCss from "../ui/read.css?raw";
 import tokensCss from "../ui/tokens.css?raw";
 import { inTauri } from "../app/env";
 import { highlight, knownLanguage } from "./highlight";
-import { imagePath } from "./dom";
+import { imagePath, SAFE_DATA_IMAGE } from "./dom";
 import { render } from "./pipeline";
 import { readingMinutes } from "./words";
 
@@ -122,6 +122,11 @@ function base64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+/**
+ * What may be turned into a data URI. `svg` is deliberately absent: an SVG
+ * is a document that can carry script, and §14 keeps it out of `data:` — an
+ * export must not be the way it gets back in. A local `.svg` keeps its path.
+ */
 const MIME: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
@@ -130,7 +135,7 @@ const MIME: Record<string, string> = {
   webp: "image/webp",
   avif: "image/avif",
   bmp: "image/bmp",
-  svg: "image/svg+xml",
+  ico: "image/x-icon",
 };
 
 async function inlineImage(path: string): Promise<string | null> {
@@ -148,10 +153,27 @@ async function inlineImage(path: string): Promise<string | null> {
   }
 }
 
-/** Diagrams already drawn in the open read view, in document order. */
-function drawnDiagrams(): string[] {
-  const blocks = document.querySelectorAll(".read-html .mermaid-block .mermaid-svg");
-  return [...blocks].map((node) => node.innerHTML);
+/**
+ * The SVG for each mermaid block on screen, in document order, `null` where
+ * nothing has been drawn — a diagram below the fold, or a broken one.
+ * Collecting only the drawn ones would slide every later diagram up onto the
+ * wrong block (review #14).
+ */
+function drawnDiagrams(): (string | null)[] {
+  const blocks = document.querySelectorAll(".read-html .mermaid-block");
+  return [...blocks].map((block) => block.querySelector(".mermaid-svg")?.innerHTML ?? null);
+}
+
+/**
+ * Lines the diagrams on screen up with the blocks of the document being
+ * exported. A different count means the reading view is showing something
+ * else, and none of its diagrams belong here.
+ */
+export function alignDiagrams(
+  expected: number,
+  drawn: readonly (string | null)[],
+): (string | null)[] | null {
+  return drawn.length === expected ? [...drawn] : null;
 }
 
 /**
@@ -187,10 +209,13 @@ export async function exportHtml(
   );
 
   // Diagrams: the drawn SVG when the document is the one on screen, its
-  // source otherwise — never a blank space.
-  if (options.useDrawnDiagrams !== false) {
-    const drawn = drawnDiagrams();
-    [...host.querySelectorAll<HTMLElement>(".mermaid-block")].forEach((block, index) => {
+  // source otherwise — never a blank space, and never the wrong picture.
+  const blocks = [...host.querySelectorAll<HTMLElement>(".mermaid-block")];
+  const drawn = options.useDrawnDiagrams === false
+    ? null
+    : alignDiagrams(blocks.length, drawnDiagrams());
+  if (drawn) {
+    blocks.forEach((block, index) => {
       const svg = drawn[index];
       if (!svg) return;
       const holder = document.createElement("div");
@@ -206,8 +231,13 @@ export async function exportHtml(
     [...host.querySelectorAll<HTMLImageElement>("img[data-src]")].map(async (img) => {
       const raw = img.getAttribute("data-src") ?? "";
       img.removeAttribute("data-src");
-      if (/^(https?:|data:)/i.test(raw)) {
+      if (/^https?:/i.test(raw)) {
         img.setAttribute("src", raw);
+        return;
+      }
+      if (/^data:/i.test(raw)) {
+        // Same rule as read: raster only (review #16).
+        if (SAFE_DATA_IMAGE.test(raw)) img.setAttribute("src", raw);
         return;
       }
       const path = imagePath(raw, dir);

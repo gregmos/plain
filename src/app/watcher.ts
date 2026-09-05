@@ -60,15 +60,26 @@ export async function checkDoc(id: string): Promise<void> {
   }
 }
 
+/** Whether a path is inside the library, whatever way either is spelled. */
+function inLibrary(path: string, root: string): boolean {
+  const key = pathKey(path);
+  const under = pathKey(root);
+  return key === under || key.startsWith(`${under}/`);
+}
+
 async function onChange(paths: string[]): Promise<void> {
-  let tree = false;
+  const root = useStore.getState().libraryPath;
+  let library = false;
   for (const path of paths) {
     const key = pathKey(path);
     const doc = useStore.getState().docs.find((d) => d.path && pathKey(d.path) === key);
     if (doc) await checkDoc(doc.id);
-    else tree = true;
+    else library = true;
+    // Tags, backlinks, mtimes and word counts go stale for any file in the
+    // folder — an open one, and our own saves included (review #10).
+    if (root && inLibrary(path, root)) library = true;
   }
-  if (tree) window.dispatchEvent(new CustomEvent(TREE_CHANGED));
+  if (library) window.dispatchEvent(new CustomEvent(TREE_CHANGED));
 }
 
 /** One watcher; changing the library or opening a file restarts it. */
