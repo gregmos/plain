@@ -14,7 +14,7 @@ export type Eol = "crlf" | "lf";
 export interface Settings {
   appearance: { theme: Theme; fontSize: number; contentWidth: number };
   read: { codeWrap: boolean };
-  edit: { lineNumbers: boolean; indentUnit: IndentUnit };
+  edit: { lineNumbers: boolean; indentUnit: IndentUnit; spellcheck: boolean };
   files: { newFileEol: Eol; autosave: number };
   library: { extensions: string[] };
 }
@@ -24,7 +24,7 @@ export const SETTINGS_FILE = "settings.json";
 export const DEFAULTS: Settings = {
   appearance: { theme: "system", fontSize: 13.5, contentWidth: 560 },
   read: { codeWrap: false },
-  edit: { lineNumbers: true, indentUnit: 2 },
+  edit: { lineNumbers: true, indentUnit: 2, spellcheck: true },
   files: { newFileEol: "crlf", autosave: 0 },
   library: { extensions: [".md", ".markdown"] },
 };
@@ -78,6 +78,7 @@ export function normalizeSettings(raw: unknown): Settings {
     edit: {
       lineNumbers: bool(edit["lineNumbers"], DEFAULTS.edit.lineNumbers),
       indentUnit: oneOf(edit["indentUnit"], ["tab", 2, 4] as const, DEFAULTS.edit.indentUnit),
+      spellcheck: bool(edit["spellcheck"], DEFAULTS.edit.spellcheck),
     },
     files: {
       newFileEol: oneOf(files["newFileEol"], ["crlf", "lf"] as const, DEFAULTS.files.newFileEol),
@@ -140,6 +141,7 @@ export function serializeSettings(settings: Settings): string {
       edit: {
         lineNumbers: settings.edit.lineNumbers,
         indentUnit: settings.edit.indentUnit,
+        spellcheck: settings.edit.spellcheck,
       },
       files: { newFileEol: settings.files.newFileEol, autosave: settings.files.autosave },
       library: { extensions: settings.library.extensions },

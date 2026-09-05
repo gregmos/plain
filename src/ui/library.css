@@ -560,3 +560,10 @@
 .library-more {
   color: var(--muted);
 }
+
+/* separator inside a context menu (read's own, spec §2a) */
+.menu-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}

@@ -51,6 +51,15 @@ import { editorTheme, highlightStyle } from "./theme";
 export const gutterConf = new Compartment();
 /** Save As turns a read-only copy into an editable file (review #5). */
 export const readOnlyConf = new Compartment();
+export const spellConf = new Compartment();
+
+/**
+ * Windows own dictionaries do the checking; no `lang` is set, so WebView2
+ * picks the one the text looks like (spec §2a).
+ */
+export function spellExtension(on: boolean): Extension {
+  return EditorView.contentAttributes.of({ spellcheck: on ? "true" : "false" });
+}
 
 /* ------------------------------------------------- soft wrap continuation */
 
@@ -308,6 +317,7 @@ export function editorExtensions(doc: Doc, settings: Settings): Extension {
     closeBrackets(),
     search({ top: true, createPanel: findPanel }),
     gutterConf.of(gutterExtension(lineNumbersOn())),
+    spellConf.of(spellExtension(settings.edit.spellcheck)),
     // Rich is the same buffer with the markers hidden; the mode switch just
     // reconfigures this (spec §5.3).
     richConf.of([]),

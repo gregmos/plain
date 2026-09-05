@@ -13,6 +13,7 @@ import { listDrafts } from "./drafts";
 import { inTauri } from "./env";
 import { pathKey } from "./paths";
 import { loadSession, readingPosition, type SessionFile } from "./session";
+import { restoreZoom } from "./zoom";
 import { loadSettings } from "./settings";
 import { useStore } from "./store";
 import { emitGotoHeading } from "../read/events";
@@ -71,6 +72,8 @@ export async function bootstrap(): Promise<void> {
     if (session.library) await openLibraryPath(session.library, false);
     store.setCollapsed(session.collapsed);
     store.setRecent(session.recent);
+    store.setRecentLibraries(session.recentLibraries);
+    restoreZoom(session.zoom);
     store.setRailView(session.rail.view);
     store.setRailCollapsed(session.rail.collapsed);
     store.setSplitRatio(session.split);

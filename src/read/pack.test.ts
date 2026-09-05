@@ -329,10 +329,19 @@ describe.skipIf(pathological.length === 0)("pack pathological (generated)", () =
     .map((key) => ({ key, rel: `pathological/${tail(key, "/generated/pathological/")}` }))
     .sort((a, b) => a.rel.localeCompare(b.rel));
 
-  it.each(cases)("$rel does not break the pipeline", ({ key, rel }) => {
-    const text = pathologicalText[key] as string;
-    checkDocument(rel, text, byRel.get(rel)?.headings);
-  });
+  // These files exist to be slow: 5000 checkboxes, a table of a thousand
+  // rows, a line a megabyte long. Sixty seconds each is not a performance
+  // budget — §1.3 measures speed with Task Manager, not with tests — it is
+  // headroom so a full parallel run on a busy machine cannot turn a
+  // correctness check into a red build.
+  it.each(cases)(
+    "$rel does not break the pipeline",
+    ({ key, rel }) => {
+      const text = pathologicalText[key] as string;
+      checkDocument(rel, text, byRel.get(rel)?.headings);
+    },
+    120_000,
+  );
 });
 
 /* ------------------------------------------------------------ the clock */

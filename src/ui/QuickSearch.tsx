@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Command } from "cmdk";
-import { openInEdit, openPaths } from "../app/commands";
+import { openInEdit, openLibraryPath, openPaths } from "../app/commands";
 import { basename, dirname } from "../app/paths";
 import { availableCommands, type Command as AppCommand } from "../app/registry";
 import { useStore } from "../app/store";
@@ -52,6 +52,7 @@ export function QuickSearch() {
   const open = useStore((s) => s.quickSearch);
   const tree = useStore((s) => s.tree);
   const recent = useStore((s) => s.recent);
+  const recentLibraries = useStore((s) => s.recentLibraries);
   const libraryPath = useStore((s) => s.libraryPath);
 
   const [query, setQuery] = useState("");
@@ -82,7 +83,22 @@ export function QuickSearch() {
           void (inEdit ? openInEdit(path) : openPaths([path]));
         },
       }));
-      return [{ title: "recent", entries }];
+      // The folders you were last in, under the files you were last in.
+      const libraries: Entry[] = recentLibraries.slice(0, 3).map((path) => ({
+        key: `library:${path}`,
+        label: plain(basename(path)),
+        where: dirname(path),
+        run: () => {
+          close();
+          void openLibraryPath(path);
+        },
+      }));
+      return libraries.length > 0
+        ? [
+            { title: "recent", entries },
+            { title: "libraries", entries: libraries },
+          ]
+        : [{ title: "recent", entries }];
     }
 
     const haystack = paths.map((node) => node.rel);
@@ -106,7 +122,7 @@ export function QuickSearch() {
     }
     return [{ title: "files", entries }];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, query, paths, recent, libraryPath]);
+  }, [open, query, paths, recent, recentLibraries, libraryPath]);
 
   // A click anywhere else is a way out, like `Esc`.
   useEffect(() => {

@@ -41,3 +41,24 @@ export function breadcrumbs(libraryPath: string | null, doc: Doc | null): string
   const parts = doc.path.split(/[\\/]/).filter(Boolean);
   return parts.slice(-2);
 }
+
+/**
+ * The same crumbs, split into the three parts the mode bar lays out: the
+ * root and the file name keep their width, and everything between them is
+ * one cell that gives its width up first when the window is narrow.
+ */
+export interface Crumbs {
+  root: string;
+  /** Folders between the root and the file; often empty. */
+  middle: string[];
+  /** The file; null when only the library is open. */
+  leaf: string | null;
+}
+
+export function crumbParts(libraryPath: string | null, doc: Doc | null): Crumbs | null {
+  const parts = breadcrumbs(libraryPath, doc);
+  const root = parts[0];
+  if (root === undefined) return null;
+  if (parts.length === 1) return { root, middle: [], leaf: null };
+  return { root, middle: parts.slice(1, -1), leaf: parts[parts.length - 1] ?? null };
+}

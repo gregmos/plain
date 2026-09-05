@@ -9,6 +9,7 @@ import { allowAssetDir } from "./assets";
 import { enhance, revealImage } from "./dom";
 import { emitScrollToLine, FIND, GOTO_HEADING, REPLACE, RERENDER } from "./events";
 import { FindBar } from "./FindBar";
+import { ReadContextMenu } from "../ui/ReadContextMenu";
 import {
   folderOf,
   resolveHref,
@@ -478,7 +479,12 @@ export function ReadView({ doc }: { doc: Doc }) {
                   {metaTags.rest > 0 && <span className="meta-tag-rest">+{metaTags.rest}</span>}
                 </div>
               )}
-              <div className="read-html" ref={body} onClick={onClick} onMouseOver={onHover} />
+              <ReadContextMenu
+                onOpenLink={(link) => follow(link, false)}
+                onOpenImage={(image) => void openInViewer(image.dataset["path"] ?? "")}
+              >
+                <div className="read-html" ref={body} onClick={onClick} onMouseOver={onHover} />
+              </ReadContextMenu>
             </>
           )}
         </div>

@@ -38,6 +38,36 @@ describe("state.json", () => {
     expect(back?.reading).toContainEqual(["c:/notes/a.md", "intro"]);
   });
 
+  it("round-trips the zoom factor and the recent libraries", () => {
+    const store = useStore.getState();
+    store.setZoom(1.3);
+    store.rememberLibrary("C:/notes");
+    store.rememberLibrary("C:/work");
+
+    const back = parseSession(JSON.stringify(toSession()));
+    expect(back?.zoom).toBeCloseTo(1.3);
+    expect(back?.recentLibraries).toEqual(["C:/work", "C:/notes"]);
+  });
+
+  it("keeps at most five libraries, newest first, without repeats", () => {
+    const store = useStore.getState();
+    for (const name of ["a", "b", "c", "d", "e", "f"]) store.rememberLibrary(`C:/${name}`);
+    store.rememberLibrary("C:/c");
+    expect(useStore.getState().recentLibraries).toEqual([
+      "C:/c",
+      "C:/f",
+      "C:/e",
+      "C:/d",
+      "C:/b",
+    ]);
+  });
+
+  it("refuses a zoom the view menu could never produce", () => {
+    const base = JSON.parse(JSON.stringify(toSession()));
+    expect(parseSession(JSON.stringify({ ...base, zoom: 12 }))?.zoom).toBe(1);
+    expect(parseSession(JSON.stringify({ ...base, zoom: "big" }))?.zoom).toBe(1);
+  });
+
   it("keeps the split width and the split mode", () => {
     const store = useStore.getState();
     store.openDoc(makeDoc({ id: "c:/notes/s.md", path: "C:/notes/s.md", text: "s", mode: "split" }));

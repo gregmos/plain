@@ -42,9 +42,14 @@ export function installKeys(): () => void {
   };
   window.addEventListener("keydown", swallow, { capture: true });
 
-  // WebView2 would otherwise show its own context menu (spec §12). Bubble
-  // phase, so an element that has its own menu can stop this first.
-  const noMenu = (event: MouseEvent) => event.preventDefault();
+  // WebView2's own menu is suppressed everywhere except the editor, where it
+  // is the only way to reach cut/copy/paste and the spelling suggestions
+  // Windows offers. Read has its own menu, which stops this event itself.
+  const noMenu = (event: MouseEvent) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest(".cm-editor")) return;
+    event.preventDefault();
+  };
   window.addEventListener("contextmenu", noMenu);
 
   const map: Record<string, (event: KeyboardEvent) => void> = {};

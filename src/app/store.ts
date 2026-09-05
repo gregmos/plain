@@ -264,6 +264,8 @@ interface AppState {
   focus: boolean;
   /** WebView2 zoom factor the view menu drives; 1 is 100% (spec §4). */
   zoom: number;
+  /** Folders opened as a library lately, newest first (5). */
+  recentLibraries: string[];
 
   applySettings: (settings: Settings) => void;
   /** A change made on the settings screen: applied now, written to disk. */
@@ -300,6 +302,8 @@ interface AppState {
   setDialog: (dialog: Dialog | null) => void;
   setRecovery: (recovery: Recovery[] | null) => void;
   setRecent: (recent: string[]) => void;
+  setRecentLibraries: (paths: string[]) => void;
+  rememberLibrary: (path: string) => void;
   /** Drops a path that turned out not to exist any more (spec §4). */
   forgetRecent: (path: string) => void;
 
@@ -371,6 +375,7 @@ export const useStore = create<AppState>()((set, get) => ({
   shortcutsOpen: false,
   focus: false,
   zoom: 1,
+  recentLibraries: [],
 
   applySettings: (settings) => {
     applyTheme(settings.appearance.theme);
@@ -513,6 +518,11 @@ export const useStore = create<AppState>()((set, get) => ({
   setDialog: (dialog) => set({ dialog }),
   setRecovery: (recovery) => set({ recovery }),
   setRecent: (recent) => set({ recent }),
+  setRecentLibraries: (recentLibraries) => set({ recentLibraries }),
+  rememberLibrary: (path) =>
+    set((s) => ({
+      recentLibraries: [path, ...s.recentLibraries.filter((p) => p !== path)].slice(0, 5),
+    })),
   forgetRecent: (path) =>
     set((s) => {
       const key = pathKey(path);

@@ -27,6 +27,10 @@ export interface SessionFile {
   /** How the library screen was last sorted (spec §2a). */
   librarySort: LibrarySort;
   recent: string[];
+  /** Folders opened as a library lately, newest first (spec §2a). */
+  recentLibraries: string[];
+  /** WebView2 zoom factor, so 110% survives a restart. */
+  zoom: number;
   /** path -> heading id, oldest first; `""` is the top of the file. */
   reading: [string, string][];
 }
@@ -74,6 +78,8 @@ export function toSession(): SessionFile {
     collapsed: state.collapsed,
     librarySort: state.librarySort,
     recent: state.recent,
+    recentLibraries: state.recentLibraries,
+    zoom: state.zoom,
     reading: [...positions.entries()],
   };
 }
@@ -118,6 +124,12 @@ export function parseSession(text: string): SessionFile | null {
         ? value.librarySort
         : "modified",
     recent: Array.isArray(value.recent) ? value.recent.filter((p) => typeof p === "string") : [],
+    recentLibraries: Array.isArray(value.recentLibraries)
+      ? value.recentLibraries.filter((p) => typeof p === "string").slice(0, 5)
+      : [],
+    // Same bounds the view menu keeps it in; a broken file must not blind you.
+    zoom:
+      typeof value.zoom === "number" && value.zoom >= 0.5 && value.zoom <= 2 ? value.zoom : 1,
     reading: reading
       .filter((pair) => Array.isArray(pair) && typeof pair[0] === "string" && typeof pair[1] === "string")
       .slice(-READING_LIMIT),

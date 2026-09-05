@@ -186,6 +186,7 @@ export async function openLibraryPath(path: string, announce = true): Promise<vo
     await invoke("allow_asset_dir", { path }).catch(() => undefined);
   }
   store.setLibraryPath(path);
+  store.rememberLibrary(path);
   // A folder that is opened afresh starts with everything unfolded; the
   // session puts its own set back after this (bootstrap.ts).
   if (announce) store.setCollapsed([]);

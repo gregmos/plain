@@ -13,7 +13,7 @@ describe("parseSettings", () => {
     const { settings, invalid } = parseSettings(
       JSON.stringify({
         appearance: { theme: "dark", fontSize: 99, contentWidth: 700 },
-        edit: { lineNumbers: false, indentUnit: "tab" },
+        edit: { lineNumbers: false, indentUnit: "tab", spellcheck: false },
         library: { extensions: [".md", ".txt"] },
       }),
     );
@@ -41,7 +41,7 @@ describe("parseSettings", () => {
 const CHANGED: Settings = {
   appearance: { theme: "dark", fontSize: 15, contentWidth: 700 },
   read: { codeWrap: true },
-  edit: { lineNumbers: false, indentUnit: "tab" },
+  edit: { lineNumbers: false, indentUnit: "tab", spellcheck: false },
   files: { newFileEol: "lf", autosave: 0 },
   library: { extensions: [".md", ".txt"] },
 };
@@ -59,6 +59,7 @@ describe("serializeSettings", () => {
       "indentUnit",
       "newFileEol",
       "extensions",
+      "spellcheck",
     ]) {
       expect(text).toContain(`"${key}"`);
     }

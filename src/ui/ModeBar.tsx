@@ -1,14 +1,7 @@
-import { Fragment } from "react";
-import { breadcrumbs } from "../app/paths";
+import { crumbParts } from "../app/paths";
 import { activeDoc, useStore, type Mode } from "../app/store";
 
 const MODES: Mode[] = ["read", "edit", "rich"];
-
-/** Root is bold, the file name is plain fg, anything between is muted. */
-function crumbClass(index: number, total: number): string {
-  if (index === 0) return "crumb crumb-root";
-  return index === total - 1 ? "crumb crumb-leaf" : "crumb";
-}
 
 export function ModeBar() {
   const railCollapsed = useStore((s) => s.railCollapsed);
@@ -17,7 +10,7 @@ export function ModeBar() {
   const doc = useStore(activeDoc);
   const setMode = useStore((s) => s.setMode);
 
-  const crumbs = breadcrumbs(libraryPath, doc);
+  const crumbs = crumbParts(libraryPath, doc);
 
   return (
     <div className="modebar">
@@ -27,14 +20,27 @@ export function ModeBar() {
             ▸ files
           </button>
         )}
-        {crumbs.length > 0 && (
+        {crumbs && (
           <div className="crumbs">
-            {crumbs.map((crumb, i) => (
-              <Fragment key={i}>
-                {i > 0 && <span className="crumb-sep">/</span>}
-                <span className={crumbClass(i, crumbs.length)}>{crumb}</span>
-              </Fragment>
-            ))}
+            <span className="crumb crumb-root">{crumbs.root}</span>
+            {/* The folders in between are one cell, and it is the one that
+                gives way first: `library / notes/pro… / тз.md`. */}
+            {crumbs.middle.length > 0 && (
+              <>
+                <span className="crumb-sep">/</span>
+                <span className="crumb crumb-middle" title={crumbs.middle.join(" / ")}>
+                  {crumbs.middle.join(" / ")}
+                </span>
+              </>
+            )}
+            {crumbs.leaf !== null && (
+              <>
+                <span className="crumb-sep">/</span>
+                <span className="crumb crumb-leaf" title={crumbs.leaf}>
+                  {crumbs.leaf}
+                </span>
+              </>
+            )}
             {doc?.dirty && <span className="dot">•</span>}
           </div>
         )}

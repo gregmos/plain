@@ -110,17 +110,41 @@ pub fn natural_cmp(a: &str, b: &str) -> Ordering {
     chunks(a).cmp(&chunks(b)).then_with(|| a.cmp(b))
 }
 
-/// The nodes, plus whether this folder could be read at all. An unreadable
-/// folder is shown as itself, never as an empty one (review #20).
-fn read_dir(dir: &Path, prefix: &str, extensions: &[String], depth: usize) -> (Vec<Node>, bool) {
+/// What one folder turned out to hold.
+struct Listing {
+    nodes: Vec<Node>,
+    /// The folder would not be listed at all (review #20).
+    unreadable: bool,
+    /// There was something in it — a file of any kind, a folder, anything —
+    /// whether or not it survived the extension filter. This is what tells a
+    /// folder the user just made from one that only holds images.
+    any: bool,
+}
+
+/// A folder earns its row by holding something the tree can show, or by
+/// being genuinely empty: `new folder` has to appear, an `assets` folder of
+/// PNGs has nothing to say.
+fn worth_showing(listing: &Listing) -> bool {
+    listing.unreadable || !listing.nodes.is_empty() || !listing.any
+}
+
+fn read_dir(dir: &Path, prefix: &str, extensions: &[String], depth: usize) -> Listing {
     let Ok(entries) = fs::read_dir(dir) else {
-        return (Vec::new(), true);
+        return Listing {
+            nodes: Vec::new(),
+            unreadable: true,
+            any: true,
+        };
     };
 
     let mut folders: Vec<Node> = Vec::new();
     let mut files: Vec<Node> = Vec::new();
+    let mut any = false;
 
     for entry in entries.flatten() {
+        // Counted before anything is skipped: a folder holding only images,
+        // or only a `.git`, is not an empty folder.
+        any = true;
         let Ok(kind) = entry.file_type() else { continue };
         // Symlinks and junctions are not followed (spec §6).
         if kind.is_symlink() {
@@ -138,22 +162,29 @@ fn read_dir(dir: &Path, prefix: &str, extensions: &[String], depth: usize) -> (V
             if ignored_dir(&name) {
                 continue;
             }
-            let (children, unreadable) = if depth + 1 < MAX_DEPTH {
+            let listing = if depth + 1 < MAX_DEPTH {
                 read_dir(&path, &rel, extensions, depth + 1)
             } else {
                 // Not unreadable so much as unread; either way the branch is
                 // not the truth, and the row says so.
-                (Vec::new(), true)
+                Listing {
+                    nodes: Vec::new(),
+                    unreadable: true,
+                    any: true,
+                }
             };
+            if !worth_showing(&listing) {
+                continue;
+            }
             folders.push(Node {
                 name,
                 path: path.to_string_lossy().into_owned(),
                 rel,
                 dir: true,
-                unreadable,
+                unreadable: listing.unreadable,
                 mtime_ms: 0.0,
                 ctime_ms: 0.0,
-                children,
+                children: listing.nodes,
             });
         } else if kind.is_file() && wanted(&name, extensions) {
             // On Windows the directory scan already carries the times, so
@@ -178,7 +209,11 @@ fn read_dir(dir: &Path, prefix: &str, extensions: &[String], depth: usize) -> (V
     folders.sort_by(|a, b| natural_cmp(&a.name, &b.name));
     files.sort_by(|a, b| natural_cmp(&a.name, &b.name));
     folders.extend(files);
-    (folders, false)
+    Listing {
+        nodes: folders,
+        unreadable: false,
+        any,
+    }
 }
 
 /// The whole tree in one call. A sub-folder that refuses to be listed comes
@@ -190,11 +225,11 @@ pub fn read_tree(root: String, extensions: Vec<String>) -> Result<Vec<Node>, Str
     if !dir.is_dir() {
         return Err(format!("not a folder: {root}"));
     }
-    let (nodes, unreadable) = read_dir(dir, "", &extensions, 0);
-    if unreadable {
+    let listing = read_dir(dir, "", &extensions, 0);
+    if listing.unreadable {
         return Err(format!("couldn't read {root}"));
     }
-    Ok(nodes)
+    Ok(listing.nodes)
 }
 
 /// `new file` (spec §6). `create_new` is the whole point: a name the tree
@@ -253,6 +288,43 @@ mod tests {
     }
 
     /// Review #4: a file the tree never showed must survive `new file`.
+    /// A folder is a row when it has something to show or nothing at all.
+    #[test]
+    fn a_folder_of_images_is_not_a_row_but_an_empty_one_is() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        // Files, but none of them ours: nothing to open in there.
+        fs::create_dir(root.join("assets")).unwrap();
+        fs::write(root.join("assets").join("схема.png"), "x").unwrap();
+        fs::write(root.join("assets").join("photo.jpg"), "x").unwrap();
+
+        // Made by hand a moment ago, through `new folder`.
+        fs::create_dir(root.join("new folder")).unwrap();
+
+        // Nothing at this level, but a note two floors down.
+        fs::create_dir_all(root.join("work").join("specs")).unwrap();
+        fs::write(root.join("work").join("specs").join("api.md"), "x").unwrap();
+
+        let tree = read_tree(root.to_string_lossy().into_owned(), md()).unwrap();
+        assert_eq!(names(&tree), vec!["new folder", "work"]);
+        assert_eq!(names(&tree[1].children), vec!["specs"]);
+        assert_eq!(names(&tree[1].children[0].children), vec!["api.md"]);
+    }
+
+    /// And a folder whose only child is one of those is not a row either.
+    #[test]
+    fn a_folder_holding_only_a_hidden_folder_goes_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join("media").join("assets")).unwrap();
+        fs::write(root.join("media").join("assets").join("a.png"), "x").unwrap();
+        fs::write(root.join("keep.md"), "x").unwrap();
+
+        let tree = read_tree(root.to_string_lossy().into_owned(), md()).unwrap();
+        assert_eq!(names(&tree), vec!["keep.md"]);
+    }
+
     /// The library screen sorts by these, so they have to be real (spec §2a).
     #[test]
     fn files_carry_their_dates() {

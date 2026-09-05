@@ -33,3 +33,13 @@ export function zoomOut(): void {
 export function zoomReset(): void {
   apply(1);
 }
+
+/** Startup: the factor the session remembered, applied without a message. */
+export function restoreZoom(zoom: number): void {
+  useStore.getState().setZoom(zoom);
+  if (inTauri && zoom !== 1) {
+    void getCurrentWebview()
+      .setZoom(zoom)
+      .catch(() => undefined);
+  }
+}

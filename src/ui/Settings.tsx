@@ -7,7 +7,8 @@ import { openSettingsFile } from "../app/commands";
 import { AUTOSAVE, DEFAULTS, type Settings } from "../app/settings";
 import { useStore } from "../app/store";
 import { TREE_CHANGED } from "../app/watcher";
-import { syncLineNumbers } from "../editor/setup";
+import { spellConf, spellExtension, syncLineNumbers } from "../editor/setup";
+import { runEditorCommand } from "../editor";
 import "./dialogs.css";
 import "./settings.css";
 
@@ -216,6 +217,22 @@ export function SettingsScreen() {
             onPick={(lineNumbers) => {
               patch({ ...settings, edit: { ...settings.edit, lineNumbers } });
               syncLineNumbers();
+            }}
+          />
+        </Row>
+
+        <Row name="edit.spellcheck" about="uses the windows dictionaries">
+          <Choice
+            value={settings.edit.spellcheck}
+            options={ON_OFF}
+            onPick={(spellcheck) => {
+              patch({ ...settings, edit: { ...settings.edit, spellcheck } });
+              // The open buffer gets it now; the rest pick it up when they
+              // are built (editor/setup.ts reads the same setting).
+              runEditorCommand((view) => {
+                view.dispatch({ effects: spellConf.reconfigure(spellExtension(spellcheck)) });
+                return true;
+              });
             }}
           />
         </Row>

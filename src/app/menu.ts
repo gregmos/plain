@@ -5,7 +5,7 @@
 // Every entry names a command in the registry, so a title and a chord are
 // written once and the palette, the keyboard layer and the menu agree.
 
-import { openPaths } from "./commands";
+import { openLibraryPath, openPaths } from "./commands";
 import { basename } from "./paths";
 import { command } from "./registry";
 import { reopenAs } from "./save";
@@ -94,6 +94,21 @@ function recentItems(): MenuNode[] {
   }));
 }
 
+function libraryItems(): MenuNode[] {
+  const { recentLibraries } = useStore.getState();
+  if (recentLibraries.length === 0) {
+    return [
+      { kind: "item", key: "libs-empty", label: "nothing yet", disabled: true, run: () => {} },
+    ];
+  }
+  return recentLibraries.map((path, index) => ({
+    kind: "item",
+    key: `lib-${index}-${path}`,
+    label: basename(path),
+    run: () => void openLibraryPath(path),
+  }));
+}
+
 function reopenItems(): MenuNode[] {
   const enabled = command("file.reopenUtf8")?.when?.() ?? true;
   const one = (key: string, label: string, encoding: string): MenuEntry => ({
@@ -132,6 +147,7 @@ export function menuModel(): MenuSection[] {
         entry("file.open"),
         entry("file.openLibrary"),
         { kind: "submenu", key: "recent", label: "recent", items: recentItems() },
+        { kind: "submenu", key: "libraries", label: "recent libraries", items: libraryItems() },
         separator(),
         entry("file.save"),
         entry("file.saveAs"),
