@@ -43,7 +43,11 @@ export function StatusBar() {
 
   // Wave 3 changes the text on every keystroke, so keep this off that path.
   const text = doc?.text ?? "";
-  const words = useMemo(() => countWords(text), [text]);
+  const large = doc?.large ?? false;
+  // A document past the render gate is past the counting gate too: the count
+  // parses the whole file, and edit hands us new text on every idle flush
+  // (review #14). `large file` already stands in for it on the right.
+  const words = useMemo(() => (large ? null : countWords(text)), [text, large]);
 
   return (
     <div className="statusbar">
@@ -82,7 +86,9 @@ export function StatusBar() {
             )}
           </span>
         )}
-        {doc && <span className="status-words">{words.toLocaleString("en-US")} words</span>}
+        {doc && words !== null && (
+          <span className="status-words">{words.toLocaleString("en-US")} words</span>
+        )}
         {doc && <span>{note ?? state(doc)}</span>}
         <button className="link theme-toggle" onClick={toggleTheme}>
           {resolvedTheme === "dark" ? "◑ dark" : "◐ light"}

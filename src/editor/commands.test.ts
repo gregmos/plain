@@ -8,12 +8,15 @@ import {
   detectIndent,
   insertLink,
   listKind,
+  selectedLines,
   toggleBold,
   toggleCheckbox,
+  toggleCodeBlock,
   toggleHeading,
   toggleItalic,
   toggleQuote,
   toggleStrike,
+  urlPaste,
 } from "./commands";
 
 /** Runs a command over a document; `|` marks the caret, `«»` the selection. */
@@ -146,5 +149,123 @@ describe("heading off (the menu, spec §4)", () => {
   it("takes any level off every selected line", () => {
     expect(run(clearHeading, "### one|")).toBe("one|");
     expect(run(clearHeading, "«# one\n###### two»")).toBe("«one\ntwo»");
+  });
+});
+
+
+/** Same document, twice through the same command. */
+function twice(command: StateCommand, input: string): string {
+  const { doc, selection } = parse(input);
+  let state = EditorState.create({ doc, selection });
+  for (let i = 0; i < 2; i += 1) {
+    const before = state;
+    command({ state: before, dispatch: (tr) => (state = tr.state) });
+  }
+  return print(state);
+}
+
+describe("code block", () => {
+  it("fences the line and takes the fences back off", () => {
+    expect(run(toggleCodeBlock, "abc|")).toBe("```\nabc|\n```");
+    expect(twice(toggleCodeBlock, "abc|")).toBe("abc|");
+  });
+
+  it("unwraps from inside the block", () => {
+    expect(run(toggleCodeBlock, "```\nab|c\n```")).toBe("ab|c");
+  });
+
+  it("unwraps when the fences themselves are selected", () => {
+    expect(run(toggleCodeBlock, "«```\nabc\n```»")).toBe("«abc»");
+  });
+
+  it("keeps the text around it", () => {
+    expect(twice(toggleCodeBlock, "one\n«two»\nthree")).toBe("one\n«two»\nthree");
+  });
+});
+
+describe("bold and italic together", () => {
+  it("adds italic inside bold and takes it back off", () => {
+    expect(run(toggleItalic, "**«abc»**")).toBe("***«abc»***");
+    expect(run(toggleItalic, "***«abc»***")).toBe("**«abc»**");
+    expect(twice(toggleItalic, "**«abc»**")).toBe("**«abc»**");
+  });
+
+  it("takes bold off text that is also italic", () => {
+    expect(run(toggleBold, "***«abc»***")).toBe("*«abc»*");
+  });
+
+  it("round-trips bold over italic", () => {
+    expect(twice(toggleBold, "*«abc»*")).toBe("*«abc»*");
+  });
+});
+
+describe("selected lines", () => {
+  it("stops at a selection that ends on a line boundary", () => {
+    const state = EditorState.create({ doc: "one\ntwo", selection: EditorSelection.single(0, 4) });
+    expect(selectedLines(state).map((l) => l.number)).toEqual([1]);
+  });
+
+  it("takes the second line when the selection reaches into it", () => {
+    const state = EditorState.create({ doc: "one\ntwo", selection: EditorSelection.single(0, 5) });
+    expect(selectedLines(state).map((l) => l.number)).toEqual([1, 2]);
+  });
+
+  it("does not carry a heading onto the next line", () => {
+    expect(run(toggleHeading(1), "«one\n»two")).toBe("# «one\n»two");
+  });
+});
+
+describe("read-only", () => {
+  const commands: [string, StateCommand][] = [
+    ["bold", toggleBold],
+    ["link", insertLink],
+    ["quote", toggleQuote],
+    ["list", cycleList],
+    ["checkbox", toggleCheckbox],
+    ["heading", toggleHeading(1)],
+    ["clear heading", clearHeading],
+    ["code block", toggleCodeBlock],
+    ["strike", toggleStrike],
+  ];
+
+  it.each(commands)("%s leaves a read-only document alone", (_name, command) => {
+    const state = EditorState.create({
+      doc: "one",
+      selection: EditorSelection.single(0, 3),
+      extensions: EditorState.readOnly.of(true),
+    });
+    let changed = false;
+    expect(command({ state, dispatch: () => (changed = true) })).toBe(false);
+    expect(changed).toBe(false);
+  });
+});
+
+describe("pasting a url", () => {
+  function paste(input: string, pasted: string, readOnly = false): string | null {
+    const { doc, selection } = parse(input);
+    const state = EditorState.create({
+      doc,
+      selection,
+      extensions: readOnly ? EditorState.readOnly.of(true) : [],
+    });
+    const spec = urlPaste(state, pasted);
+    return spec ? print(state.update(spec).state) : null;
+  }
+
+  it("makes a link out of the selection", () => {
+    expect(paste("see «the docs» now", "https://example.com/a")).toBe(
+      "see [the docs](https://example.com/a)| now",
+    );
+  });
+
+  it("trims what came from the clipboard", () => {
+    expect(paste("«x»", " https://example.com \n")).toBe("[x](https://example.com)|");
+  });
+
+  it("pastes as usual otherwise", () => {
+    expect(paste("«x»", "not a url")).toBe(null);
+    expect(paste("«x»", "https://a.example https://b.example")).toBe(null);
+    expect(paste("x|", "https://example.com")).toBe(null);
+    expect(paste("«x»", "https://example.com", true)).toBe(null);
   });
 });

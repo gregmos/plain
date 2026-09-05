@@ -23,6 +23,8 @@ export interface FileMatches {
 export interface SearchAnswer {
   files: FileMatches[];
   skippedLarge: number;
+  /** Files that refused to be read; saying nothing about them would lie. */
+  skippedUnreadable: number;
   truncated: boolean;
 }
 
@@ -70,7 +72,7 @@ export function runner(
       issued += 1;
       const mine = issued;
       if (request.query.trim() === "" || !inTauri) {
-        onAnswer({ files: [], skippedLarge: 0, truncated: false });
+        onAnswer({ files: [], skippedLarge: 0, skippedUnreadable: 0, truncated: false });
         return;
       }
       timer = setTimeout(() => {

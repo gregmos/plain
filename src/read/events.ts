@@ -21,6 +21,14 @@ export function emitGotoLine(line: number): void {
   window.dispatchEvent(new CustomEvent(GOTO_LINE, { detail: line }));
 }
 
+/**
+ * The same jump without the caret: read → edit lands on the heading that was
+ * on screen, but whatever was selected in edit stays selected (review #7).
+ */
+export function emitScrollToLine(line: number): void {
+  window.dispatchEvent(new CustomEvent(GOTO_LINE, { detail: { line, moveCaret: false } }));
+}
+
 export function emitGotoHeading(id: string): void {
   window.dispatchEvent(new CustomEvent(GOTO_HEADING, { detail: id }));
 }

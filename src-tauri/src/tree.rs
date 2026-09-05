@@ -23,7 +23,35 @@ pub struct Node {
     /// Path relative to the root, always `/` separated — the row's identity.
     rel: String,
     dir: bool,
+    /// The folder refused to be listed, or the walk stopped at MAX_DEPTH.
+    /// `children` is then empty because we do not know, not because it is.
+    unreadable: bool,
     children: Vec<Node>,
+}
+
+/// Creating something says either "it is already there" — which is not a
+/// failure, the caller simply tries the next name — or a real error.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateError {
+    kind: &'static str,
+    message: String,
+}
+
+impl CreateError {
+    fn of(path: &str, error: &std::io::Error) -> Self {
+        let kind = if error.kind() == std::io::ErrorKind::AlreadyExists {
+            "exists"
+        } else {
+            "io"
+        };
+        let message = if kind == "exists" {
+            format!("{path} already exists")
+        } else {
+            error.to_string()
+        };
+        Self { kind, message }
+    }
 }
 
 fn ignored_dir(name: &str) -> bool {
@@ -70,9 +98,11 @@ pub fn natural_cmp(a: &str, b: &str) -> Ordering {
     chunks(a).cmp(&chunks(b)).then_with(|| a.cmp(b))
 }
 
-fn read_dir(dir: &Path, prefix: &str, extensions: &[String], depth: usize) -> Vec<Node> {
+/// The nodes, plus whether this folder could be read at all. An unreadable
+/// folder is shown as itself, never as an empty one (review #20).
+fn read_dir(dir: &Path, prefix: &str, extensions: &[String], depth: usize) -> (Vec<Node>, bool) {
     let Ok(entries) = fs::read_dir(dir) else {
-        return Vec::new();
+        return (Vec::new(), true);
     };
 
     let mut folders: Vec<Node> = Vec::new();
@@ -96,16 +126,19 @@ fn read_dir(dir: &Path, prefix: &str, extensions: &[String], depth: usize) -> Ve
             if ignored_dir(&name) {
                 continue;
             }
-            let children = if depth + 1 < MAX_DEPTH {
+            let (children, unreadable) = if depth + 1 < MAX_DEPTH {
                 read_dir(&path, &rel, extensions, depth + 1)
             } else {
-                Vec::new()
+                // Not unreadable so much as unread; either way the branch is
+                // not the truth, and the row says so.
+                (Vec::new(), true)
             };
             folders.push(Node {
                 name,
                 path: path.to_string_lossy().into_owned(),
                 rel,
                 dir: true,
+                unreadable,
                 children,
             });
         } else if kind.is_file() && wanted(&name, extensions) {
@@ -114,6 +147,7 @@ fn read_dir(dir: &Path, prefix: &str, extensions: &[String], depth: usize) -> Ve
                 path: path.to_string_lossy().into_owned(),
                 rel,
                 dir: false,
+                unreadable: false,
                 children: Vec::new(),
             });
         }
@@ -122,17 +156,36 @@ fn read_dir(dir: &Path, prefix: &str, extensions: &[String], depth: usize) -> Ve
     folders.sort_by(|a, b| natural_cmp(&a.name, &b.name));
     files.sort_by(|a, b| natural_cmp(&a.name, &b.name));
     folders.extend(files);
-    folders
+    (folders, false)
 }
 
-/// The whole tree in one call. An unreadable sub-folder is simply empty.
+/// The whole tree in one call. A sub-folder that refuses to be listed comes
+/// back marked; a root that refuses is an error, because an empty rail would
+/// be a lie about the folder you just opened.
 #[tauri::command]
 pub fn read_tree(root: String, extensions: Vec<String>) -> Result<Vec<Node>, String> {
     let dir = Path::new(&root);
     if !dir.is_dir() {
         return Err(format!("not a folder: {root}"));
     }
-    Ok(read_dir(dir, "", &extensions, 0))
+    let (nodes, unreadable) = read_dir(dir, "", &extensions, 0);
+    if unreadable {
+        return Err(format!("couldn't read {root}"));
+    }
+    Ok(nodes)
+}
+
+/// `new file` (spec §6). `create_new` is the whole point: a name the tree
+/// could not see — a `.txt` the settings hide — must not be overwritten with
+/// an empty file, so the front end is told and tries the next name (#4).
+#[tauri::command]
+pub fn create_file(path: String) -> Result<(), CreateError> {
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .map(|_| ())
+        .map_err(|error| CreateError::of(&path, &error))
 }
 
 /// `file`, `dir` or `missing` — what a dropped or argument path turned out
@@ -158,13 +211,11 @@ pub fn rename_path(from: String, to: String) -> Result<(), String> {
     fs::rename(&from, &to).map_err(|error| error.to_string())
 }
 
-/// `new folder` in the tree.
+/// `new folder` in the tree. Same no-clobber rule as `create_file`, and the
+/// same answer when the name is taken.
 #[tauri::command]
-pub fn create_dir(path: String) -> Result<(), String> {
-    if Path::new(&path).exists() {
-        return Err(format!("{path} already exists"));
-    }
-    fs::create_dir_all(&path).map_err(|error| error.to_string())
+pub fn create_dir(path: String) -> Result<(), CreateError> {
+    fs::create_dir(&path).map_err(|error| CreateError::of(&path, &error))
 }
 
 #[cfg(test)]
@@ -177,6 +228,31 @@ mod tests {
 
     fn names(nodes: &[Node]) -> Vec<&str> {
         nodes.iter().map(|n| n.name.as_str()).collect()
+    }
+
+    /// Review #4: a file the tree never showed must survive `new file`.
+    #[test]
+    fn create_file_never_overwrites() {
+        let dir = tempfile::tempdir().unwrap();
+        let taken = dir.path().join("notes.txt");
+        fs::write(&taken, "please keep me").unwrap();
+
+        let error = create_file(taken.to_string_lossy().into_owned()).unwrap_err();
+        assert_eq!(error.kind, "exists");
+        assert_eq!(fs::read_to_string(&taken).unwrap(), "please keep me");
+
+        let fresh = dir.path().join("notes 2.txt");
+        create_file(fresh.to_string_lossy().into_owned()).unwrap();
+        assert_eq!(fs::read_to_string(&fresh).unwrap(), "");
+    }
+
+    #[test]
+    fn create_dir_says_when_the_name_is_taken() {
+        let dir = tempfile::tempdir().unwrap();
+        let taken = dir.path().join("notes");
+        fs::create_dir(&taken).unwrap();
+        let error = create_dir(taken.to_string_lossy().into_owned()).unwrap_err();
+        assert_eq!(error.kind, "exists");
     }
 
     #[test]

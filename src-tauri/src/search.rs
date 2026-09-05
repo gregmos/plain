@@ -56,6 +56,9 @@ pub struct SearchResponse {
     files: Vec<FileMatches>,
     /// How many files were over 2 MB.
     skipped_large: usize,
+    /// How many refused to be read at all. Saying nothing about them would
+    /// turn a permission problem into a confident `no matches` (review #18).
+    skipped_unreadable: usize,
     /// A limit was hit; the answer is not the whole truth.
     truncated: bool,
 }
@@ -72,52 +75,108 @@ fn ignored_dir(name: &str) -> bool {
     name.starts_with('.') || IGNORED.contains(&name)
 }
 
-/// A very long line would be a wall of text in a 560px column; the window
-/// starts at the first match so the match is always on screen.
+/// A very long line would be a wall of text in a 560px column, so only a
+/// window of it is shown — cut around the first match, never from the start,
+/// or the match itself could fall outside what is shown (review #19).
 const MAX_LINE: usize = 400;
+/// How much of the line before the first match the window keeps.
+const LEAD: usize = 48;
 
-fn utf16_len(text: &str) -> usize {
-    text.chars().map(char::len_utf16).sum()
+/// Walks back from `byte` over at most `chars` characters.
+fn back(text: &str, byte: usize, chars: usize) -> usize {
+    let mut at = byte;
+    for _ in 0..chars {
+        let Some(previous) = text[..at].chars().next_back() else {
+            break;
+        };
+        at -= previous.len_utf8();
+    }
+    at
 }
 
-/// One line of a hit, with the ranges converted from bytes to UTF-16 units.
-fn line_match(line: usize, text: &str, spans: &[(usize, usize)]) -> LineMatch {
-    let mut ranges = Vec::with_capacity(spans.len());
-    for &(from, to) in spans {
-        let start = utf16_len(&text[..from]);
-        let end = start + utf16_len(&text[from..to]);
-        ranges.push([start, end]);
+/// Walks forward from `byte` until `units` UTF-16 units have gone by.
+fn forward(text: &str, byte: usize, units: usize) -> usize {
+    let mut at = byte;
+    let mut seen = 0;
+    for ch in text[byte..].chars() {
+        if seen >= units {
+            break;
+        }
+        seen += ch.len_utf16();
+        at += ch.len_utf8();
     }
-    let mut text = text.to_string();
-    if utf16_len(&text) > MAX_LINE {
-        // Cut the tail only; the offsets in front of it stay correct.
-        let cut = text
-            .char_indices()
-            .map(|(index, _)| index)
-            .find(|index| utf16_len(&text[..*index]) >= MAX_LINE)
-            .unwrap_or(text.len());
-        text.truncate(cut);
-        text.push('…');
-        ranges.retain(|[_, end]| *end <= MAX_LINE);
-    }
-    LineMatch { line, text, ranges }
+    at
 }
 
-/// Everything the walk found, before the caps are applied.
+/// Byte spans inside `window` to UTF-16 ranges, in one forward walk. The
+/// spans are non-overlapping and sorted, so each character is visited once.
+fn utf16_ranges(window: &str, spans: &[(usize, usize)], shift: usize) -> Vec<[usize; 2]> {
+    let mut ranges = vec![[0usize, 0usize]; spans.len()];
+    let mut edges: Vec<(usize, usize, bool)> = Vec::with_capacity(spans.len() * 2);
+    for (index, &(from, to)) in spans.iter().enumerate() {
+        edges.push((from, index, true));
+        edges.push((to, index, false));
+    }
+    edges.sort_by_key(|(byte, _, _)| *byte);
+
+    let mut at = 0usize;
+    let mut units = 0usize;
+    for (byte, index, is_start) in edges {
+        while at < byte {
+            let Some(ch) = window[at..].chars().next() else {
+                break;
+            };
+            units += ch.len_utf16();
+            at += ch.len_utf8();
+        }
+        let value = units + shift;
+        if is_start {
+            ranges[index][0] = value;
+        } else {
+            ranges[index][1] = value;
+        }
+    }
+    ranges
+}
+
+/// One line of a hit: the window around its first match, and the matches
+/// that fall inside it.
+fn line_match(line: usize, text: &str, pattern: &regex::Regex) -> Option<LineMatch> {
+    // An empty match (`a*`) would report every position; skip those.
+    let first = pattern.find_iter(text).find(|m| m.end() > m.start())?;
+
+    let from = back(text, first.start(), LEAD);
+    let to = forward(text, from, MAX_LINE);
+    let window = &text[from..to];
+
+    let spans: Vec<(usize, usize)> = pattern
+        .find_iter(window)
+        .filter(|m| m.end() > m.start())
+        .map(|m| (m.start(), m.end()))
+        .collect();
+
+    let head = if from > 0 { "…" } else { "" };
+    let tail = if to < text.len() { "…" } else { "" };
+    Some(LineMatch {
+        line,
+        // The leading ellipsis is one UTF-16 unit, and every range moves
+        // with it — units, not the three bytes it takes on disk.
+        ranges: utf16_ranges(window, &spans, head.chars().count()),
+        text: format!("{head}{window}{tail}"),
+    })
+}
+
+/// Everything the walk found in one file, before the global cap.
 fn scan(text: &str, pattern: &regex::Regex) -> (Vec<LineMatch>, bool) {
     let mut out = Vec::new();
     let mut truncated = false;
-    for (index, line) in text.lines().enumerate() {
-        let spans: Vec<(usize, usize)> = pattern
-            .find_iter(line)
-            // An empty match (`a*`) would report every position; skip those.
-            .filter(|m| m.end() > m.start())
-            .map(|m| (m.start(), m.end()))
-            .collect();
-        if spans.is_empty() {
+    // Split rather than `lines()`: a CR-only document has to break where the
+    // editor breaks it, and the caller has already normalized the endings.
+    for (index, line) in text.split('\n').enumerate() {
+        let Some(found) = line_match(index + 1, line, pattern) else {
             continue;
-        }
-        out.push(line_match(index + 1, line, &spans));
+        };
+        out.push(found);
         if out.len() >= MAX_MATCHES_PER_FILE {
             truncated = true;
             break;
@@ -158,6 +217,7 @@ pub fn search(request: &SearchRequest) -> Result<SearchResponse, String> {
         return Ok(SearchResponse {
             files: Vec::new(),
             skipped_large: 0,
+            skipped_unreadable: 0,
             truncated: false,
         });
     }
@@ -182,24 +242,30 @@ pub fn search(request: &SearchRequest) -> Result<SearchResponse, String> {
         })?;
 
     let root_text = root.to_string_lossy().into_owned();
-    let mut found: Vec<(FileMatches, bool, bool)> = candidates(root, &request.extensions)
+
+    /// What one file turned into: a hit, or a reason there is none.
+    enum Outcome {
+        Hit(FileMatches, bool),
+        TooBig,
+        Unreadable,
+    }
+
+    let found: Vec<Outcome> = candidates(root, &request.extensions)
         .par_iter()
         .filter_map(|path| {
-            let size = std::fs::metadata(path).map(|meta| meta.len()).unwrap_or(0);
-            if size > LARGE_FILE {
-                return Some((
-                    FileMatches {
-                        path: path.to_string_lossy().into_owned(),
-                        rel: String::new(),
-                        name: String::new(),
-                        matches: Vec::new(),
-                    },
-                    false,
-                    true,
-                ));
+            let Ok(meta) = std::fs::metadata(path) else {
+                return Some(Outcome::Unreadable);
+            };
+            if meta.len() > LARGE_FILE {
+                return Some(Outcome::TooBig);
             }
-            let bytes = std::fs::read(path).ok()?;
-            let text = String::from_utf8_lossy(&bytes);
+            let Ok(bytes) = std::fs::read(path) else {
+                return Some(Outcome::Unreadable);
+            };
+            // The same decoding an open uses, so a cp1251 or UTF-16 document
+            // is searched as the text it is (review #18).
+            let text = crate::fs::decode_bytes(&bytes);
+            let text = text.replace("\r\n", "\n").replace('\r', "\n");
             let (matches, truncated) = scan(&text, &pattern);
             if matches.is_empty() {
                 return None;
@@ -210,7 +276,7 @@ pub fn search(request: &SearchRequest) -> Result<SearchResponse, String> {
                 .unwrap_or(&full)
                 .trim_start_matches(['\\', '/'])
                 .replace('\\', "/");
-            Some((
+            Some(Outcome::Hit(
                 FileMatches {
                     name: path
                         .file_name()
@@ -221,25 +287,38 @@ pub fn search(request: &SearchRequest) -> Result<SearchResponse, String> {
                     matches,
                 },
                 truncated,
-                false,
             ))
         })
         .collect();
 
-    let skipped_large = found.iter().filter(|(_, _, large)| *large).count();
-    found.retain(|(_, _, large)| !*large);
-    let mut truncated = found.iter().any(|(_, cut, _)| *cut);
-
-    let mut files: Vec<FileMatches> = found.into_iter().map(|(file, _, _)| file).collect();
+    let mut skipped_large = 0;
+    let mut skipped_unreadable = 0;
+    let mut truncated = false;
+    let mut files: Vec<FileMatches> = Vec::new();
+    for outcome in found {
+        match outcome {
+            Outcome::Hit(file, cut) => {
+                truncated |= cut;
+                files.push(file);
+            }
+            Outcome::TooBig => skipped_large += 1,
+            Outcome::Unreadable => skipped_unreadable += 1,
+        }
+    }
     files.sort_by(|a, b| crate::tree::natural_cmp(&a.rel, &b.rel));
 
-    // The global cap: whole files are dropped rather than half-shown.
+    // The global cap, kept exactly: the file that crosses it is cut, not
+    // let through whole (review #19).
     let mut lines = 0;
-    let mut kept = Vec::new();
-    for file in files {
+    let mut kept: Vec<FileMatches> = Vec::new();
+    for mut file in files {
         if lines >= MAX_LINES {
             truncated = true;
             break;
+        }
+        if lines + file.matches.len() > MAX_LINES {
+            file.matches.truncate(MAX_LINES - lines);
+            truncated = true;
         }
         lines += file.matches.len();
         kept.push(file);
@@ -248,6 +327,7 @@ pub fn search(request: &SearchRequest) -> Result<SearchResponse, String> {
     Ok(SearchResponse {
         files: kept,
         skipped_large,
+        skipped_unreadable,
         truncated,
     })
 }
@@ -327,6 +407,62 @@ mod tests {
         assert_eq!(answer.skipped_large, 1);
         assert_eq!(answer.files.len(), 1);
         assert_eq!(answer.files[0].name, "small.md");
+    }
+
+    /// Review #18: a cp1251 document opens fine, so it has to be searchable.
+    #[test]
+    fn legacy_encodings_are_searched_as_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let (bytes, _, _) = encoding_rs::WINDOWS_1251.encode("привет мир\r\nвторая строка\r\n");
+        fs::write(dir.path().join("cp1251.md"), &bytes[..]).unwrap();
+        // UTF-16 with a BOM, and CR-only endings, which `lines()` used to miss.
+        let mut utf16: Vec<u8> = vec![0xFF, 0xFE];
+        for unit in "первая\rвторая мир\r".encode_utf16() {
+            utf16.extend_from_slice(&unit.to_le_bytes());
+        }
+        fs::write(dir.path().join("utf16.md"), &utf16).unwrap();
+
+        let answer = search(&request(dir.path(), "мир")).unwrap();
+        let hit: Vec<&str> = answer.files.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(hit, vec!["cp1251.md", "utf16.md"]);
+        assert_eq!(answer.files[0].matches[0].line, 1);
+        assert_eq!(answer.files[0].matches[0].ranges, vec![[7, 10]]);
+        // CR alone still ends a line, so this is line 2 and not line 1.
+        assert_eq!(answer.files[1].matches[0].line, 2);
+    }
+
+    /// Review #19: the window follows the match, and finding it is linear.
+    #[test]
+    fn a_very_long_line_shows_the_match_and_stays_quick() {
+        let dir = tempfile::tempdir().unwrap();
+        let line = format!("{}needle tail", "x".repeat(100 * 1024));
+        fs::write(dir.path().join("long.md"), &line).unwrap();
+
+        let started = std::time::Instant::now();
+        let answer = search(&request(dir.path(), "needle")).unwrap();
+        let elapsed = started.elapsed();
+
+        let found = &answer.files[0].matches[0];
+        assert!(found.text.contains("needle"), "the match must be shown");
+        assert!(found.text.starts_with('…'), "the head is cut, not the match");
+        let [from, to] = found.ranges[0];
+        let shown: String = found.text.chars().skip(from).take(to - from).collect();
+        assert_eq!(shown, "needle");
+        assert!(elapsed.as_millis() < 50, "took {elapsed:?}");
+    }
+
+    /// Review #19: the cap is the cap, including on the file that crosses it.
+    #[test]
+    fn the_global_line_cap_is_not_overshot() {
+        let dir = tempfile::tempdir().unwrap();
+        // Two files of 400 matching lines each, well inside the per-file cap.
+        for name in ["a.md", "b.md", "c.md", "d.md", "e.md", "f.md"] {
+            fs::write(dir.path().join(name), "needle\n".repeat(400)).unwrap();
+        }
+        let answer = search(&request(dir.path(), "needle")).unwrap();
+        let lines: usize = answer.files.iter().map(|f| f.matches.len()).sum();
+        assert_eq!(lines, 2000);
+        assert!(answer.truncated);
     }
 
     #[test]

@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "pack": "powershell -ExecutionPolicy Bypass -File scripts/pack.ps1"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -25,6 +26,7 @@
     "@lezer/highlight": "^1.2.3",
     "@lezer/markdown": "^1.7.2",
     "@radix-ui/react-context-menu": "^2.3.7",
+    "@radix-ui/react-menubar": "^1.1.24",
     "@tauri-apps/api": "2.11.1",
     "@tauri-apps/plugin-dialog": "2.7.3",
     "@tauri-apps/plugin-fs": "2.5.2",

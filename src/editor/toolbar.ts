@@ -15,6 +15,8 @@ import {
 
 /** Mockup 1d: the strip sits 38px above the top of the selection. */
 const OFFSET = 38;
+/** No room above (the top visible line): it goes under the selection instead. */
+const BELOW = 8;
 
 interface Button {
   label: string;
@@ -46,6 +48,7 @@ class FormatToolbar {
     view.dom.addEventListener("mouseup", this.onMouseUp);
     view.scrollDOM.addEventListener("scroll", this.hide);
     view.dom.addEventListener("focusout", this.onFocusOut);
+    window.addEventListener("resize", this.hide);
   }
 
   update(update: ViewUpdate): void {
@@ -58,6 +61,7 @@ class FormatToolbar {
     this.view.dom.removeEventListener("mouseup", this.onMouseUp);
     this.view.scrollDOM.removeEventListener("scroll", this.hide);
     this.view.dom.removeEventListener("focusout", this.onFocusOut);
+    window.removeEventListener("resize", this.hide);
     this.hide();
   }
 
@@ -131,8 +135,12 @@ class FormatToolbar {
       Math.max(0, coords.left - host.left),
       Math.max(0, host.width - dom.offsetWidth),
     );
+    // On the top visible line there is nothing above but the mode bar, so the
+    // panel goes under the selection instead of over it.
+    const above = coords.top - host.top - OFFSET;
+    const top = above >= 0 ? above : coords.bottom - host.top + BELOW;
     dom.style.left = `${Math.round(left)}px`;
-    dom.style.top = `${Math.round(coords.top - host.top - OFFSET)}px`;
+    dom.style.top = `${Math.round(top)}px`;
   }
 }
 

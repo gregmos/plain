@@ -6,6 +6,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { mkdir } from "@tauri-apps/plugin-fs";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { flushActiveEditor } from "../editor";
 import { isDirty } from "../editor/buffers";
 import { emitRerender } from "../read/events";
 import { inTauri } from "./env";
@@ -33,7 +34,11 @@ export async function openPaths(paths: string[]): Promise<boolean> {
       continue;
     }
     try {
-      openDoc(makeDoc({ id: pathKey(path), path, ...docFields(await readFile(path)) }));
+      const fields = docFields(await readFile(path));
+      openDoc(makeDoc({ id: pathKey(path), path, ...fields }));
+      // Bytes the encoding could not read are showing as `�`; saying so
+      // now is what makes the question at save time make sense (spec §8).
+      if (fields.decodeErrors) useStore.getState().setNote("decoded with errors");
       opened = true;
     } catch (error) {
       showBanner({
@@ -61,10 +66,12 @@ export function newDoc(): void {
     store.setTreeDraft({ parent: store.libraryPath, kind: "file" });
     return;
   }
+  // Unique across runs as well as within one: a restored draft keeps the id
+  // it was written under, and two sessions must not collide on it (spec §8).
   untitled += 1;
   store.openDoc(
     makeDoc({
-      id: `untitled-${untitled}`,
+      id: `untitled-${Date.now().toString(36)}-${untitled}`,
       path: null,
       text: "",
       mode: "edit",
@@ -75,6 +82,9 @@ export function newDoc(): void {
 
 /** `F5`: build the document again, and re-read it when it is clean. */
 export function refresh(): void {
+  // Typing and hitting F5 with no pause in between must not read as clean:
+  // the store lags the editor until its idle callback (spec §8).
+  flushActiveEditor();
   const doc = activeDoc(useStore.getState());
   if (!doc?.path) {
     emitRerender();
@@ -85,7 +95,7 @@ export function refresh(): void {
     emitRerender();
     return;
   }
-  void reloadFromDisk(doc.id, "").then(emitRerender);
+  void reloadFromDisk(doc.id, { note: "" }).then(emitRerender);
 }
 
 /**
@@ -247,20 +257,46 @@ export async function openSettingsFile(): Promise<void> {
   }
 }
 
-/** `help → about` (spec §13): the version and the two links. */
-export function showAbout(): void {
+/** Whether `.md` still offers our ProgID in `open with` (spec §13). */
+async function isRegistered(): Promise<boolean> {
+  if (!inTauri) return false;
+  return invoke<boolean>("file_association_registered").catch(() => false);
+}
+
+/**
+ * `help → about` (spec §13): the version, the association and the two links.
+ * A release registers itself at every start, so the entry here only has to
+ * offer the way back out.
+ */
+export async function showAbout(): Promise<void> {
   const store = useStore.getState();
   const go = async (url: string) => {
     if (!inTauri) return;
     const { openUrl } = await import("@tauri-apps/plugin-opener");
     await openUrl(url).catch(() => store.setMessage("couldn't open the link"));
   };
+  const toggle = async (registered: boolean) => {
+    const command = registered ? "unregister_file_association" : "register_file_association";
+    try {
+      await invoke(command);
+      store.setMessage(registered ? "unregistered" : "registered for .md");
+    } catch (error) {
+      store.setMessage(`couldn't change the association — ${String(error)}`);
+    }
+    await showAbout();
+  };
+
+  const registered = await isRegistered();
   store.setDialog({
-    title: "plain 0.1",
-    lines: ["a markdown reader and editor that leaves your files alone."],
+    title: "plain 0.1.0",
+    lines: [
+      "a markdown reader and editor that leaves your files alone.",
+      registered ? "registered for .md · .markdown" : "not registered for .md",
+    ],
     actions: [
       { label: "default apps", run: () => void go("ms-settings:defaultapps") },
-      { label: "github", run: () => void go("https://github.com/") },
+      { label: "github", run: () => void go("https://github.com/gregmos/plain") },
+      { label: registered ? "unregister" : "register", run: () => void toggle(registered) },
       { label: "close", run: () => store.setDialog(null) },
     ],
     cancel: () => store.setDialog(null),

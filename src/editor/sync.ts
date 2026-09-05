@@ -7,7 +7,22 @@ import { EditorView } from "@codemirror/view";
 import type { EditorState } from "@codemirror/state";
 import type { Doc } from "../app/store";
 import { useStore } from "../app/store";
+import { headingsOf } from "../read/headings";
 import { isDirty } from "./buffers";
+
+/**
+ * Re-reading the headings means parsing the whole document, so it happens
+ * while the outline is on screen — the only thing that shows them — and on
+ * documents small enough for it not to matter either way (review #8).
+ */
+const CHEAP_ENOUGH = 200_000;
+
+function wantsHeadings(doc: Doc, text: string): boolean {
+  if (doc.large) return false;
+  const state = useStore.getState();
+  const outline = !state.railCollapsed && state.railView === "outline";
+  return outline || text.length <= CHEAP_ENOUGH;
+}
 
 export function caretOf(state: EditorState): { line: number; col: number } {
   const head = state.selection.main.head;
@@ -45,7 +60,12 @@ export function flushText(view: EditorView, id: string): void {
   const text = view.state.doc.toString();
   const caret = caretOf(view.state);
   const patch: Partial<Omit<Doc, "id">> = {};
-  if (current.text !== text) patch.text = text;
+  if (current.text !== text) {
+    patch.text = text;
+    // Read stamps the headings when it renders; in edit nothing else does,
+    // and the outline would keep pointing at the lines they used to be on.
+    if (wantsHeadings(current, text)) patch.headings = headingsOf(text);
+  }
   // The authority on `dirty`: the frame below only ever guesses `true`, and
   // an undo or a reload from disk has to be able to take it back.
   const dirty = isDirty(id, text);

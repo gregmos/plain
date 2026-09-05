@@ -73,6 +73,10 @@ pub struct FileInfo {
     mtime_ms: f64,
     size: u64,
     read_only: bool,
+    /// Bytes that the chosen encoding could not decode became replacement
+    /// characters. Saving over the original would make that permanent, so
+    /// the front end asks first (spec §8).
+    decode_errors: bool,
 }
 
 /// A byte-order mark and how many bytes of it to skip.
@@ -110,6 +114,17 @@ fn detect(bytes: &[u8], forced: Option<&str>) -> (&'static Encoding, usize) {
     let mut detector = EncodingDetector::new(Iso2022JpDetection::Deny);
     detector.feed(bytes, true);
     (detector.guess(None, Utf8Detection::Deny), 0)
+}
+
+/// Bytes to text through exactly the detection an open uses (spec §8), for
+/// callers that want nothing else from the file — the folder search, which
+/// would otherwise never find a word in a cp1251 or UTF-16 document.
+pub fn decode_bytes(bytes: &[u8]) -> String {
+    let (encoding, skip) = detect(bytes, None);
+    encoding
+        .decode_without_bom_handling(&bytes[skip.min(bytes.len())..])
+        .0
+        .into_owned()
 }
 
 /// `(what the file has, what a save writes back)`.
@@ -166,9 +181,10 @@ pub fn read_info(path: &Path, forced: Option<&str>) -> FsResult<FileInfo> {
     let bytes = fs::read(path)?;
     let meta = fs::metadata(path)?;
     let (encoding, skip) = detect(&bytes, forced);
-    let (text, _) = encoding.decode_without_bom_handling(&bytes[skip..]);
+    let (text, decode_errors) = encoding.decode_without_bom_handling(&bytes[skip..]);
     let (eol, dominant) = line_endings(&text);
     Ok(FileInfo {
+        decode_errors,
         final_newline: text.ends_with('\n') || text.ends_with('\r'),
         eol: eol.into(),
         dominant_eol: dominant.into(),
@@ -187,26 +203,38 @@ pub fn read_file(path: String, encoding: Option<String>) -> FsResult<FileInfo> {
     read_info(Path::new(&path), encoding.as_deref())
 }
 
+/// `None` means the file is not there. Access denied or a network hiccup is
+/// an error, not a deletion — the front end must not say `deleted on disk`
+/// because a read failed (spec §8).
 #[tauri::command]
-pub fn hash_file(path: String) -> Option<String> {
-    fs::read(path)
-        .ok()
-        .map(|bytes| blake3::hash(&bytes).to_hex().to_string())
+pub fn hash_file(path: String) -> FsResult<Option<String>> {
+    match fs::read(&path) {
+        Ok(bytes) => Ok(Some(blake3::hash(&bytes).to_hex().to_string())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(FsError::io(error.to_string())),
+    }
 }
 
 /* --------------------------------------------------------------- writing */
 
 /// encoding_rs turns the two UTF-16 encodings into UTF-8 on the way out, so
-/// they are done by hand.
-fn encode(text: &str, label: &str) -> Vec<u8> {
+/// they are done by hand. A legacy encoding that cannot hold the text is a
+/// refusal: writing `&#1234;` in its place would corrupt the file (spec §8).
+fn encode(text: &str, label: &str) -> FsResult<Vec<u8>> {
     match label {
-        "utf-16le" => text.encode_utf16().flat_map(u16::to_le_bytes).collect(),
-        "utf-16be" => text.encode_utf16().flat_map(u16::to_be_bytes).collect(),
-        _ => Encoding::for_label(label.as_bytes())
-            .unwrap_or(UTF_8)
-            .encode(text)
-            .0
-            .into_owned(),
+        "utf-16le" => Ok(text.encode_utf16().flat_map(u16::to_le_bytes).collect()),
+        "utf-16be" => Ok(text.encode_utf16().flat_map(u16::to_be_bytes).collect()),
+        _ => {
+            let encoding = Encoding::for_label(label.as_bytes()).unwrap_or(UTF_8);
+            let (bytes, _, had_errors) = encoding.encode(text);
+            if had_errors {
+                return Err(FsError::io(format!(
+                    "can't encode in {} — convert to utf-8",
+                    encoding.name().to_ascii_lowercase()
+                )));
+            }
+            Ok(bytes.into_owned())
+        }
     }
 }
 
@@ -240,42 +268,65 @@ fn wide(path: &Path) -> Vec<u16> {
     path.as_os_str().encode_wide().chain(Some(0)).collect()
 }
 
-/// temp file in the same folder -> FlushFileBuffers -> ReplaceFileW, which
-/// keeps the creation time and the attributes of the original (spec §8).
-fn replace_with(target: &Path, bytes: &[u8]) -> FsResult<()> {
-    let dir = target
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .ok_or_else(|| FsError::io("no parent folder"))?;
+/// Writes the bytes into a temp file next to the target and flushes them to
+/// the platter (`sync_all` is FlushFileBuffers). Done *before* the last hash
+/// check so that the gap between checking the file and replacing it is as
+/// short as it can be (spec §8).
+fn stage(dir: &Path, bytes: &[u8]) -> FsResult<PathBuf> {
     fs::create_dir_all(dir)?;
-
     let mut temp = tempfile::NamedTempFile::new_in(dir)?;
     temp.write_all(bytes)?;
     temp.flush()?;
     temp.as_file().sync_all()?;
+    let (file, path) = temp.keep().map_err(|error| FsError::io(error.to_string()))?;
+    drop(file);
+    Ok(path)
+}
 
+/// `ReplaceFileW` can fail after it has already moved the original aside
+/// (ERROR_UNABLE_TO_MOVE_REPLACEMENT). If the target is gone, the staged file
+/// is the only copy of the text left and it goes back under the target name;
+/// only when the original is still there is the staged file litter.
+fn recover_replacement(target: &Path, temp: &Path) -> std::io::Result<()> {
     if target.exists() {
-        let (file, temp_path) = temp.keep().map_err(|error| FsError::io(error.to_string()))?;
-        drop(file);
-        let replaced = wide(target);
-        let replacement = wide(&temp_path);
-        let outcome = unsafe {
-            ReplaceFileW(
-                PCWSTR(replaced.as_ptr()),
-                PCWSTR(replacement.as_ptr()),
-                PCWSTR::null(),
-                REPLACEFILE_IGNORE_MERGE_ERRORS,
-                None,
-                None,
-            )
+        return match fs::remove_file(temp) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            other => other,
         };
-        if let Err(error) = outcome {
-            let _ = fs::remove_file(&temp_path);
-            return Err(FsError::io(error.message()));
-        }
-    } else {
-        temp.persist(target)
-            .map_err(|error| FsError::io(error.error.to_string()))?;
+    }
+    if temp.exists() {
+        return fs::rename(temp, target);
+    }
+    Ok(())
+}
+
+/// ReplaceFileW keeps the creation time and the attributes of the original;
+/// a file that is not there yet is just renamed into place (spec §8).
+fn commit(target: &Path, temp: &Path, existed: bool) -> FsResult<()> {
+    if !existed {
+        return fs::rename(temp, target).map_err(FsError::from);
+    }
+    let replaced = wide(target);
+    let replacement = wide(temp);
+    let outcome = unsafe {
+        ReplaceFileW(
+            PCWSTR(replaced.as_ptr()),
+            PCWSTR(replacement.as_ptr()),
+            PCWSTR::null(),
+            REPLACEFILE_IGNORE_MERGE_ERRORS,
+            None,
+            None,
+        )
+    };
+    if let Err(error) = outcome {
+        let message = error.message();
+        return Err(match recover_replacement(target, temp) {
+            Ok(()) => FsError::io(message),
+            Err(problem) => FsError::io(format!(
+                "{message}; the new text is in {} — {problem}",
+                temp.display()
+            )),
+        });
     }
     Ok(())
 }
@@ -316,20 +367,40 @@ pub fn write_checked(request: &WriteRequest) -> FsResult<String> {
     bytes.extend_from_slice(&encode(
         &apply_eol(&request.text, &request.eol),
         &request.encoding,
-    ));
+    )?);
 
-    if path.exists() {
-        if let Some(base) = request.base_hash.as_deref() {
-            let current = blake3::hash(&fs::read(&path)?).to_hex().to_string();
-            if current != base {
-                return Err(FsError::conflict());
-            }
+    let dir = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .ok_or_else(|| FsError::io("no parent folder"))?;
+    let temp = stage(dir, &bytes)?;
+
+    let existed = path.exists();
+    let verdict = if existed {
+        match request.base_hash.as_deref() {
+            Some(base) => fs::read(&path)
+                .map_err(FsError::from)
+                .and_then(|current| {
+                    if blake3::hash(&current).to_hex().to_string() == base {
+                        Ok(())
+                    } else {
+                        Err(FsError::conflict())
+                    }
+                }),
+            None => Ok(()),
         }
     } else if request.base_hash.is_some() && !request.allow_missing {
-        return Err(FsError::missing(&path));
+        Err(FsError::missing(&path))
+    } else {
+        Ok(())
+    };
+
+    if let Err(error) = verdict {
+        let _ = fs::remove_file(&temp);
+        return Err(error);
     }
 
-    replace_with(&path, &bytes)?;
+    commit(&path, &temp, existed)?;
     Ok(blake3::hash(&bytes).to_hex().to_string())
 }
 
@@ -643,6 +714,98 @@ mod tests {
 
         assert_eq!(fs::read(&file).unwrap(), russian.as_bytes());
         assert_eq!(read_info(&file, None).unwrap().text, russian);
+    }
+
+    /// The dangerous half of a failed ReplaceFileW: the original is already
+    /// gone and the staged file holds the only copy of the text.
+    #[test]
+    fn a_failed_replace_puts_the_staged_text_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("note.md");
+        let temp = dir.path().join(".tmp1234");
+        fs::write(&temp, b"the only copy\n").unwrap();
+
+        recover_replacement(&target, &temp).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"the only copy\n");
+        assert!(!temp.exists());
+    }
+
+    #[test]
+    fn a_failed_replace_that_left_the_original_drops_the_staged_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("note.md");
+        let temp = dir.path().join(".tmp1234");
+        fs::write(&target, b"still here\n").unwrap();
+        fs::write(&temp, b"never landed\n").unwrap();
+
+        recover_replacement(&target, &temp).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"still here\n");
+        assert!(!temp.exists());
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn a_conflict_leaves_no_temp_file_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("note.md");
+        fs::write(&file, b"on disk\n").unwrap();
+
+        let mut ask = request(&file, "mine\n");
+        ask.base_hash = Some(blake3::hash(b"stale").to_hex().to_string());
+        assert_eq!(write_checked(&ask).unwrap_err().kind, "conflict");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    /// `&#1234;` in place of a character the encoding cannot hold would be
+    /// silent corruption, so the write is refused instead (spec §8).
+    #[test]
+    fn refuses_text_a_legacy_encoding_cannot_hold() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("cp1251.md");
+        fs::write(&file, b"x").unwrap();
+
+        let mut ask = request(&file, "японский 日本語\n");
+        ask.encoding = "windows-1251".into();
+        let error = write_checked(&ask).unwrap_err();
+
+        assert_eq!(error.kind, "io");
+        assert!(error.message.contains("convert to utf-8"), "{}", error.message);
+        assert_eq!(fs::read(&file).unwrap(), b"x");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn reports_bytes_the_encoding_could_not_decode() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let clean = dir.path().join("clean.md");
+        fs::write(&clean, "привет\n").unwrap();
+        assert!(!read_info(&clean, None).unwrap().decode_errors);
+
+        // Valid cp1251, nonsense as UTF-8 — which is what `reopen as utf-8`
+        // on a legacy file does.
+        let broken = dir.path().join("broken.md");
+        let (bytes, _, _) = WINDOWS_1251.encode("привет\n");
+        fs::write(&broken, &bytes).unwrap();
+        let info = read_info(&broken, Some("utf-8")).unwrap();
+        assert!(info.decode_errors);
+        assert!(info.text.contains('\u{FFFD}'));
+    }
+
+    #[test]
+    fn only_a_missing_file_hashes_to_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("note.md");
+        assert_eq!(hash_file(file.to_string_lossy().into_owned()).unwrap(), None);
+
+        fs::write(&file, b"x").unwrap();
+        assert_eq!(
+            hash_file(file.to_string_lossy().into_owned()).unwrap(),
+            Some(blake3::hash(b"x").to_hex().to_string())
+        );
+
+        // A folder is not a missing file: it must not read as a deletion.
+        assert!(hash_file(dir.path().to_string_lossy().into_owned()).is_err());
     }
 
     #[test]

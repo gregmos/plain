@@ -132,8 +132,11 @@ export function FileTree() {
   const activate = (node: TreeNode) => {
     const store = useStore.getState();
     store.setTreeSelected(node.path);
-    if (node.dir) store.toggleCollapsed(node.rel);
-    else void openPaths([node.path]);
+    // An unreadable folder has nothing to unfold, and pretending otherwise
+    // would show it as empty (review #20).
+    if (node.dir) {
+      if (!node.unreadable) store.toggleCollapsed(node.rel);
+    } else void openPaths([node.path]);
   };
 
   /** ↑/↓ move, `Enter` opens, `F2` renames, `Delete` asks (spec §12). */
@@ -234,6 +237,7 @@ export function FileTree() {
             const classes = [
               "tree-row",
               node.dir ? "is-folder" : "",
+              node.unreadable ? "is-unreadable" : "",
               doc && doc.id === activeId ? "is-active" : "",
               selected === node.path ? "is-selected" : "",
             ]
@@ -247,7 +251,13 @@ export function FileTree() {
                     className={classes}
                     style={indent(depth)}
                     // Only when it says more than the row already does.
-                    title={node.rel === node.name ? undefined : node.rel}
+                    title={
+                      node.unreadable
+                        ? `${node.rel} — can't be read`
+                        : node.rel === node.name
+                          ? undefined
+                          : node.rel
+                    }
                     data-path={node.path}
                     onClick={() => activate(node)}
                     onContextMenu={(event) => {
@@ -257,7 +267,9 @@ export function FileTree() {
                       useStore.getState().setTreeSelected(node.path);
                     }}
                   >
-                    <span className="tree-name">{folded ? `${node.name} …` : node.name}</span>
+                    <span className="tree-name">
+                      {node.unreadable ? `${node.name} ?` : folded ? `${node.name} …` : node.name}
+                    </span>
                     {doc?.dirty && <span className="dot">●</span>}
                   </button>
                 </ContextMenu.Trigger>

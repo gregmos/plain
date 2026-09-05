@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { matchesChord } from "../app/chords";
 import { FIND_STEP } from "./events";
 import { clearPaint, findRanges, paint, scrollRangeIntoView } from "./find";
@@ -25,12 +25,15 @@ export function FindBar({ container, revision, focusToken, onClose }: Props) {
     input.current?.select();
   }, [focusToken]);
 
-  const ranges = useMemo(
-    () => (container ? findRanges(container, query, caseSensitive) : []),
-    // `revision` is the point: the same query over freshly rendered html.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [container, query, caseSensitive, revision],
-  );
+  // Searching happens in an effect, never while rendering: the parent writes
+  // the html and runs its DOM pass in effects of its own, and a search made
+  // during render would hand back ranges into nodes that are already gone
+  // (review #11). `revision` is what says the DOM has settled.
+  const [ranges, setRanges] = useState<Range[]>([]);
+
+  useEffect(() => {
+    setRanges(container && query !== "" ? findRanges(container, query, caseSensitive) : []);
+  }, [container, query, caseSensitive, revision]);
 
   const at = ranges.length === 0 ? 0 : ((index % ranges.length) + ranges.length) % ranges.length;
 

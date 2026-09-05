@@ -3,6 +3,7 @@ import { buffer, clearBuffers, keepBuffer, markSaved } from "../editor/buffers";
 import {
   DEBOUNCE_MS,
   MAX_WAIT_MS,
+  createDraftQueue,
   createSchedule,
   draftName,
   flushDrafts,
@@ -57,6 +58,62 @@ describe("the draft schedule", () => {
       vi.advanceTimersByTime(100);
     }
     expect(run).toHaveBeenCalledTimes(2);
+  });
+});
+
+// §8: the draft file is the only copy of unsaved text, so the order of the
+// writes and deletes that touch it is not allowed to drift.
+describe("the draft file queue", () => {
+  it("keeps writes and deletes of one document in order", async () => {
+    const queue = createDraftQueue();
+    const log: string[] = [];
+    const step = (name: string) => async () => {
+      await Promise.resolve();
+      log.push(name);
+    };
+
+    // write -> delete -> write: the delete stays between them, and the last
+    // write is the one the user asked for after it.
+    await queue.write("a", step("w1"));
+    await queue.drop("a", step("d"));
+    await queue.write("a", step("w2"));
+    await queue.settled();
+
+    expect(log).toEqual(["w1", "d", "w2"]);
+  });
+
+  // A write that was queued before `don't save` must not bring the text back.
+  it("cancels writes that a delete has overtaken", async () => {
+    const queue = createDraftQueue();
+    const log: string[] = [];
+    const step = (name: string) => async () => {
+      await Promise.resolve();
+      log.push(name);
+    };
+
+    // Held up so the delete lands while the first write is still waiting.
+    let release = () => undefined as void;
+    void queue.write("a", () => new Promise<void>((resolve) => (release = () => resolve())));
+    void queue.write("a", step("stale"));
+    void queue.drop("a", step("delete"));
+    void queue.write("a", step("fresh"));
+    release();
+    await queue.settled();
+
+    expect(log).toEqual(["delete", "fresh"]);
+  });
+
+  it("keeps documents out of each other's way", async () => {
+    const queue = createDraftQueue();
+    const log: string[] = [];
+    void queue.drop("a", async () => {
+      log.push("a");
+    });
+    void queue.write("b", async () => {
+      log.push("b");
+    });
+    await queue.settled();
+    expect(log.sort()).toEqual(["a", "b"]);
   });
 });
 

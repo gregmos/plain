@@ -2,9 +2,10 @@
 // the hash a buffer came from, so the whole decision lives here.
 
 import { listen } from "@tauri-apps/api/event";
+import { flushActiveEditor } from "../editor";
 import { isDirty } from "../editor/buffers";
 import { inTauri } from "./env";
-import { hashFile, watchPaths } from "./fs";
+import { fsError, hashFile, watchPaths } from "./fs";
 import { pathKey } from "./paths";
 import { reloadFromDisk, showConflict } from "./save";
 import { useStore } from "./store";
@@ -24,17 +25,32 @@ export async function checkDoc(id: string): Promise<void> {
   checking.add(id);
   try {
     const store = useStore.getState();
-    const doc = store.docs.find((d) => d.id === id);
-    if (!doc?.path) return;
+    const before = store.docs.find((d) => d.id === id);
+    if (!before?.path) return;
 
-    const hash = await hashFile(doc.path);
+    let hash: string | null;
+    try {
+      hash = await hashFile(before.path);
+    } catch (error) {
+      // Access denied or a network hiccup is not a deletion (spec §8).
+      store.setMessage(`couldn't check ${before.title} — ${fsError(error).message}`);
+      return;
+    }
+
+    // The document may have moved on while the hash was being read.
+    const doc = useStore.getState().docs.find((d) => d.id === id);
+    if (!doc?.path) return;
     if (hash === null) {
       if (!doc.deleted) store.updateDoc(id, { deleted: true });
       return;
     }
     if (doc.deleted) store.updateDoc(id, { deleted: false });
     if (hash === doc.baseHash) return;
-    if (isDirty(id, doc.text)) {
+    // The live buffer decides, not the store's copy of it; and reloading
+    // checks again right before it swaps the text.
+    flushActiveEditor();
+    const live = useStore.getState().docs.find((d) => d.id === id);
+    if (live && isDirty(id, live.text)) {
       showConflict(id);
       return;
     }

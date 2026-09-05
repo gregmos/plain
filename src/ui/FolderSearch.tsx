@@ -93,6 +93,9 @@ export function FolderSearch() {
     if (answer.skippedLarge > 0) {
       parts.push(`${answer.skippedLarge} files over 2 mb skipped`);
     }
+    if (answer.skippedUnreadable > 0) {
+      parts.push(`${answer.skippedUnreadable} files could not be read`);
+    }
     return parts.join(" · ");
   };
 

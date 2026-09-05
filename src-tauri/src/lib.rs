@@ -1,3 +1,4 @@
+mod assoc;
 mod fs;
 mod search;
 mod tree;
@@ -175,6 +176,10 @@ pub fn run() {
         .manage(PendingFolders::default())
         .manage(watch::Watcher::default())
         .setup(|app| {
+            // Idempotent, and only for a real build: a `tauri dev` run would
+            // otherwise point every `.md` at target/debug (spec §13).
+            #[cfg(not(debug_assertions))]
+            assoc::register_quietly();
             let cwd = std::env::current_dir().unwrap_or_default();
             let argv: Vec<String> = std::env::args().collect();
             queue_paths(app.handle(), path_args(argv.clone(), &cwd));
@@ -185,6 +190,9 @@ pub fn run() {
             take_pending_paths,
             take_pending_folders,
             allow_asset_dir,
+            assoc::register_file_association,
+            assoc::unregister_file_association,
+            assoc::file_association_registered,
             fs::read_file,
             fs::write_file_atomic,
             fs::write_text_atomic,
@@ -195,6 +203,7 @@ pub fn run() {
             tree::read_tree,
             tree::path_kind,
             tree::rename_path,
+            tree::create_file,
             tree::create_dir,
             search::search_folder
         ])

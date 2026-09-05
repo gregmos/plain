@@ -1,11 +1,12 @@
 // Ctrl+S and everything around it (spec §8). The rules, in order:
 // a clean document is never written; the snapshot that goes to disk is taken
-// before the write and compared to the buffer after it; the base hash always
-// follows a successful write; nothing the user did not touch changes.
+// from the live editor inside the operation and compared to the buffer after
+// it; the base hash always follows a successful write; a document only moves
+// to a new file once the bytes are there; nothing the user did not touch
+// changes.
 
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { flushActiveEditor, isDirty, markSaved, renameBuffer, replaceText } from "../editor";
-import { dropBuffer } from "../editor/buffers";
 import { dropDraft, writeDraft } from "./drafts";
 import { inTauri } from "./env";
 import { encodingLabel, isLegacy, normalizeEol, serialize } from "./eol";
@@ -16,8 +17,9 @@ import { activeDoc, useStore, type Doc } from "./store";
 /* -------------------------------------------------------------- plumbing */
 
 /**
- * Writes of one document never overlap: a second Ctrl+S waits for the first
- * (spec §8). Rust serializes writes too; this keeps the store consistent.
+ * Writes of one document never overlap: a second Ctrl+S waits for the first,
+ * and Save As joins the same line (spec §8). Rust serializes writes too; this
+ * is what keeps the store consistent.
  */
 const queues = new Map<string, Promise<unknown>>();
 
@@ -35,6 +37,16 @@ function doc(id: string): Doc | undefined {
   return useStore.getState().docs.find((d) => d.id === id);
 }
 
+/**
+ * The document as the editor has it this instant. Every decision that can
+ * lose text — is it dirty, what exactly do we write — is taken from this and
+ * never from a `Doc` that was read before an `await` (spec §8).
+ */
+function liveDoc(id: string): Doc | undefined {
+  flushActiveEditor();
+  return doc(id);
+}
+
 /* ------------------------------------------------------------- the write */
 
 /**
@@ -48,8 +60,7 @@ function settle(id: string, snapshot: string, hash: string): void {
   markSaved(id, snapshot);
   // Anything typed while the write was in flight counts against the snapshot,
   // so the editor is read now rather than on its next idle callback.
-  flushActiveEditor();
-  const current = doc(id);
+  const current = liveDoc(id);
   if (!current) return;
   const dirty = normalizeEol(current.text) !== snapshot;
   store.updateDoc(id, { savedText: snapshot, baseHash: hash, dirty, deleted: false });
@@ -63,10 +74,15 @@ interface Target {
   path: string;
   baseHash: string | null;
   allowMissing?: boolean;
+  /**
+   * Save As: moves the document onto its new file. Runs only after the bytes
+   * are on disk, and returns the id the document now answers to.
+   */
+  adopt?: () => string;
 }
 
 async function write(id: string, target: Target): Promise<boolean> {
-  const current = doc(id);
+  const current = liveDoc(id);
   if (!current) return false;
   const snapshot = normalizeEol(current.text);
 
@@ -80,10 +96,11 @@ async function write(id: string, target: Target): Promise<boolean> {
       baseHash: target.baseHash,
       allowMissing: target.allowMissing ?? false,
     });
-    settle(id, snapshot, hash);
+    const settled = target.adopt ? target.adopt() : id;
+    settle(settled, snapshot, hash);
     // One of the two allowed transformations, and it says so (spec §1.3).
     if (current.mixedEol) {
-      useStore.getState().updateDoc(id, { mixedEol: false });
+      useStore.getState().updateDoc(settled, { mixedEol: false });
       useStore.getState().setMessage(`line endings normalized to ${current.eol}`);
     }
     return true;
@@ -114,25 +131,28 @@ async function write(id: string, target: Target): Promise<boolean> {
 /* ------------------------------------------------------------- commands */
 
 export function saveActive(): Promise<boolean> {
-  flushActiveEditor();
   const current = activeDoc(useStore.getState());
   return current ? save(current.id) : Promise.resolve(true);
 }
 
 /** `Ctrl+S`. Resolves to false when the document is still unsaved. */
 export function save(id: string): Promise<boolean> {
-  flushActiveEditor();
   return queued(id, async () => {
-    const current = doc(id);
+    const current = liveDoc(id);
     if (!current) return true;
     // A buffer that was never on disk goes through the Save As dialog (§6).
-    if (!current.path) return saveAs(id);
+    // Called directly: it is already inside this document's queue.
+    if (!current.path) return saveAsNow(id);
     if (current.readOnly) {
       useStore.getState().setMessage("read-only — use save as…");
       return false;
     }
     // §8: a clean document is not written at all, and says nothing.
     if (!isDirty(id, current.text)) return true;
+    if (current.decodeErrors) {
+      askAboutDecodeErrors(current);
+      return false;
+    }
     if (isLegacy(current.encoding)) {
       askAboutEncoding(current);
       return false;
@@ -150,15 +170,19 @@ export function save(id: string): Promise<boolean> {
 }
 
 /** `Ctrl+Shift+S`, and the way out of every conflict. */
-export async function saveAs(id: string): Promise<boolean> {
-  if (!inTauri) return false;
-  flushActiveEditor();
-  const store = useStore.getState();
-  const current = doc(id);
-  if (!current) return false;
+export function saveAs(id: string): Promise<boolean> {
+  return queued(id, () => saveAsNow(id));
+}
 
-  const folder = current.path ? dirname(current.path) : store.libraryPath;
-  const suggestion = current.path ?? (folder ? `${folder}\\${current.title}.md` : `${current.title}.md`);
+async function saveAsNow(id: string): Promise<boolean> {
+  if (!inTauri) return false;
+  const store = useStore.getState();
+  const opening = doc(id);
+  if (!opening) return false;
+
+  const folder = opening.path ? dirname(opening.path) : store.libraryPath;
+  const suggestion =
+    opening.path ?? (folder ? `${folder}\\${opening.title}.md` : `${opening.title}.md`);
   const extensions = store.settings.library.extensions.map((e) => e.replace(/^\./, ""));
   const picked = await saveDialog({
     defaultPath: suggestion,
@@ -167,28 +191,58 @@ export async function saveAs(id: string): Promise<boolean> {
   if (typeof picked !== "string") return false;
 
   const nextId = pathKey(picked);
+  // Writing over a file that is open would leave that document's buffer and
+  // its draft pointing at bytes it never agreed to (spec §8).
+  const clash = useStore.getState().docs.find((d) => d.id === nextId && d.id !== id);
+  if (clash) {
+    useStore.getState().setMessage(`close ${clash.title} first`);
+    return false;
+  }
+
+  // The snapshot comes from the live buffer, after the dialog, inside the
+  // operation — not from the document as it looked when Save As was asked for.
+  const current = liveDoc(id);
+  if (!current) return false;
+  // A new file is never written in a legacy encoding (spec §8).
+  const legacy = isLegacy(current.encoding);
+  const encoding = legacy ? "utf-8" : current.encoding;
+  const bom = legacy ? false : current.bom;
   const previous = { id: current.id, path: current.path };
 
-  if (nextId !== current.id) {
-    // Saving over a file that is already open would give it two buffers.
-    const clash = useStore.getState().docs.find((d) => d.id === nextId);
-    if (clash) {
-      useStore.getState().closeDoc(clash.id);
-      dropBuffer(clash.id);
+  // Nothing about the document moves until the bytes are on disk; a failed
+  // write leaves it exactly where it was.
+  const adopt = (): string => {
+    if (nextId !== id) {
+      renameBuffer(id, nextId);
+      useStore.getState().renameDoc(id, picked);
     }
-    renameBuffer(current.id, nextId);
-    useStore.getState().renameDoc(current.id, picked);
-  }
+    useStore.getState().updateDoc(nextId, {
+      encoding,
+      bom,
+      readOnly: false,
+      deleted: false,
+      decodeErrors: false,
+    });
+    return nextId;
+  };
 
-  // A new file is never written in a legacy encoding (spec §8).
-  if (isLegacy(current.encoding)) {
-    useStore.getState().updateDoc(nextId, { encoding: "utf-8", bom: false });
+  // `write` reads encoding and bom off the document, so the conversion has to
+  // be visible to it; it is undone again if the write fails.
+  if (legacy) useStore.getState().updateDoc(id, { encoding, bom });
+  const written = await write(id, {
+    path: picked,
+    baseHash: null,
+    allowMissing: true,
+    adopt,
+  });
+  if (!written) {
+    if (legacy) {
+      useStore.getState().updateDoc(id, { encoding: current.encoding, bom: current.bom });
+    }
+    return false;
   }
-  useStore.getState().updateDoc(nextId, { readOnly: false, deleted: false });
-
-  const written = await write(nextId, { path: picked, baseHash: null, allowMissing: true });
-  if (written && previous.id !== nextId) void dropDraft(previous);
-  return written;
+  if (previous.id !== nextId) void dropDraft(previous);
+  return true;
 }
 
 /** cp1251 and friends: the one conversion the app is allowed to do (§1.3). */
@@ -212,6 +266,34 @@ function askAboutEncoding(current: Doc): void {
         run: () => {
           store.setDialog(null);
           void saveAs(current.id);
+        },
+      },
+      { label: "cancel", run: () => store.setDialog(null) },
+    ],
+    cancel: () => store.setDialog(null),
+  });
+}
+
+/**
+ * The file held bytes the encoding could not read, and the buffer shows them
+ * as `�`. Writing that back makes the loss permanent, so it is a choice
+ * the user makes once, out loud (spec §8).
+ */
+function askAboutDecodeErrors(current: Doc): void {
+  const store = useStore.getState();
+  store.setDialog({
+    title: "text had undecodable bytes",
+    lines: [
+      `${current.title} was read as ${encodingLabel(current.encoding)} and parts of it did not fit.`,
+      "saving replaces those bytes for good; `reopen as…` can try another encoding first.",
+    ],
+    actions: [
+      {
+        label: "save anyway",
+        run: () => {
+          store.setDialog(null);
+          useStore.getState().updateDoc(current.id, { decodeErrors: false });
+          void save(current.id);
         },
       },
       { label: "cancel", run: () => store.setDialog(null) },
@@ -244,7 +326,7 @@ export function showConflict(id: string): void {
 
 function askAboutReload(id: string): void {
   const store = useStore.getState();
-  const current = doc(id);
+  const current = liveDoc(id);
   if (!current) return;
   if (!isDirty(id, current.text)) {
     void reloadFromDisk(id);
@@ -258,7 +340,8 @@ function askAboutReload(id: string): void {
         label: "reload",
         run: () => {
           store.setDialog(null);
-          void reloadFromDisk(id);
+          // The user has said the edits may go, so this one does not ask again.
+          void reloadFromDisk(id, { force: true });
         },
       },
       { label: "cancel", run: () => store.setDialog(null) },
@@ -267,17 +350,46 @@ function askAboutReload(id: string): void {
   });
 }
 
-/** Reads the file again and drops it into the buffer as one undo step. */
-export async function reloadFromDisk(id: string, note = "reloaded from disk"): Promise<void> {
-  const current = doc(id);
-  if (!current?.path) return;
+interface ReloadOptions {
+  /** Status note when it happened; "" keeps the status bar quiet. */
+  note?: string;
+  /** The user has agreed to lose the buffer; skip the safety checks. */
+  force?: boolean;
+}
+
+/**
+ * Reads the file again and drops it into the buffer as one undo step. The
+ * "this buffer is clean" decision is taken twice — once on live text before
+ * the read, once right before the swap — because a keystroke in between must
+ * not be overwritten silently (spec §8).
+ */
+export async function reloadFromDisk(id: string, options: ReloadOptions = {}): Promise<void> {
+  const { note = "reloaded from disk", force = false } = options;
+  const before = liveDoc(id);
+  if (!before?.path) return;
+  if (!force && isDirty(id, before.text)) {
+    showConflict(id);
+    return;
+  }
+  const revision = before.revision;
+
   try {
-    const fields = docFields(await readFile(current.path));
+    const info = await readFile(before.path);
+    const after = liveDoc(id);
+    if (!after) return;
+    if (!force && (after.revision !== revision || isDirty(id, after.text))) {
+      // Typed while the file was being read: the buffer wins and the user is
+      // told the file moved instead.
+      showConflict(id);
+      return;
+    }
+    const fields = docFields(info);
     useStore.getState().updateDoc(id, fields);
     replaceText(id, fields.text);
-    void dropDraft(current);
+    void dropDraft(after);
     useStore.getState().dismissBanner("conflict");
-    if (note) useStore.getState().setNote(note);
+    if (fields.decodeErrors) useStore.getState().setNote("decoded with errors");
+    else if (note) useStore.getState().setNote(note);
   } catch (error) {
     useStore.getState().setMessage(`couldn't reload — ${fsError(error).message}`);
   }
@@ -288,19 +400,37 @@ export function reopenAs(encoding: string): void {
   const store = useStore.getState();
   const current = activeDoc(store);
   if (!current?.path) return;
+  const id = current.id;
+  const path = current.path;
 
   const run = async () => {
+    const before = liveDoc(id);
+    if (!before) return;
+    const revision = before.revision;
     try {
-      const fields = docFields(await readFile(current.path as string, encoding));
-      useStore.getState().updateDoc(current.id, fields);
-      replaceText(current.id, fields.text);
-      useStore.getState().setNote(`reopened as ${encodingLabel(encoding)}`);
+      const info = await readFile(path, encoding);
+      const after = liveDoc(id);
+      if (!after) return;
+      if (after.revision !== revision) {
+        useStore.getState().setMessage("not reopened — the buffer changed");
+        return;
+      }
+      const fields = docFields(info);
+      useStore.getState().updateDoc(id, fields);
+      replaceText(id, fields.text);
+      useStore
+        .getState()
+        .setNote(
+          fields.decodeErrors
+            ? `${encodingLabel(encoding)} · decoded with errors`
+            : `reopened as ${encodingLabel(encoding)}`,
+        );
     } catch (error) {
       useStore.getState().setMessage(`couldn't reopen — ${fsError(error).message}`);
     }
   };
 
-  if (!isDirty(current.id, current.text)) {
+  if (!isDirty(id, (liveDoc(id) ?? current).text)) {
     void run();
     return;
   }

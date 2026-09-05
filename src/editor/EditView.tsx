@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { EditorView, type Command as EditorCommand } from "@codemirror/view";
-import type { Doc } from "../app/store";
+import type { Doc, Heading } from "../app/store";
 import { useStore } from "../app/store";
 import { buffer, keepBuffer, markSaved, moveBuffer, setBufferText } from "./buffers";
-import { headingAt } from "./headings";
+import { headingsOf } from "../read/headings";
 import { gutterConf, gutterExtension, lineNumbersOn, onLineNumbers } from "./setup";
 import { flushText, syncCaret } from "./sync";
 import "../ui/editor.css";
@@ -15,7 +15,7 @@ const PENDING_MS = 2000;
 
 let live: EditorView | null = null;
 let liveId: string | null = null;
-let pending: { line: number; at: number } | null = null;
+let pending: { goto: Goto; at: number } | null = null;
 
 /**
  * Puts whatever the editor holds into the store synchronously. Wave 4 calls
@@ -68,13 +68,37 @@ export function renameBuffer(from: string, to: string): void {
   moveBuffer(from, to);
 }
 
-function jump(view: EditorView, line: number): void {
-  const target = view.state.doc.line(Math.min(Math.max(1, line), view.state.doc.lines));
+/**
+ * Where a `plain:goto-line` wants the editor. `moveCaret` is explicit when
+ * the sender says so (the outline moves the caret, a mode switch only
+ * scrolls); a bare line number means "move it unless that would throw away a
+ * selection" (review #7).
+ */
+interface Goto {
+  line: number;
+  moveCaret: boolean | "auto";
+}
+
+function readGoto(detail: unknown): Goto | null {
+  if (typeof detail === "number") return { line: detail, moveCaret: "auto" };
+  if (detail && typeof detail === "object") {
+    const it = detail as { line?: unknown; moveCaret?: unknown };
+    if (typeof it.line === "number") {
+      return { line: it.line, moveCaret: it.moveCaret !== false };
+    }
+  }
+  return null;
+}
+
+function jump(view: EditorView, goto: Goto): void {
+  const target = view.state.doc.line(Math.min(Math.max(1, goto.line), view.state.doc.lines));
+  const move =
+    goto.moveCaret === "auto" ? view.state.selection.main.empty : goto.moveCaret;
   // Focus first: focusing after the transaction makes the browser scroll to
   // where the selection used to be, undoing the jump.
   view.focus();
   view.dispatch({
-    selection: { anchor: target.from },
+    ...(move ? { selection: { anchor: target.from } } : {}),
     effects: EditorView.scrollIntoView(target.from, { y: "start" }),
   });
 }
@@ -90,25 +114,29 @@ if (typeof window !== "undefined") {
   const previous = slot[LISTENER_SLOT];
   if (previous) window.removeEventListener(GOTO_LINE, previous);
   const onGotoLine: EventListener = (event) => {
-    const line = (event as CustomEvent<number>).detail;
-    if (typeof line !== "number") return;
-    if (live) jump(live, line);
-    else pending = { line, at: Date.now() };
+    const goto = readGoto((event as CustomEvent<unknown>).detail);
+    if (!goto) return;
+    if (live) jump(live, goto);
+    else pending = { goto, at: Date.now() };
   };
   slot[LISTENER_SLOT] = onGotoLine;
   window.addEventListener(GOTO_LINE, onGotoLine);
 }
 
 function takePending(view: EditorView): void {
-  if (pending && Date.now() - pending.at < PENDING_MS) jump(view, pending.line);
+  if (pending && Date.now() - pending.at < PENDING_MS) jump(view, pending.goto);
   pending = null;
 }
 
-/** Leaving edit: tell read which heading the top of the screen was under. */
+/**
+ * Leaving edit: tell read which heading the top of the screen was under. The
+ * ids come from the same parse read uses, or the two would disagree about
+ * what a heading is called (review #9).
+ */
 function announceHeading(view: EditorView, id: string): void {
   const store = useStore.getState();
   const doc = store.docs.find((d) => d.id === id);
-  if (store.activeId !== id || doc?.mode !== "read") return;
+  if (store.activeId !== id || doc?.mode !== "read" || doc.large) return;
   let line = 1;
   try {
     const top = view.scrollDOM.getBoundingClientRect().top - view.documentTop;
@@ -116,11 +144,16 @@ function announceHeading(view: EditorView, id: string): void {
   } catch {
     return;
   }
-  const heading = headingAt(view.state.doc.toString(), line);
+  let heading: Heading | null = null;
+  for (const candidate of headingsOf(view.state.doc.toString())) {
+    if (candidate.line > line) break;
+    heading = candidate;
+  }
   if (!heading) return;
+  const target = heading.id;
   // After the current commit, so the read view is already listening.
   window.setTimeout(() => {
-    window.dispatchEvent(new CustomEvent(GOTO_HEADING, { detail: heading.id }));
+    window.dispatchEvent(new CustomEvent(GOTO_HEADING, { detail: target }));
   }, 0);
 }
 

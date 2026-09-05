@@ -18,6 +18,8 @@ export interface FileInfo {
   mtimeMs: number;
   size: number;
   readOnly: boolean;
+  /** Bytes the encoding could not decode became replacement characters. */
+  decodeErrors: boolean;
 }
 
 export interface WriteRequest {
@@ -94,6 +96,7 @@ export function docFields(
   | "large"
   | "deleted"
   | "dirty"
+  | "decodeErrors"
 > {
   const text = normalizeEol(info.text);
   return {
@@ -110,5 +113,6 @@ export function docFields(
     large: info.size > LARGE_TEXT,
     deleted: false,
     dirty: false,
+    decodeErrors: info.decodeErrors,
   };
 }

@@ -19,6 +19,12 @@ export const MAX_WAIT_MS = 2000;
 export interface Draft {
   text: string;
   path: string | null;
+  /**
+   * The document id this draft was written for. A nameless buffer has no
+   * path to be found by, so restoring it under the same id is the only way
+   * the draft can be deleted again afterwards (spec §8).
+   */
+  id: string;
   title: string;
   baseHash: string | null;
   encoding: string;
@@ -80,6 +86,57 @@ export function createSchedule(run: () => void): { push: () => void; flush: () =
   };
 }
 
+/**
+ * One chain of file operations per document. A delete never overtakes the
+ * write it is meant to cancel, and a write queued before a delete does not
+ * come back afterwards to resurrect text the user threw away (spec §8).
+ */
+export function createDraftQueue(): {
+  write(id: string, run: () => Promise<void>): Promise<void>;
+  drop(id: string, run: () => Promise<void>): Promise<void>;
+  settled(): Promise<void>;
+} {
+  const chains = new Map<string, Promise<unknown>>();
+  const generations = new Map<string, number>();
+
+  const chain = (id: string, run: () => Promise<void>): Promise<void> => {
+    const previous = chains.get(id) ?? Promise.resolve();
+    const next = previous.then(run, run);
+    chains.set(id, next);
+    void next.catch(() => undefined).then(() => {
+      if (chains.get(id) === next) chains.delete(id);
+    });
+    return next;
+  };
+
+  return {
+    write(id, run) {
+      const generation = generations.get(id) ?? 0;
+      return chain(id, async () => {
+        // A delete came in while this was waiting: the text it would write
+        // is exactly the text that was abandoned.
+        if ((generations.get(id) ?? 0) !== generation) return;
+        await run();
+      });
+    },
+    drop(id, run) {
+      generations.set(id, (generations.get(id) ?? 0) + 1);
+      return chain(id, run);
+    },
+    settled() {
+      const running = [...chains.values()].map((p) => p.catch(() => undefined));
+      return Promise.all(running).then(() => undefined);
+    },
+  };
+}
+
+const files = createDraftQueue();
+
+/** Closing waits for this: a draft must not outlive the buffer it copies. */
+export function draftsSettled(): Promise<void> {
+  return files.settled();
+}
+
 const pending = new Set<string>();
 
 const schedule = createSchedule(() => {
@@ -102,42 +159,47 @@ export function pendingDrafts(): string[] {
   return [...pending];
 }
 
-export async function writeDraft(id: string): Promise<void> {
-  if (!inTauri) return;
-  const doc = useStore.getState().docs.find((d) => d.id === id);
-  if (!doc || !isDirty(doc.id, doc.text)) return;
+export function writeDraft(id: string): Promise<void> {
+  return files.write(id, async () => {
+    if (!inTauri) return;
+    const doc = useStore.getState().docs.find((d) => d.id === id);
+    if (!doc || !isDirty(doc.id, doc.text)) return;
 
-  const draft: Draft = {
-    text: normalizeEol(doc.text),
-    path: doc.path,
-    title: doc.title,
-    baseHash: doc.baseHash,
-    encoding: doc.encoding,
-    bom: doc.bom,
-    eol: doc.eol,
-    finalNewline: doc.finalNewline,
-    caret: doc.caret,
-    savedAt: Date.now(),
-  };
-  try {
-    await writeTextAtomic(await draftPath(doc), JSON.stringify(draft));
-    useStore.getState().dismissBanner("drafts");
-  } catch {
-    // Nothing to offer here: the user cannot fix %APPDATA% from inside the
-    // app, and the banner has to stay up as long as the risk does (§8).
-    useStore.getState().showBanner({ id: "drafts", text: "can't write recovery draft" });
-  }
+    const draft: Draft = {
+      text: normalizeEol(doc.text),
+      path: doc.path,
+      id: doc.id,
+      title: doc.title,
+      baseHash: doc.baseHash,
+      encoding: doc.encoding,
+      bom: doc.bom,
+      eol: doc.eol,
+      finalNewline: doc.finalNewline,
+      caret: doc.caret,
+      savedAt: Date.now(),
+    };
+    try {
+      await writeTextAtomic(await draftPath(doc), JSON.stringify(draft));
+      useStore.getState().dismissBanner("drafts");
+    } catch {
+      // Nothing to offer here: the user cannot fix %APPDATA% from inside the
+      // app, and the banner has to stay up as long as the risk does (§8).
+      useStore.getState().showBanner({ id: "drafts", text: "can't write recovery draft" });
+    }
+  });
 }
 
-export async function dropDraft(doc: Pick<Doc, "id" | "path">): Promise<void> {
-  if (!inTauri) return;
+export function dropDraft(doc: Pick<Doc, "id" | "path">): Promise<void> {
   pending.delete(doc.id);
-  try {
-    const file = await draftPath(doc);
-    if (await exists(file)) await remove(file);
-  } catch {
-    /* a draft that will not go away is not worth a banner */
-  }
+  return files.drop(doc.id, async () => {
+    if (!inTauri) return;
+    try {
+      const file = await draftPath(doc);
+      if (await exists(file)) await remove(file);
+    } catch {
+      /* a draft that will not go away is not worth a banner */
+    }
+  });
 }
 
 /** Every dirty buffer belongs to the store, so one subscription covers all. */
@@ -216,7 +278,9 @@ export async function restoreDraft(entry: Recovery): Promise<{ id: string; confl
     }
   }
 
-  const id = draft.path ? pathKey(draft.path) : entry.file;
+  // A nameless buffer keeps the id it had when the draft was written, so the
+  // draft file it maps to is the one that gets deleted on save (spec §8).
+  const id = draft.path ? pathKey(draft.path) : (draft.id ?? entry.file);
   const doc = makeDoc({
     id,
     path: draft.path,
@@ -238,16 +302,28 @@ export async function restoreDraft(entry: Recovery): Promise<{ id: string; confl
   return { id, conflict };
 }
 
-/** `discard` goes to the Recycle Bin, not to nowhere (spec §8). */
-export async function discardDraft(entry: Recovery): Promise<void> {
-  if (!inTauri) return;
+/**
+ * `discard` goes to the Recycle Bin, not to nowhere (spec §8). A Recycle Bin
+ * that refuses is not a licence to delete the draft outright — the row stays
+ * and the user is told, so the text is still recoverable.
+ */
+export async function discardDraft(entry: Recovery): Promise<boolean> {
+  if (!inTauri) return true;
   try {
     await trashPath(entry.file);
-  } catch {
-    try {
-      await remove(entry.file);
-    } catch {
-      /* nothing else to try */
-    }
+    return true;
+  } catch (error) {
+    const why = error instanceof Error ? error.message : String(error);
+    useStore.getState().showBanner({
+      id: "discard-failed",
+      text: `couldn't discard ${entry.title} — ${why}`,
+      actions: [
+        {
+          label: "dismiss",
+          run: () => useStore.getState().dismissBanner("discard-failed"),
+        },
+      ],
+    });
+    return false;
   }
 }

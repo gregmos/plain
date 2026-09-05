@@ -148,6 +148,27 @@ export async function settingsPath(): Promise<string> {
 const SAVE_DEBOUNCE = 300;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let pending: Settings | null = null;
+/** The write in flight, so `flushSettings` can wait for it. */
+let writing: Promise<void> = Promise.resolve();
+
+async function write(settings: Settings): Promise<void> {
+  try {
+    const path = await settingsPath();
+    await invoke("write_text_atomic", { path, text: serializeSettings(settings) });
+  } catch (error) {
+    console.error("couldn't write settings.json", error);
+  }
+}
+
+/** Takes whatever is waiting and writes it, keeping the writes in order. */
+function drain(): void {
+  const next = pending;
+  pending = null;
+  clearTimeout(timer);
+  timer = undefined;
+  if (!next) return;
+  writing = writing.then(() => write(next));
+}
 
 /**
  * Debounced: the settings screen changes a value on every click, and the
@@ -159,17 +180,15 @@ export function saveSettings(settings: Settings): void {
   if (!inTauri) return;
   pending = settings;
   clearTimeout(timer);
-  timer = setTimeout(() => {
-    const next = pending;
-    pending = null;
-    if (!next) return;
-    void (async () => {
-      try {
-        const path = await settingsPath();
-        await invoke("write_text_atomic", { path, text: serializeSettings(next) });
-      } catch (error) {
-        console.error("couldn't write settings.json", error);
-      }
-    })();
-  }, SAVE_DEBOUNCE);
+  timer = setTimeout(drain, SAVE_DEBOUNCE);
+}
+
+/**
+ * Closing time: a setting changed less than 300 ms ago must still reach the
+ * disk (spec §10). Writes what is waiting and waits for it, and for anything
+ * already on its way.
+ */
+export async function flushSettings(): Promise<void> {
+  drain();
+  await writing;
 }

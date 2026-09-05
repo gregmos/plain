@@ -75,29 +75,54 @@ export async function pathKind(path: string): Promise<string> {
   return invoke<string>("path_kind", { path });
 }
 
-let loading: Promise<void> | null = null;
+/**
+ * `running` is a flag and not the promise itself on purpose: a read with no
+ * library to read finishes without ever awaiting, so the promise variable
+ * would be assigned after its own `finally` had already cleared it, and every
+ * later reload would be turned away by a read that had long since ended.
+ */
+let running = false;
+let pending: Promise<void> = Promise.resolve();
+/** Something changed while a read was in flight; go round once more (#20). */
+let again = false;
 
-/** Reads the tree again. Failures leave the previous tree alone. */
-export async function reloadTree(): Promise<void> {
-  if (loading) return loading;
-  const store = useStore.getState();
-  const root = store.libraryPath;
-  if (!root || !inTauri) {
-    store.setTree([]);
-    return;
+/**
+ * Reads the tree again. A read that is already running is not reused — the
+ * library may have changed since it started — it is asked to repeat with
+ * whatever the parameters are by then. Failures leave the old tree alone.
+ */
+export function reloadTree(): Promise<void> {
+  if (running) {
+    again = true;
+    return pending;
   }
-  loading = (async () => {
+  running = true;
+  pending = (async () => {
     try {
-      const tree = await readTree(root, store.settings.library.extensions);
-      // The library may have changed under the await.
-      if (useStore.getState().libraryPath === root) useStore.getState().setTree(tree);
-    } catch {
-      useStore.getState().setMessage("couldn't read the library folder");
+      do {
+        again = false;
+        const store = useStore.getState();
+        const root = store.libraryPath;
+        if (!root || !inTauri) {
+          store.setTree([]);
+          continue;
+        }
+        try {
+          const tree = await readTree(root, store.settings.library.extensions);
+          // The library may have changed under the await; if it did, the
+          // answer is about a folder nobody is looking at any more.
+          if (useStore.getState().libraryPath === root) useStore.getState().setTree(tree);
+          else again = true;
+        } catch {
+          useStore.getState().setMessage("couldn't read the library folder");
+        }
+      } while (again);
     } finally {
-      loading = null;
+      running = false;
+      again = false;
     }
   })();
-  return loading;
+  return pending;
 }
 
 /**

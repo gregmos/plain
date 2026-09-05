@@ -48,10 +48,14 @@ function isBlank(children: PhrasingContent[]): boolean {
   return children.every((child) => child.type === "text" && child.value.trim() === "");
 }
 
-function span(className: string, children: PhrasingContent[]): RootContent {
+/**
+ * `type` is the generated uppercase label — its own node type, so the word
+ * count can tell it apart from the author's own title (review #15).
+ */
+function span(kind: "type" | "heading", children: PhrasingContent[]): RootContent {
   return {
-    type: "calloutSpan",
-    data: { hName: "span", hProperties: { className: [className] } },
+    type: kind === "type" ? "calloutLabel" : "calloutSpan",
+    data: { hName: "span", hProperties: { className: [`callout-${kind}`] } },
     children,
   } as unknown as RootContent;
 }
@@ -75,12 +79,12 @@ export function remarkCallouts() {
       else node.children.shift();
 
       const label: PhrasingContent[] = [{ type: "text", value: kind.toUpperCase() }];
-      const parts: RootContent[] = [span("callout-type", label)];
+      const parts: RootContent[] = [span("type", label)];
       if (!isBlank(title)) {
         const trimmed = [...title];
         const start = trimmed[0];
         if (start?.type === "text") trimmed[0] = { ...start, value: start.value.trimStart() };
-        parts.push(span("callout-heading", trimmed));
+        parts.push(span("heading", trimmed));
       }
 
       node.children.unshift({

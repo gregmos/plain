@@ -32,9 +32,10 @@ export function RecoveryScreen({ entries }: { entries: Entry[] }) {
     take(entry);
   };
 
-  const discard = (entry: Entry) => {
-    void discardDraft(entry);
-    take(entry);
+  // A discard that could not reach the Recycle Bin leaves the row alone, so
+  // the text stays reachable (spec §8).
+  const discard = async (entry: Entry) => {
+    if (await discardDraft(entry)) take(entry);
   };
 
   return (
@@ -58,7 +59,7 @@ export function RecoveryScreen({ entries }: { entries: Entry[] }) {
                 restore
               </button>
               <span className="sep">·</span>
-              <button className="link" onClick={() => discard(entry)}>
+              <button className="link" onClick={() => void discard(entry)}>
                 discard
               </button>
             </span>
@@ -84,8 +85,15 @@ export function RecoveryScreen({ entries }: { entries: Entry[] }) {
           <button
             className="link"
             onClick={() => {
-              for (const entry of entries) void discardDraft(entry);
-              recoveryDone();
+              void (async () => {
+                const left: Entry[] = [];
+                for (const entry of entries) {
+                  if (!(await discardDraft(entry))) left.push(entry);
+                }
+                // Whatever the Recycle Bin refused stays on the screen.
+                if (left.length > 0) setRecovery(left);
+                else recoveryDone();
+              })();
             }}
           >
             discard all

@@ -29,11 +29,24 @@ fn ignored(path: &Path) -> bool {
     })
 }
 
-fn same_root(folder: &Path, root: &str) -> bool {
-    folder
-        .to_string_lossy()
-        .to_lowercase()
-        .starts_with(&root.to_lowercase())
+/// Component by component, case-folded: `C:\notes-old` is not inside
+/// `C:\notes`, however much the two strings look alike.
+fn under(folder: &Path, root: &Path) -> bool {
+    let mut wanted = root.components();
+    let mut have = folder.components();
+    loop {
+        match (wanted.next(), have.next()) {
+            (None, _) => return true,
+            (Some(_), None) => return false,
+            (Some(a), Some(b)) => {
+                if a.as_os_str().to_string_lossy().to_lowercase()
+                    != b.as_os_str().to_string_lossy().to_lowercase()
+                {
+                    return false;
+                }
+            }
+        }
+    }
 }
 
 /// Restarts the watcher over the given root and files. Called again whenever
@@ -91,7 +104,7 @@ pub fn watch(
         if !folder.is_dir() {
             continue;
         }
-        if root.as_deref().is_some_and(|root| same_root(folder, root)) {
+        if root.as_deref().is_some_and(|root| under(folder, Path::new(root))) {
             continue;
         }
         if !folders.iter().any(|seen| seen == folder) {
@@ -117,8 +130,19 @@ pub fn unwatch(state: State<'_, Watcher>) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::ignored;
+    use super::{ignored, under};
     use std::path::Path;
+
+    #[test]
+    fn a_neighbour_folder_is_not_inside_the_library() {
+        let root = Path::new(r"C:\notes");
+        assert!(under(Path::new(r"C:\notes"), root));
+        assert!(under(Path::new(r"C:\Notes\sub"), root));
+        assert!(under(Path::new("C:/notes/sub/deep"), root));
+        assert!(!under(Path::new(r"C:\notes-old"), root));
+        assert!(!under(Path::new(r"C:\notesomething\a"), root));
+        assert!(!under(Path::new(r"D:\notes"), root));
+    }
 
     #[test]
     fn skips_the_folders_nobody_wants_events_from() {

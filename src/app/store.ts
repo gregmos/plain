@@ -52,6 +52,14 @@ export interface Doc {
   baseHash: string | null;
   /** The file was removed from under us; the buffer stays (spec §6). */
   deleted: boolean;
+  /**
+   * Bumped by every change to `text`. A decision taken before an `await` —
+   * "this buffer is clean, the disk version may replace it" — is only still
+   * true if this has not moved since (spec §8).
+   */
+  revision: number;
+  /** Bytes the encoding could not decode; saving would make that permanent. */
+  decodeErrors: boolean;
 }
 
 /** The parts of a document a caller has to give; the rest has defaults. */
@@ -74,6 +82,8 @@ export function makeDoc(seed: DocSeed): Doc {
     finalNewline: false,
     baseHash: null,
     deleted: false,
+    revision: 0,
+    decodeErrors: false,
     ...seed,
   };
 }
@@ -107,6 +117,8 @@ export interface TreeNode {
   /** Path relative to the library root, `/` separated — the tree's identity. */
   rel: string;
   dir: boolean;
+  /** The folder would not be listed; `children` is unknown, not empty (#20). */
+  unreadable: boolean;
   children: TreeNode[];
 }
 
@@ -316,7 +328,17 @@ export const useStore = create<AppState>()((set, get) => ({
   },
 
   updateDoc: (id, patch) =>
-    set((s) => ({ docs: s.docs.map((d) => (d.id === id ? { ...d, ...patch } : d)) })),
+    set((s) => ({
+      docs: s.docs.map((d) => {
+        if (d.id !== id) return d;
+        const next = { ...d, ...patch };
+        // Every real change to the text moves the revision on; §8 leans on it.
+        if (patch.text !== undefined && patch.text !== d.text) {
+          next.revision = d.revision + 1;
+        }
+        return next;
+      }),
+    })),
 
   renameDoc: (id, path) => {
     const next = pathKey(path);

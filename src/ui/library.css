@@ -58,6 +58,12 @@
   outline-offset: -2px;
 }
 
+/* A folder that would not be listed: shown, but plainly not opened. */
+.tree-row.is-unreadable,
+.tree-row.is-unreadable:hover {
+  color: var(--faint);
+}
+
 .tree-empty {
   padding: 5px var(--rail-pad-x);
   color: var(--muted);

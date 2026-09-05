@@ -35,7 +35,7 @@ import {
 import type { Settings } from "../app/settings";
 import type { Doc } from "../app/store";
 import { useStore } from "../app/store";
-import { detectIndent } from "./commands";
+import { detectIndent, urlPaste } from "./commands";
 import { editorKeymap } from "./keymap";
 import { findPanel } from "./findPanel";
 import { remoteCommands } from "./remote";
@@ -165,11 +165,39 @@ const markupKeymap = Prec.high(
   ]),
 );
 
+// Find, replace and go to line belong to the command registry (spec §12);
+// leaving them in CodeMirror's keymap would run each of them twice, once
+// through the registry and once here (review #12).
+const REGISTRY_CHORDS = new Set(["Mod-f", "Mod-h", "F3", "Shift-F3", "Mod-g", "Shift-Mod-g", "Mod-Alt-g"]);
+const ownSearchKeymap = searchKeymap.filter((binding) => !REGISTRY_CHORDS.has(binding.key ?? ""));
+
+/**
+ * A URL pasted over selected text becomes a link (spec §5.2). This replaces
+ * the language pack's own handler so it also works in a file too big for
+ * highlighting.
+ */
+const pasteLink = EditorView.domEventHandlers({
+  paste(event, view) {
+    const pasted = event.clipboardData?.getData("text/plain");
+    if (!pasted) return false;
+    const spec = urlPaste(view.state, pasted);
+    if (!spec) return false;
+    event.preventDefault();
+    view.dispatch(spec);
+    return true;
+  },
+});
+
 /** No language on big files: no parse, no highlighting (spec §8). */
 function languageExtension(large: boolean): Extension {
   if (large) return [];
   return [
-    markdown({ base: markdownLanguage, codeLanguages: languages, addKeymap: false }),
+    markdown({
+      base: markdownLanguage,
+      codeLanguages: languages,
+      addKeymap: false,
+      pasteURLAsLink: false,
+    }),
     markupKeymap,
   ];
 }
@@ -195,10 +223,11 @@ export function editorExtensions(doc: Doc, settings: Settings): Extension {
     gutterConf.of(gutterExtension(lineNumbersOn())),
     indentUnit.of(detectIndent(doc.text, unit)),
     languageExtension(doc.large),
+    pasteLink,
     storeSync,
     remoteCommands,
     formatToolbar,
     editorKeymap(),
-    keymap.of([...closeBracketsKeymap, ...historyKeymap, ...searchKeymap, ...defaultKeymap]),
+    keymap.of([...closeBracketsKeymap, ...historyKeymap, ...ownSearchKeymap, ...defaultKeymap]),
   ];
 }

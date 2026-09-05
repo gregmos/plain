@@ -13,11 +13,6 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import rehypeStringify from "rehype-stringify";
-import remarkFrontmatter from "remark-frontmatter";
-import remarkGfm from "remark-gfm";
-import remarkMarkers from "remark-flexible-markers";
-import remarkMath from "remark-math";
-import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { unified, type Plugin } from "unified";
 import { visit, SKIP } from "unist-util-visit";
@@ -26,9 +21,9 @@ import type { Element, ElementContent, Root as HastRoot, Properties } from "hast
 import type { Root as MdastRoot } from "mdast";
 import type { Options as SanitizeSchema } from "rehype-sanitize";
 import type { Heading } from "../app/store";
-import { remarkCallouts } from "./callout";
-import { remarkWikiLink } from "./wikilink";
-import { countWords } from "./words";
+import { remarkHeadings } from "./headings";
+import { markdownPreset } from "./markdown";
+import { countWordsOf } from "./words";
 
 export interface RenderResult {
   html: string;
@@ -75,7 +70,10 @@ const schema: SanitizeSchema = {
   ...base,
   clobber: [],
   strip: ["script", "style", "iframe", "object", "embed", "form", "textarea", "title"],
-  tagNames: [...(base.tagNames ?? []), "mark"],
+  // `picture`/`source` are dropped on purpose: `srcset` is a second way to
+  // fetch an image, and it would walk straight past the deferred `data-src`
+  // that keeps read off the network (review #2, spec §1.3).
+  tagNames: [...(base.tagNames ?? []).filter((tag) => tag !== "picture" && tag !== "source"), "mark"],
   attributes: {
     ...baseAttrs,
     // One entry per property name: hast-util-sanitize stops at the first
@@ -101,39 +99,18 @@ const schema: SanitizeSchema = {
     span: [["className", "callout-type", "callout-heading"]],
     // `src` never survives the pipeline: rehypeDeferImages moves it out of
     // the way so nothing is fetched before the reader asks for it (spec §1.3).
-    img: [...(baseAttrs["img"] ?? []), "dataSrc"],
+    img: [
+      ...(baseAttrs["img"] ?? []).filter((attr) => attr !== "srcSet" && attr !== "sizes"),
+      "dataSrc",
+    ],
   },
 };
 
 /* ---------------------------------------------------------------- plugins */
 
-/**
- * Currency, not maths (spec §11): a single-dollar span only counts when there
- * is no space just inside either delimiter and no digit right after the
- * closing one. `$5 и $10` fails both tests and goes back to being text.
- */
-const remarkMathGuard: Plugin<[], MdastRoot> = () => (tree, file) => {
-  const source = String(file);
-
-  visit(tree, "inlineMath", (node, index, parent) => {
-    if (!parent || index === undefined) return;
-    const start = node.position?.start.offset;
-    const end = node.position?.end.offset;
-    if (start === undefined || end === undefined) return;
-
-    const raw = source.slice(start, end);
-    let fence = 0;
-    while (raw[fence] === "$") fence += 1;
-    if (fence !== 1) return; // `$$…$$` inline is never ambiguous
-
-    const inner = raw.slice(1, -1);
-    const after = source.slice(end, end + 1);
-    const ok = inner !== "" && !/^\s/.test(inner) && !/\s$/.test(inner) && !/[0-9]/.test(after);
-    if (ok) return;
-
-    parent.children[index] = { type: "text", value: raw };
-    return SKIP;
-  });
+/** Counts on the tree the pipeline already built — one parse, not two. */
+const remarkWords: Plugin<[{ value: number }], MdastRoot> = (box) => (tree) => {
+  box.value = countWordsOf(tree);
 };
 
 interface FrontmatterBox {
@@ -161,20 +138,6 @@ const rehypeDeferImages: Plugin<[], HastRoot> = () => (tree) => {
     const src = node.properties["src"];
     if (typeof src === "string") node.properties["dataSrc"] = src;
     delete node.properties["src"];
-  });
-};
-
-const rehypeHeadings: Plugin<[Heading[]], HastRoot> = (out) => (tree) => {
-  visit(tree, "element", (node) => {
-    const match = /^h([1-6])$/.exec(node.tagName);
-    if (!match?.[1]) return;
-    const id = node.properties?.["id"];
-    out.push({
-      level: Number(match[1]),
-      text: textOf(node).trim(),
-      id: typeof id === "string" ? id : "",
-      line: node.position?.start.line ?? 1,
-    });
   });
 };
 
@@ -252,16 +215,12 @@ const rehypeCodeFrame: Plugin<[], HastRoot> = () => (tree) => {
 export function render(text: string): RenderResult {
   const headings: Heading[] = [];
   const frontmatter: FrontmatterBox = { value: null };
+  const words = { value: 0 };
 
   const file = unified()
-    .use(remarkParse)
-    .use(remarkFrontmatter, ["yaml"])
-    .use(remarkGfm)
-    .use(remarkMath, { singleDollarTextMath: true })
-    .use(remarkMathGuard)
-    .use(remarkMarkers, { markerTagName: "mark", markerClassName: () => [] })
-    .use(remarkWikiLink)
-    .use(remarkCallouts)
+    .use(markdownPreset)
+    .use(remarkHeadings, headings)
+    .use(remarkWords, words)
     .use(remarkFrontmatterValue, frontmatter)
     .use(remarkRehype, {
       allowDangerousHtml: true,
@@ -272,8 +231,9 @@ export function render(text: string): RenderResult {
     .use(rehypeRaw)
     .use(rehypeDeferImages)
     .use(rehypeSanitize, schema)
+    // Markdown headings already carry their id; this only covers headings
+    // written as raw HTML, which the outline does not know about anyway.
     .use(rehypeSlug)
-    .use(rehypeHeadings, headings)
     .use(rehypeKatex)
     .use(rehypeCodeFrame)
     .use(rehypeStringify, { allowDangerousHtml: true })
@@ -282,7 +242,7 @@ export function render(text: string): RenderResult {
   return {
     html: String(file),
     headings,
-    words: countWords(text),
+    words: words.value,
     frontmatter: frontmatter.value,
   };
 }

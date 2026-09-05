@@ -141,6 +141,25 @@ describe("markers, front matter, sanitizing", () => {
     expect(out).not.toContain(" src=");
     expect(out).toContain('data-src="https://example.com/a.png"');
   });
+
+  // review #2: `srcset` is a second way to fetch a picture, and it would walk
+  // straight past the deferred `data-src` that keeps read off the network.
+  it("drops picture and source entirely", () => {
+    const out = html(
+      '<picture><source srcset="https://example.com/tracker.png"><img alt="x"></picture>',
+    );
+    expect(out).not.toContain("srcset");
+    expect(out).not.toContain("<source");
+    expect(out).not.toContain("<picture");
+    expect(out).not.toContain("tracker.png");
+  });
+
+  it("drops srcset and sizes from an image", () => {
+    const out = html('<img src="a.png" srcset="https://example.com/b.png 2x" sizes="100vw">');
+    expect(out).not.toContain("srcset");
+    expect(out).not.toContain("sizes");
+    expect(out).not.toContain("example.com");
+  });
 });
 
 describe("headings", () => {

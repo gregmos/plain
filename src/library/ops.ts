@@ -2,15 +2,18 @@
 // with the tree reloading, so the rail never shows a file that is gone.
 
 import { invoke } from "@tauri-apps/api/core";
-import { dropBuffer, renameBuffer } from "../editor";
+import { renameBuffer } from "../editor";
+import { closeDocs } from "../app/close";
 import { openPaths } from "../app/commands";
-import { dropDraft } from "../app/drafts";
 import { inTauri } from "../app/env";
-import { fsError, trashPath, writeFileAtomic } from "../app/fs";
+import { fsError, trashPath } from "../app/fs";
 import { basename, dirname, pathKey } from "../app/paths";
 import { useStore, type TreeNode } from "../app/store";
 import { nameError, uniqueName, withExtension } from "./names";
 import { joinPath, nodeAt, reloadTree } from "./tree";
+
+/** How many names to try before giving up; a folder is not an adversary. */
+const TRIES = 50;
 
 /** The names already used in that folder, so a new one can dodge them. */
 export function siblings(parent: string): string[] {
@@ -33,10 +36,45 @@ function complain(error: unknown, what: string): void {
   useStore.getState().setMessage(`couldn't ${what} — ${fsError(error).message}`);
 }
 
+/** What Rust answers when a name is taken; anything else is a real failure. */
+function isTaken(error: unknown): boolean {
+  return (
+    typeof error === "object" && error !== null && (error as { kind?: string }).kind === "exists"
+  );
+}
+
 /**
- * `new file`: an empty file, written the same atomic way as any save, then
- * opened in edit (spec §6).
+ * Creates the thing under the first name nobody has. The tree cannot be the
+ * judge of that — it goes stale, and it hides extensions the settings do not
+ * list — so Rust refuses to overwrite and we simply try the next name
+ * (review #4). Returns the path, or null when it did not happen.
  */
+async function createUnique(
+  parent: string,
+  wanted: string,
+  command: "create_file" | "create_dir",
+  what: string,
+): Promise<string | null> {
+  const taken = new Set(siblings(parent));
+  for (let attempt = 0; attempt < TRIES; attempt += 1) {
+    const name = uniqueName(wanted, taken);
+    const path = joinPath(parent, name);
+    try {
+      await invoke(command, { path });
+      return path;
+    } catch (error) {
+      if (!isTaken(error)) {
+        complain(error, what);
+        return null;
+      }
+      taken.add(name);
+    }
+  }
+  useStore.getState().setMessage(`couldn't ${what} — no free name`);
+  return null;
+}
+
+/** `new file`: an empty file that never lands on top of one (spec §6). */
 export async function createFile(parent: string, typed: string): Promise<void> {
   const store = useStore.getState();
   const problem = nameError(typed);
@@ -45,24 +83,13 @@ export async function createFile(parent: string, typed: string): Promise<void> {
     return;
   }
   const extension = store.settings.library.extensions[0] ?? ".md";
-  const name = uniqueName(withExtension(typed.trim(), extension), siblings(parent));
-  const path = joinPath(parent, name);
-  try {
-    await writeFileAtomic({
-      path,
-      text: "",
-      encoding: "utf-8",
-      bom: false,
-      eol: store.settings.files.newFileEol,
-      baseHash: null,
-      allowMissing: true,
-    });
-    await reloadTree();
-    if (await openPaths([path])) useStore.getState().setMode("edit");
-    useStore.getState().setTreeSelected(path);
-  } catch (error) {
-    complain(error, "create the file");
-  }
+  const wanted = withExtension(typed.trim(), extension);
+  const path = await createUnique(parent, wanted, "create_file", "create the file");
+  if (!path) return;
+
+  await reloadTree();
+  if (await openPaths([path])) useStore.getState().setMode("edit");
+  useStore.getState().setTreeSelected(path);
 }
 
 export async function createFolder(parent: string, typed: string): Promise<void> {
@@ -71,15 +98,11 @@ export async function createFolder(parent: string, typed: string): Promise<void>
     useStore.getState().setMessage(problem);
     return;
   }
-  const name = uniqueName(typed.trim(), siblings(parent));
-  const path = joinPath(parent, name);
-  try {
-    await invoke("create_dir", { path });
-    await reloadTree();
-    useStore.getState().setTreeSelected(path);
-  } catch (error) {
-    complain(error, "create the folder");
-  }
+  const path = await createUnique(parent, typed.trim(), "create_dir", "create the folder");
+  if (!path) return;
+
+  await reloadTree();
+  useStore.getState().setTreeSelected(path);
 }
 
 /**
@@ -110,8 +133,8 @@ export async function renameEntry(from: string, typed: string): Promise<void> {
   }
 }
 
-/** Everything the tree knows about is either a file or a folder of them. */
-function openUnder(path: string): { id: string; path: string | null }[] {
+/** Every open document that lives at this path or under it. */
+function openUnder(path: string): string[] {
   const key = pathKey(path);
   return useStore
     .getState()
@@ -120,7 +143,7 @@ function openUnder(path: string): { id: string; path: string | null }[] {
       const own = pathKey(doc.path);
       return own === key || own.startsWith(`${key}/`);
     })
-    .map((doc) => ({ id: doc.id, path: doc.path }));
+    .map((doc) => doc.id);
 }
 
 /** `delete` — the Recycle Bin, after one question (spec §6). */
@@ -134,7 +157,7 @@ export function askDelete(node: Pick<TreeNode, "name" | "path" | "dir">): void {
         label: "move to recycle bin",
         run: () => {
           store.setDialog(null);
-          void remove(node.path);
+          remove(node.path);
         },
       },
       { label: "cancel", run: () => store.setDialog(null) },
@@ -143,21 +166,24 @@ export function askDelete(node: Pick<TreeNode, "name" | "path" | "dir">): void {
   });
 }
 
-async function remove(path: string): Promise<void> {
-  const affected = openUnder(path);
+/**
+ * The buffers go first, through the same one question `Ctrl+W` asks. Only
+ * what is on disk goes to the Recycle Bin, so unsaved text that never got
+ * there must not be dropped without a word (review #5). `cancel` in that
+ * dialog stops the delete too — `closeDocs` simply never calls back.
+ */
+function remove(path: string): void {
+  closeDocs(openUnder(path), () => void trashNow(path));
+}
+
+async function trashNow(path: string): Promise<void> {
   try {
     if (inTauri) await trashPath(path);
   } catch (error) {
     complain(error, "delete");
     return;
   }
-  // The file is gone on purpose, so its buffer and its draft go with it.
   const store = useStore.getState();
-  for (const doc of affected) {
-    void dropDraft(doc);
-    store.closeDoc(doc.id);
-    dropBuffer(doc.id);
-  }
   if (pathKey(store.treeSelected ?? "") === pathKey(path)) store.setTreeSelected(null);
   await reloadTree();
   store.setMessage("moved to the recycle bin");

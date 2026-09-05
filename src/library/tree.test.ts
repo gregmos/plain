@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 import type { TreeNode } from "../app/store";
 import { files, flatten, joinPath, nodeAt } from "./tree";
 
+function at(rel: string): string {
+  return `C:\\lib\\${rel.replace(/\//g, "\\")}`;
+}
+
 function file(name: string, rel: string): TreeNode {
-  return { name, path: `C:\\lib\\${rel.replace(/\//g, "\\")}`, rel, dir: false, children: [] };
+  return { name, path: at(rel), rel, dir: false, unreadable: false, children: [] };
 }
 
 function folder(name: string, rel: string, children: TreeNode[]): TreeNode {
-  return { name, path: `C:\\lib\\${rel.replace(/\//g, "\\")}`, rel, dir: true, children };
+  return { name, path: at(rel), rel, dir: true, unreadable: false, children };
 }
 
 // Folders first, then files — the order Rust hands over (spec §6).

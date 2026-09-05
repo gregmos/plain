@@ -244,7 +244,7 @@ export const commands: Command[] = [
     title: "open settings.json",
     run: () => void openSettingsFile(),
   },
-  { id: "app.about", title: "about", run: () => showAbout() },
+  { id: "app.about", title: "about", run: () => void showAbout() },
 ];
 
 const byId = new Map(commands.map((command) => [command.id, command]));

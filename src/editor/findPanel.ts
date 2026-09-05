@@ -14,7 +14,6 @@ import {
 } from "@codemirror/search";
 import type { EditorState } from "@codemirror/state";
 import type { Command, EditorView, Panel, ViewUpdate } from "@codemirror/view";
-import { matchesChord } from "../app/chords";
 
 const MAX_COUNT = 2000;
 
@@ -107,11 +106,11 @@ class FindPanel implements Panel {
     this.render();
   }
 
+  // `Ctrl+H`, `F3` and `Shift+F3` are registry chords and reach the editor
+  // through remote.ts wherever the focus is; handling them here too would run
+  // them twice (review #12).
   private onKey(event: KeyboardEvent): void {
-    if (matchesChord("Ctrl+H", event)) {
-      event.preventDefault();
-      this.showReplace();
-    } else if (event.key === "Escape") {
+    if (event.key === "Escape") {
       event.preventDefault();
       closeSearchPanel(this.view);
       this.view.focus();
@@ -119,10 +118,6 @@ class FindPanel implements Panel {
       event.preventDefault();
       if (event.target === this.replace) replaceNext(this.view);
       else if (event.shiftKey) findPrevious(this.view);
-      else findNext(this.view);
-    } else if (event.key === "F3") {
-      event.preventDefault();
-      if (event.shiftKey) findPrevious(this.view);
       else findNext(this.view);
     }
   }

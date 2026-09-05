@@ -6,7 +6,7 @@ import { readingPosition, rememberReading } from "../app/session";
 import { useStore, type Doc } from "../app/store";
 import { allowAssetDir } from "./assets";
 import { enhance, revealImage } from "./dom";
-import { emitGotoLine, FIND, GOTO_HEADING, REPLACE, RERENDER } from "./events";
+import { emitScrollToLine, FIND, GOTO_HEADING, REPLACE, RERENDER } from "./events";
 import { FindBar } from "./FindBar";
 import {
   folderOf,
@@ -26,6 +26,16 @@ const LARGE = 2 * 1024 * 1024;
 
 /** Scroll offsets survive a trip to edit and back (spec §5.0). */
 const scrollTops = new Map<string, number>();
+
+// A closed document takes its offset with it: the long-term reading position
+// is kept elsewhere (spec §8), this map is only for the trip to edit and back
+// (review #16).
+useStore.subscribe((state, previous) => {
+  if (state.docs.length >= previous.docs.length) return;
+  for (const id of scrollTops.keys()) {
+    if (!state.docs.some((doc) => doc.id === id)) scrollTops.delete(id);
+  }
+});
 
 /** A link that carried `#heading` into a document that was not open yet. */
 let pendingAnchor: { id: string; hash: string } | null = null;
@@ -75,6 +85,7 @@ export function ReadView({ doc }: { doc: Doc }) {
   const [scopeReady, setScopeReady] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [findFocus, setFindFocus] = useState(0);
+  const [domRevision, setDomRevision] = useState(0);
   const [mtime, setMtime] = useState<Date | null>(null);
 
   const scroller = useRef<HTMLDivElement>(null);
@@ -180,18 +191,24 @@ export function ReadView({ doc }: { doc: Doc }) {
   // `dangerouslySetInnerHTML`: React re-applies that on every update it sees,
   // which would wipe the anchors, highlighting and diagrams added below.
   // Effects run in order, so the html is always in before `enhance` runs.
+  // `docId` and `dir` are dependencies even though the markup does not use
+  // them: two files can render to the same html, and the previous pass has
+  // already resolved its images against the previous folder (review #10).
   useEffect(() => {
     const content = body.current;
     if (content) content.innerHTML = html;
-  }, [html]);
+    setDomRevision((value) => value + 1);
+  }, [html, docId, dir]);
 
   useEffect(() => {
     const content = body.current;
     if (!content || !scopeReady || html === "") return;
     const stop = enhance(content, { dir, theme });
     trackHeading();
+    // Whatever searches this document searches it after the pass, not before.
+    setDomRevision((value) => value + 1);
     return stop;
-  }, [html, dir, theme, scopeReady, trackHeading]);
+  }, [html, docId, dir, theme, scopeReady, trackHeading]);
 
   const scrollToId = useCallback(
     (id: string) => {
@@ -241,13 +258,14 @@ export function ReadView({ doc }: { doc: Doc }) {
     };
   }, [scrollToId]);
 
-  // Leaving read for edit lands on the heading that was at the top.
+  // Leaving read for edit lands on the heading that was at the top — the view
+  // scrolls, the caret stays where the editor left it (review #7).
   useEffect(() => {
     return () => {
       const state = useStore.getState();
       const still = state.docs.find((item) => item.id === docId);
       if (state.activeId === docId && still?.mode === "edit") {
-        emitGotoLine(topLine.current);
+        emitScrollToLine(topLine.current);
       }
     };
   }, [docId]);
@@ -366,7 +384,7 @@ export function ReadView({ doc }: { doc: Doc }) {
       {findOpen && (
         <FindBar
           container={scroller.current}
-          revision={nonce + html.length}
+          revision={domRevision}
           focusToken={findFocus}
           onClose={() => setFindOpen(false)}
         />
