@@ -3,13 +3,14 @@
 // every 2 s of continuous typing; deleted only when that same text has
 // reached the disk, or when the user says `don't save`.
 
-import { appDataDir, join } from "@tauri-apps/api/path";
+import { join } from "@tauri-apps/api/path";
 import { exists, readDir, readTextFile, remove } from "@tauri-apps/plugin-fs";
 import { isDirty } from "../editor/buffers";
 import { normalizeEol, type Eol } from "./eol";
 import { inTauri } from "./env";
 import { readFile, trashPath, writeTextAtomic } from "./fs";
 import { basename, pathKey } from "./paths";
+import { dataDir } from "./settings";
 import { makeDoc, useStore, type Doc, type Recovery } from "./store";
 
 const FOLDER = "drafts";
@@ -46,12 +47,20 @@ function fnv1a(text: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
+/**
+ * The id a document's own files are named by — its draft, and its folder in
+ * the history. Derived from the path so it is the same run after run.
+ */
+export function documentKey(doc: Pick<Doc, "id" | "path">): string {
+  return fnv1a(doc.path ? pathKey(doc.path) : doc.id);
+}
+
 export function draftName(doc: Pick<Doc, "id" | "path">): string {
-  return `${fnv1a(doc.path ? pathKey(doc.path) : doc.id)}.json`;
+  return `${documentKey(doc)}.json`;
 }
 
 async function draftPath(doc: Pick<Doc, "id" | "path">): Promise<string> {
-  return join(await appDataDir(), FOLDER, draftName(doc));
+  return join(await dataDir(), FOLDER, draftName(doc));
 }
 
 /* --------------------------------------------------------------- writing */
@@ -231,7 +240,7 @@ async function loadDraft(file: string): Promise<Draft | null> {
 export async function listDrafts(): Promise<Recovery[]> {
   if (!inTauri) return [];
   try {
-    const folder = await join(await appDataDir(), FOLDER);
+    const folder = await join(await dataDir(), FOLDER);
     if (!(await exists(folder))) return [];
     const found: Recovery[] = [];
     for (const entry of await readDir(folder)) {

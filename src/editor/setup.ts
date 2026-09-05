@@ -34,8 +34,9 @@ import {
 } from "@codemirror/view";
 import type { Settings } from "../app/settings";
 import type { Doc } from "../app/store";
-import { useStore } from "../app/store";
+import { activeDoc, useStore } from "../app/store";
 import { detectIndent, urlPaste } from "./commands";
+import { pasteImage } from "./images";
 import { editorKeymap } from "./keymap";
 import { findPanel } from "./findPanel";
 import { remoteCommands } from "./remote";
@@ -172,13 +173,34 @@ const markupKeymap = Prec.high(
 const REGISTRY_CHORDS = new Set(["Mod-f", "Mod-h", "F3", "Shift-F3", "Mod-g", "Shift-Mod-g", "Mod-Alt-g"]);
 const ownSearchKeymap = searchKeymap.filter((binding) => !REGISTRY_CHORDS.has(binding.key ?? ""));
 
+/** The first image on the clipboard, if that is what was copied (§2a). */
+function clipboardImage(data: DataTransfer | null): File | null {
+  if (!data) return null;
+  for (const item of data.items) {
+    if (item.kind === "file" && item.type.startsWith("image/")) {
+      const file = item.getAsFile();
+      if (file) return file;
+    }
+  }
+  return null;
+}
+
 /**
- * A URL pasted over selected text becomes a link (spec §5.2). This replaces
- * the language pack's own handler so it also works in a file too big for
- * highlighting.
+ * Paste: an image goes into `assets/` and leaves a link behind (spec §2a);
+ * a URL over selected text becomes a link (§5.2). This replaces the language
+ * pack's own handler so both also work in a file too big for highlighting.
  */
 const pasteLink = EditorView.domEventHandlers({
   paste(event, view) {
+    const image = clipboardImage(event.clipboardData);
+    if (image) {
+      const doc = activeDoc(useStore.getState());
+      if (doc) {
+        event.preventDefault();
+        void pasteImage(view, doc, image);
+        return true;
+      }
+    }
     const pasted = event.clipboardData?.getData("text/plain");
     if (!pasted) return false;
     const spec = urlPaste(view.state, pasted);

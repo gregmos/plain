@@ -359,3 +359,200 @@
 .glyph-toggle.is-active {
   color: var(--fg);
 }
+
+/* --------------------------------------- the library screen (mockup 1e) */
+
+.library {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 44px 56px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.library-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+
+.library-title {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.library-title .is-where {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.library-sorts {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  flex: none;
+  font-size: var(--fs-small);
+}
+
+.library-sorts .is-active {
+  color: var(--fg);
+}
+
+.library-new {
+  margin-left: 10px;
+  color: var(--fg);
+}
+
+.library-filter {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: -16px 0 20px;
+  font-size: var(--fs-small);
+}
+
+.library-tag {
+  color: var(--accent);
+}
+
+.library-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.library-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px 70px;
+  align-items: baseline;
+  gap: 16px;
+  padding: 11px 0;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--fg);
+}
+
+.library-row:hover .library-file {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--accent);
+}
+
+.library-name {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.library-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* `edited` in the mockup's library list: the accent, at label size. */
+.library-edited {
+  margin-left: 10px;
+  font-size: var(--fs-section);
+  color: var(--accent);
+}
+
+.library-where {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-small);
+  color: var(--muted);
+}
+
+.library-date {
+  font-size: var(--fs-small);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.library-words {
+  font-size: var(--fs-small);
+  color: var(--muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.library-empty {
+  padding: 11px 0;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.library-foot {
+  padding: 16px 0 40px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-small);
+  color: var(--muted);
+}
+
+/* ------------------------------------------- tags and backlinks in the rail */
+
+.rail-tag {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 5px var(--rail-pad-x);
+  color: var(--muted);
+}
+
+.rail-tag:hover {
+  color: var(--fg);
+}
+
+.rail-tag.is-active {
+  color: var(--fg);
+  background: var(--surface);
+}
+
+.rail-tag-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-tag-count {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.backlink {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 5px var(--rail-pad-x);
+  color: var(--muted);
+}
+
+.backlink:hover {
+  color: var(--fg);
+}
+
+.backlink-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backlink-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-small);
+  color: var(--muted);
+}

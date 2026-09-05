@@ -2,6 +2,7 @@
 // Save As talk to it only through these.
 
 export {
+  dropImagesInEditor,
   EditView,
   flushActiveEditor,
   renameBuffer,

@@ -33,6 +33,8 @@
     "fs:allow-read-text-file",
     "fs:allow-read-dir",
     "fs:allow-mkdir",
+    "fs:allow-write-file",
+    "fs:allow-copy-file",
     "fs:allow-remove",
     {
       "identifier": "fs:scope",

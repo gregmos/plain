@@ -28,6 +28,26 @@
   margin-bottom: 22px;
 }
 
+.meta-tag,
+.meta-tag-rest {
+  font: inherit;
+  color: var(--muted);
+}
+
+/* The tags are their own group after the reading time. */
+.meta-tag + .meta-tag,
+.meta-tag + .meta-tag-rest {
+  margin-left: 8px;
+}
+
+.meta-tag {
+  cursor: pointer;
+}
+
+.meta-tag:hover {
+  color: var(--fg);
+}
+
 .read-large {
   color: var(--muted);
   display: flex;
@@ -125,6 +145,17 @@
   text-underline-offset: 3px;
   text-decoration-color: var(--accent);
   cursor: pointer;
+}
+
+/* A tag is a label, not a link out of the document: no accent underline. */
+.read-html a.tag {
+  color: var(--muted);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.read-html a.tag:hover {
+  color: var(--fg);
 }
 
 .read-html a.is-missing {

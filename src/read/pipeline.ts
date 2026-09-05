@@ -22,11 +22,14 @@ import type { Root as MdastRoot } from "mdast";
 import type { Options as SanitizeSchema } from "rehype-sanitize";
 import type { Heading } from "../app/store";
 import { parseDocument, stampHeadings } from "./headings";
+import { tagsIn } from "./tags";
 import { countWordsOf } from "./words";
 
 export interface RenderResult {
   html: string;
   headings: Heading[];
+  /** Lowercased, unique, in order of appearance (spec §2a). */
+  tags: string[];
   words: number;
   frontmatter: Record<string, unknown> | null;
 }
@@ -84,10 +87,11 @@ const schema: SanitizeSchema = {
       "ariaLabelledBy",
       "dataFootnoteBackref",
       "dataFootnoteRef",
-      ["className", "data-footnote-backref", "wikilink"],
+      ["className", "data-footnote-backref", "wikilink", "tag"],
       "href",
       "dataWiki",
       "dataWikiHash",
+      "dataTag",
     ],
     code: [["className", /^language-./, "math-inline", "math-display"], "dataLang"],
     div: [
@@ -266,6 +270,7 @@ function renderInner(text: string): RenderResult {
   return {
     html: html.stringify(hast),
     headings,
+    tags: tagsIn(tree),
     words: countWordsOf(tree),
     frontmatter: frontmatterOf(tree),
   };

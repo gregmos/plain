@@ -42,7 +42,7 @@ const CHANGED: Settings = {
   appearance: { theme: "dark", fontSize: 15, contentWidth: 700 },
   read: { codeWrap: true },
   edit: { lineNumbers: false, indentUnit: "tab" },
-  files: { newFileEol: "lf" },
+  files: { newFileEol: "lf", autosave: 0 },
   library: { extensions: [".md", ".txt"] },
 };
 

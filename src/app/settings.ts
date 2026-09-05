@@ -4,7 +4,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { appDataDir, join } from "@tauri-apps/api/path";
-import { BaseDirectory, exists, readTextFile } from "@tauri-apps/plugin-fs";
+import { exists, readTextFile } from "@tauri-apps/plugin-fs";
 import { inTauri } from "./env";
 
 export type Theme = "system" | "light" | "dark";
@@ -15,7 +15,7 @@ export interface Settings {
   appearance: { theme: Theme; fontSize: number; contentWidth: number };
   read: { codeWrap: boolean };
   edit: { lineNumbers: boolean; indentUnit: IndentUnit };
-  files: { newFileEol: Eol };
+  files: { newFileEol: Eol; autosave: number };
   library: { extensions: string[] };
 }
 
@@ -25,9 +25,12 @@ export const DEFAULTS: Settings = {
   appearance: { theme: "system", fontSize: 13.5, contentWidth: 560 },
   read: { codeWrap: false },
   edit: { lineNumbers: true, indentUnit: 2 },
-  files: { newFileEol: "crlf" },
+  files: { newFileEol: "crlf", autosave: 0 },
   library: { extensions: [".md", ".markdown"] },
 };
+
+/** `files.autosave` bounds, from spec §2a. 0 turns it off. */
+export const AUTOSAVE = { min: 0, max: 60, step: 1 };
 
 type Json = Record<string, unknown>;
 
@@ -76,7 +79,13 @@ export function normalizeSettings(raw: unknown): Settings {
       lineNumbers: bool(edit["lineNumbers"], DEFAULTS.edit.lineNumbers),
       indentUnit: oneOf(edit["indentUnit"], ["tab", 2, 4] as const, DEFAULTS.edit.indentUnit),
     },
-    files: { newFileEol: oneOf(files["newFileEol"], ["crlf", "lf"] as const, DEFAULTS.files.newFileEol) },
+    files: {
+      newFileEol: oneOf(files["newFileEol"], ["crlf", "lf"] as const, DEFAULTS.files.newFileEol),
+      // Seconds; whole ones only, and 0 means off (spec §2a).
+      autosave: Math.round(
+        num(files["autosave"], AUTOSAVE.min, AUTOSAVE.max, DEFAULTS.files.autosave),
+      ),
+    },
     library: { extensions: validExtensions },
   };
 }
@@ -105,10 +114,9 @@ export function parseSettings(text: string): ParsedSettings {
 export async function loadSettings(): Promise<ParsedSettings> {
   if (!inTauri) return { settings: DEFAULTS, invalid: false };
   try {
-    const there = await exists(SETTINGS_FILE, { baseDir: BaseDirectory.AppData });
-    if (!there) return { settings: DEFAULTS, invalid: false };
-    const text = await readTextFile(SETTINGS_FILE, { baseDir: BaseDirectory.AppData });
-    return parseSettings(text);
+    const file = await settingsPath();
+    if (!(await exists(file))) return { settings: DEFAULTS, invalid: false };
+    return parseSettings(await readTextFile(file));
   } catch {
     return { settings: DEFAULTS, invalid: true };
   }
@@ -133,7 +141,7 @@ export function serializeSettings(settings: Settings): string {
         lineNumbers: settings.edit.lineNumbers,
         indentUnit: settings.edit.indentUnit,
       },
-      files: { newFileEol: settings.files.newFileEol },
+      files: { newFileEol: settings.files.newFileEol, autosave: settings.files.autosave },
       library: { extensions: settings.library.extensions },
     },
     null,
@@ -141,8 +149,23 @@ export function serializeSettings(settings: Settings): string {
   );
 }
 
+/**
+ * Where settings, drafts, the session and the history live. Rust decides —
+ * a `data` folder next to plain.exe makes it portable (spec §2a) — and the
+ * answer cannot change while the app runs, so it is asked for once.
+ *
+ * It lives here rather than in fs.ts because fs.ts imports the store, and the
+ * store imports this module.
+ */
+let dataFolder: Promise<string> | null = null;
+
+export function dataDir(): Promise<string> {
+  dataFolder ??= invoke<string>("data_path").catch(() => appDataDir());
+  return dataFolder;
+}
+
 export async function settingsPath(): Promise<string> {
-  return join(await appDataDir(), SETTINGS_FILE);
+  return join(await dataDir(), SETTINGS_FILE);
 }
 
 const SAVE_DEBOUNCE = 300;

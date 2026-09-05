@@ -1,9 +1,67 @@
 import { closeDocs } from "../app/close";
-import { openQuickSearch } from "../app/commands";
+import { openPaths, openQuickSearch } from "../app/commands";
 import { activeDoc, useStore } from "../app/store";
 import { FileTree } from "./FileTree";
 import { Outline } from "./Outline";
 import "./rail.css";
+import "./library.css";
+
+/** `tags` under the tree (mockup 1e): the tag, how many files, click filters. */
+function Tags() {
+  const tags = useStore((s) => s.tags);
+  const filter = useStore((s) => s.libraryFilterTag);
+  if (tags.length === 0) return null;
+
+  return (
+    <section className="rail-section rail-side">
+      <div className="section-title rail-heading">tags</div>
+      {tags.map((entry) => (
+        <button
+          key={entry.tag}
+          className={"rail-tag" + (entry.tag === filter ? " is-active" : "")}
+          title={`${entry.count} ${entry.count === 1 ? "file" : "files"}`}
+          onClick={() => useStore.getState().toggleLibraryFilter(entry.tag)}
+        >
+          <span className="rail-tag-name">#{entry.tag}</span>
+          <span className="rail-tag-count">{entry.count}</span>
+        </button>
+      ))}
+    </section>
+  );
+}
+
+/**
+ * `links here` under the outline (mockup 1d): the files pointing at this one.
+ * A click opens the file in read. Read has no way to scroll to a source line
+ * — its anchors are headings — so the line is shown but not jumped to; the
+ * number is in the row so you know where to look.
+ */
+function Backlinks() {
+  const backlinks = useStore((s) => s.backlinks);
+  const libraryPath = useStore((s) => s.libraryPath);
+  if (!libraryPath) return null;
+
+  return (
+    <section className="rail-section rail-side">
+      <div className="section-title rail-heading">links here</div>
+      {backlinks.length === 0 ? (
+        <div className="rail-empty">nothing links here</div>
+      ) : (
+        backlinks.map((link) => (
+          <button
+            key={`${link.rel}:${link.line}`}
+            className="backlink"
+            title={`${link.rel}:${link.line}`}
+            onClick={() => void openPaths([link.path])}
+          >
+            <span className="backlink-name">{link.name}</span>
+            <span className="backlink-line">{link.text}</span>
+          </button>
+        ))
+      )}
+    </section>
+  );
+}
 
 export function Rail() {
   const docs = useStore((s) => s.docs);
@@ -51,6 +109,8 @@ export function Rail() {
         )}
         {railView === "files" ? <FileTree /> : <Outline doc={doc} />}
       </section>
+
+      {railView === "files" ? <Tags /> : <Backlinks />}
 
       <footer className="rail-footer">
         {libraryPath && (

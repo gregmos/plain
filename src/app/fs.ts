@@ -32,6 +32,8 @@ export interface WriteRequest {
   eol: Eol;
   baseHash: string | null;
   allowMissing?: boolean;
+  /** Keep a copy of the written bytes under this id (spec §2a). */
+  snapshotId?: string;
 }
 
 export interface FsError {

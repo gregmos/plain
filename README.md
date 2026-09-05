@@ -47,6 +47,9 @@ In `%APPDATA%\Plain` (that is `C:\Users\<you>\AppData\Roaming\Plain`):
 | `settings.json` | settings; easier to change with `Ctrl+,` |
 | `drafts\` | recovery drafts of unsaved edits |
 | `state.json` | open files, reading positions, the last folder |
+| `history\` | snapshots of what you saved, kept for thirty days |
+
+Put a folder called `data` next to `plain.exe` and all four live in it instead — that is portable mode.
 
 Plain creates nothing inside your own folders.
 

@@ -47,6 +47,12 @@
   overflow: hidden;
 }
 
+/* tags, and links here: whatever is left, and never more than a third. */
+.rail-side {
+  flex: none;
+  max-height: 33%;
+}
+
 .rail-heading {
   padding: 0 var(--rail-pad-x) 8px;
 }

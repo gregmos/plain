@@ -1,12 +1,13 @@
 // %APPDATA%\Plain\state.json — what was open and where you were in it
 // (spec §8). Window geometry is not here: the window-state plugin owns it.
 
-import { appDataDir, join } from "@tauri-apps/api/path";
+import { join } from "@tauri-apps/api/path";
 import { exists, readTextFile } from "@tauri-apps/plugin-fs";
 import { inTauri } from "./env";
 import { writeTextAtomic } from "./fs";
 import { pathKey } from "./paths";
-import { useStore, type Mode, type RailView } from "./store";
+import { dataDir } from "./settings";
+import { useStore, type LibrarySort, type Mode, type RailView } from "./store";
 
 const FILE = "state.json";
 const DEBOUNCE_MS = 2000;
@@ -18,9 +19,13 @@ export interface SessionFile {
   files: { path: string; mode: Mode; caret: { line: number; col: number } | null }[];
   active: string | null;
   rail: { collapsed: boolean; view: RailView };
+  /** Editor's share of the width in split view (spec §2a). */
+  split: number;
   library: string | null;
   /** Relative paths of the folded folders in the tree (spec §6). */
   collapsed: string[];
+  /** How the library screen was last sorted (spec §2a). */
+  librarySort: LibrarySort;
   recent: string[];
   /** path -> heading id, oldest first; `""` is the top of the file. */
   reading: [string, string][];
@@ -64,8 +69,10 @@ export function toSession(): SessionFile {
       .map((d) => ({ path: d.path as string, mode: d.mode, caret: d.caret })),
     active: active?.path ?? null,
     rail: { collapsed: state.railCollapsed, view: state.railView },
+    split: state.splitRatio,
     library: state.libraryPath,
     collapsed: state.collapsed,
+    librarySort: state.librarySort,
     recent: state.recent,
     reading: [...positions.entries()],
   };
@@ -89,7 +96,7 @@ export function parseSession(text: string): SessionFile | null {
       .filter((f) => f && typeof f.path === "string")
       .map((f) => ({
         path: f.path,
-        mode: f.mode === "edit" || f.mode === "rich" ? f.mode : "read",
+        mode: f.mode === "edit" || f.mode === "rich" || f.mode === "split" ? f.mode : "read",
         caret: f.caret && typeof f.caret.line === "number" ? f.caret : null,
       })),
     active: typeof value.active === "string" ? value.active : null,
@@ -97,10 +104,19 @@ export function parseSession(text: string): SessionFile | null {
       collapsed: value.rail?.collapsed === true,
       view: value.rail?.view === "outline" ? "outline" : "files",
     },
+    // A dragged-to-nothing panel would come back as a document you cannot see.
+    split:
+      typeof value.split === "number" && value.split >= 0.15 && value.split <= 0.85
+        ? value.split
+        : 0.5,
     library: typeof value.library === "string" ? value.library : null,
     collapsed: Array.isArray(value.collapsed)
       ? value.collapsed.filter((rel) => typeof rel === "string")
       : [],
+    librarySort:
+      value.librarySort === "name" || value.librarySort === "created"
+        ? value.librarySort
+        : "modified",
     recent: Array.isArray(value.recent) ? value.recent.filter((p) => typeof p === "string") : [],
     reading: reading
       .filter((pair) => Array.isArray(pair) && typeof pair[0] === "string" && typeof pair[1] === "string")
@@ -111,7 +127,7 @@ export function parseSession(text: string): SessionFile | null {
 export async function loadSession(): Promise<SessionFile | null> {
   if (!inTauri) return null;
   try {
-    const file = await join(await appDataDir(), FILE);
+    const file = await join(await dataDir(), FILE);
     if (!(await exists(file))) return null;
     const session = parseSession(await readTextFile(file));
     if (session) {
@@ -133,7 +149,7 @@ export async function writeSession(session: SessionFile): Promise<void> {
   clearTimeout(timer);
   timer = undefined;
   try {
-    await writeTextAtomic(await join(await appDataDir(), FILE), JSON.stringify(session));
+    await writeTextAtomic(await join(await dataDir(), FILE), JSON.stringify(session));
   } catch {
     /* losing the session is not worth a banner */
   }
@@ -160,6 +176,7 @@ export function installSession(): () => void {
       state.railView === previous.railView &&
       state.libraryPath === previous.libraryPath &&
       state.collapsed === previous.collapsed &&
+      state.librarySort === previous.librarySort &&
       state.recent === previous.recent
     ) {
       return;

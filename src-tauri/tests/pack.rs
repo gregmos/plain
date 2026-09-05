@@ -68,6 +68,7 @@ fn round_trip(source: &Path) -> (Value, Vec<u8>, Vec<u8>) {
         eol: str_of(&info, "dominantEol"),
         base_hash: Some(str_of(&info, "hash")),
         allow_missing: false,
+        snapshot_id: None,
     })
     .unwrap();
 
@@ -226,6 +227,7 @@ fn a_stale_base_hash_stops_the_write() {
         eol: "crlf".into(),
         base_hash: Some(str_of(&info, "hash")),
         allow_missing: false,
+        snapshot_id: None,
     })
     .unwrap_err();
 
@@ -436,6 +438,7 @@ fn a_refused_save_leaves_the_deleted_folder_deleted() {
         eol: "lf".into(),
         base_hash: Some(str_of(&info, "hash")),
         allow_missing,
+        snapshot_id: None,
     };
 
     std::fs::remove_dir_all(&folder).unwrap();

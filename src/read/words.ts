@@ -42,6 +42,12 @@ export function proseOf(tree: Root): string[] {
       parts.push(nodeText(node));
       return "skip";
     }
+    // A tag is a word on the page, so it is a word in the count.
+    if (type === "tag") {
+      const children = (node as { data?: { hChildren?: { value?: string }[] } }).data?.hChildren;
+      parts.push(children?.[0]?.value ?? "");
+      return "skip";
+    }
     return;
   });
 

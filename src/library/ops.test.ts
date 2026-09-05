@@ -48,6 +48,8 @@ function tree(names: string[]) {
     rel: name,
     dir: false,
     unreadable: false,
+    mtimeMs: 0,
+    ctimeMs: 0,
     children: [],
   }));
 }

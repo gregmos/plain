@@ -4,6 +4,7 @@ import type { Doc } from "../app/store";
 import { useStore } from "../app/store";
 import { buffer, keepBuffer, markSaved, moveBuffer, setBufferText } from "./buffers";
 import { headingsOf } from "../read/headings";
+import { dropImages, isImagePath } from "./images";
 import { headingAbove } from "./headings";
 import { richConf, richExtension } from "./rich";
 import { gutterConf, gutterExtension, lineNumbersOn, onLineNumbers } from "./setup";
@@ -38,6 +39,20 @@ export function runEditorCommand(command: EditorCommand): boolean {
   // but the caret has to come back or the next keystroke goes nowhere.
   live.focus();
   return command(live);
+}
+
+/**
+ * Images dropped on the window while the editor is up (spec §2a). The drop
+ * handler in the library calls this first; anything it does not take is a
+ * file to open, as before.
+ */
+export async function dropImagesInEditor(paths: string[]): Promise<boolean> {
+  const state = useStore.getState();
+  const doc = state.docs.find((d) => d.id === state.activeId);
+  if (!live || !doc || doc.mode === "read") return false;
+  const images = paths.filter(isImagePath);
+  if (images.length === 0) return false;
+  return dropImages(live, doc, images);
 }
 
 /**
@@ -173,8 +188,19 @@ function announceHeading(view: EditorView, id: string, scrollTop: number): void 
   }, 0);
 }
 
-/** `rich` is the same editor with the markers hidden (spec §5.3). */
-export function EditView({ doc, rich = false }: { doc: Doc; rich?: boolean }) {
+/**
+ * `rich` is the same editor with the markers hidden (spec §5.3); `split` is
+ * the same editor next to a read panel of the same document (§2a).
+ */
+export function EditView({
+  doc,
+  rich = false,
+  split = false,
+}: {
+  doc: Doc;
+  rich?: boolean;
+  split?: boolean;
+}) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const shown = useRef(doc.id);
@@ -276,6 +302,22 @@ export function EditView({ doc, rich = false }: { doc: Doc; rich?: boolean }) {
     view.current?.dispatch({ effects: gutterConf.reconfigure(gutterExtension(gutter)) });
   }, [gutter]);
 
+  // In split the read panel follows the caret: whichever heading it is under
+  // gets scrolled to, a moment after the caret settles (spec §2a). There is
+  // no way back — scrolling the reader does not move the caret.
+  const caretLine = doc.caret?.line ?? 1;
+  const headings = doc.headings;
+  useEffect(() => {
+    if (!split) return;
+    const timer = window.setTimeout(() => {
+      const heading = headingAbove(headings, caretLine);
+      if (heading) {
+        window.dispatchEvent(new CustomEvent(GOTO_HEADING, { detail: heading.id }));
+      }
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [split, caretLine, headings]);
+
   // Entering or leaving rich: the buffer, the caret and the scroll stay put.
   useEffect(() => {
     view.current?.dispatch({ effects: richConf.reconfigure(rich ? richExtension : []) });
@@ -283,7 +325,12 @@ export function EditView({ doc, rich = false }: { doc: Doc; rich?: boolean }) {
 
   return (
     <div
-      className={"edit" + (gutter ? "" : " edit-no-gutter") + (rich ? " edit-rich" : "")}
+      className={
+        "edit" +
+        (gutter ? "" : " edit-no-gutter") +
+        (rich ? " edit-rich" : "") +
+        (split ? " edit-split" : "")
+      }
       ref={host}
     />
   );

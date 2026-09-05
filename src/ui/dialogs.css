@@ -161,3 +161,67 @@
   white-space: nowrap;
   z-index: 10;
 }
+
+/* version history and diff (spec §2a) */
+
+.screen-wide {
+  width: min(760px, 100%);
+}
+
+.screen-empty {
+  padding: 9px 0;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+/* Not `.screen-where`: that one reads right to left so a long path keeps its
+   file name, which would put the unit in front of the number. */
+.screen-size {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.diff-heads {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-bottom: 8px;
+  font-size: var(--fs-small);
+  color: var(--muted);
+}
+
+.diff-head {
+  color: var(--fg);
+}
+
+.diff-heads .screen-when {
+  margin-left: auto;
+}
+
+.diff {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 0;
+  max-height: 60vh;
+  overflow: auto;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.diff-line {
+  padding: 0 8px;
+  white-space: pre;
+}
+
+/* Gone from the left side; kept legible but plainly struck out. */
+.diff-removed {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.diff-added {
+  background: var(--selection);
+}

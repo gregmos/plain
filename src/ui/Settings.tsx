@@ -4,7 +4,7 @@
 
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { openSettingsFile } from "../app/commands";
-import { DEFAULTS, type Settings } from "../app/settings";
+import { AUTOSAVE, DEFAULTS, type Settings } from "../app/settings";
 import { useStore } from "../app/store";
 import { TREE_CHANGED } from "../app/watcher";
 import { syncLineNumbers } from "../editor/setup";
@@ -239,7 +239,15 @@ export function SettingsScreen() {
               { label: "crlf", value: "crlf" as const },
               { label: "lf", value: "lf" as const },
             ]}
-            onPick={(newFileEol) => patch({ ...settings, files: { newFileEol } })}
+            onPick={(newFileEol) => patch({ ...settings, files: { ...settings.files, newFileEol } })}
+          />
+        </Row>
+
+        <Row name="files.autosave" about="seconds; 0 turns it off">
+          <Stepper
+            value={settings.files.autosave}
+            bounds={AUTOSAVE}
+            onChange={(autosave) => patch({ ...settings, files: { ...settings.files, autosave } })}
           />
         </Row>
 

@@ -19,6 +19,8 @@ vi.mock("@tauri-apps/api/core", () => ({
       rel: name,
       dir: false,
       unreadable: false,
+      mtimeMs: 0,
+      ctimeMs: 0,
       children: [],
     }));
   },

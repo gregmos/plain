@@ -3,6 +3,7 @@ mod assoc;
 // `tests/pack.rs` drives directly (spec §16). Nothing about them changes —
 // only who is allowed to say their names.
 pub mod fs;
+pub mod history;
 pub mod search;
 pub mod tree;
 mod watch;
@@ -43,6 +44,34 @@ fn resolved_args<I: IntoIterator<Item = String>>(argv: I, cwd: &Path) -> Vec<Pat
             absolute.components().collect()
         })
         .collect()
+}
+
+/* ------------------------------------------------------- where data lives */
+
+/// Portable mode: a `data` folder next to `plain.exe` holds settings, drafts,
+/// the session and the history instead of `%APPDATA%\Plain` (spec §2a).
+/// Nothing else changes — the folder either exists or it does not.
+pub fn pick_data_dir(beside_exe: Option<&Path>, app_data: &Path) -> PathBuf {
+    match beside_exe {
+        Some(folder) if folder.is_dir() => folder.to_path_buf(),
+        _ => app_data.to_path_buf(),
+    }
+}
+
+fn beside_exe() -> Option<PathBuf> {
+    Some(std::env::current_exe().ok()?.parent()?.join("data"))
+}
+
+/// The one folder every file of ours lives in. Rust and the front end have to
+/// agree on it, so the front end asks rather than working it out again.
+pub fn data_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> PathBuf {
+    let app_data = app.path().app_data_dir().unwrap_or_default();
+    pick_data_dir(beside_exe().as_deref(), &app_data)
+}
+
+#[tauri::command]
+fn data_path(app: tauri::AppHandle) -> String {
+    data_dir(&app).to_string_lossy().into_owned()
 }
 
 fn path_args<I: IntoIterator<Item = String>>(argv: I, cwd: &Path) -> Vec<String> {
@@ -187,6 +216,17 @@ pub fn run() {
             let argv: Vec<String> = std::env::args().collect();
             queue_paths(app.handle(), path_args(argv.clone(), &cwd));
             queue_folders(app.handle(), folder_args(argv, &cwd));
+            // Our own folder is ours to read and write, wherever it is. The
+            // capability grants %APPDATA%, so portable mode would otherwise
+            // leave the front end able to write drafts through Rust but not
+            // to list or delete them through plugin-fs (spec §2a).
+            if let Some(scope) = app.handle().try_fs_scope() {
+                let _ = scope.allow_directory(data_dir(app.handle()), true);
+            }
+            // Snapshots older than thirty days go at startup (spec §2a); the
+            // front end never has to think about it.
+            let handle = app.handle().clone();
+            std::thread::spawn(move || history::clean(&handle));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -196,6 +236,7 @@ pub fn run() {
             assoc::register_file_association,
             assoc::unregister_file_association,
             assoc::file_association_registered,
+            data_path,
             fs::read_file,
             fs::canonical_path,
             fs::write_file_atomic,
@@ -209,7 +250,12 @@ pub fn run() {
             tree::rename_path,
             tree::create_file,
             tree::create_dir,
-            search::search_folder
+            search::search_folder,
+            search::collect_tags,
+            search::backlinks,
+            history::list_snapshots,
+            history::snapshot_text,
+            history::delete_snapshot
         ])
         .run(tauri::generate_context!())
         .expect("error while running Plain");
@@ -217,7 +263,38 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{folder_args, path_args};
+    use super::{folder_args, path_args, pick_data_dir};
+    use std::path::Path;
+
+    /// §2a: a `data` folder next to the exe takes over from %APPDATA%, and
+    /// nothing else does.
+    #[test]
+    fn a_data_folder_next_to_the_exe_wins() {
+        let dir = tempfile::tempdir().unwrap();
+        let app_data = dir.path().join("appdata");
+        let portable = dir.path().join("beside-exe").join("data");
+
+        // Not there: the ordinary place.
+        assert_eq!(pick_data_dir(Some(&portable), &app_data), app_data);
+        assert_eq!(pick_data_dir(None, &app_data), app_data);
+
+        // A file called `data` is not a folder and does not count.
+        std::fs::create_dir_all(portable.parent().unwrap()).unwrap();
+        std::fs::write(&portable, "not a folder").unwrap();
+        assert_eq!(pick_data_dir(Some(&portable), &app_data), app_data);
+
+        std::fs::remove_file(&portable).unwrap();
+        std::fs::create_dir(&portable).unwrap();
+        assert_eq!(pick_data_dir(Some(&portable), &app_data), portable);
+    }
+
+    #[test]
+    fn without_an_exe_folder_it_is_still_the_ordinary_place() {
+        assert_eq!(
+            pick_data_dir(None, Path::new(r"C:\Users\me\AppData\Roaming\Plain")),
+            Path::new(r"C:\Users\me\AppData\Roaming\Plain")
+        );
+    }
 
     /// `tauri dev` hands us `--color always`; only real files may survive.
     #[test]

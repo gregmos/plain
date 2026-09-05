@@ -7,11 +7,11 @@ function at(rel: string): string {
 }
 
 function file(name: string, rel: string): TreeNode {
-  return { name, path: at(rel), rel, dir: false, unreadable: false, children: [] };
+  return { name, path: at(rel), rel, dir: false, unreadable: false, mtimeMs: 0, ctimeMs: 0, children: [] };
 }
 
 function folder(name: string, rel: string, children: TreeNode[]): TreeNode {
-  return { name, path: at(rel), rel, dir: true, unreadable: false, children };
+  return { name, path: at(rel), rel, dir: true, unreadable: false, mtimeMs: 0, ctimeMs: 0, children };
 }
 
 // Folders first, then files — the order Rust hands over (spec §6).

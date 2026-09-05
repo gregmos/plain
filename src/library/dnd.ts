@@ -3,11 +3,14 @@
 
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { openLibraryPath, openPaths } from "../app/commands";
+import { dropImagesInEditor } from "../editor";
 import { inTauri } from "../app/env";
 import { useStore } from "../app/store";
 import { pathKind } from "./tree";
 
 async function accept(paths: string[]): Promise<void> {
+  // Images dropped while editing go into the document, not into a tab (§2a).
+  if (await dropImagesInEditor(paths)) return;
   const files: string[] = [];
   let folder: string | null = null;
   for (const path of paths) {

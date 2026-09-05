@@ -7,7 +7,7 @@
 
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { flushActiveEditor, isDirty, markSaved, renameBuffer, replaceText } from "../editor";
-import { dropDraft, writeDraft } from "./drafts";
+import { documentKey, dropDraft, writeDraft } from "./drafts";
 import { inTauri } from "./env";
 import { encodingLabel, isLegacy, normalizeEol, serialize } from "./eol";
 import { canonicalPath, docFields, fsError, readFile, writeFileAtomic } from "./fs";
@@ -95,6 +95,9 @@ async function write(id: string, target: Target): Promise<boolean> {
       eol: current.eol,
       baseHash: target.baseHash,
       allowMissing: target.allowMissing ?? false,
+      // Rust keeps a copy of exactly these bytes, at most one every five
+      // minutes per document (spec §2a).
+      snapshotId: documentKey({ id, path: target.path }),
     });
     const settled = target.adopt ? target.adopt() : id;
     settle(settled, snapshot, hash);
@@ -316,6 +319,7 @@ export function showConflict(id: string): void {
     text: "file changed on disk",
     actions: [
       { label: "reload", run: () => askAboutReload(id) },
+      { label: "compare", run: () => void compareWithDisk(id) },
       {
         label: "save my copy as…",
         run: () => {
@@ -452,4 +456,97 @@ export function reopenAs(encoding: string): void {
     ],
     cancel: () => store.setDialog(null),
   });
+}
+
+/* --------------------------------------------------- comparing (spec §2a) */
+
+/**
+ * `compare` in the conflict banner: the file as it is on disk beside the
+ * buffer. The screen is the choice — taking the disk version there replaces
+ * the buffer without a second question.
+ */
+export async function compareWithDisk(id: string): Promise<void> {
+  const current = liveDoc(id);
+  if (!current?.path) return;
+  try {
+    const info = await readFile(current.path);
+    useStore.getState().setComparison({
+      id,
+      leftLabel: "disk",
+      left: normalizeEol(info.text),
+      rightLabel: "buffer",
+      right: normalizeEol(current.text),
+      takeLabel: "take disk",
+      fromDisk: true,
+    });
+  } catch (error) {
+    useStore.getState().setMessage(`couldn't compare — ${fsError(error).message}`);
+  }
+}
+
+/* -------------------------------------------------- autosave (spec §2a) */
+
+/**
+ * N seconds after the last change to a buffer, that buffer is saved the
+ * ordinary way — conflicts and failures raise the same banners a `Ctrl+S`
+ * would, and a success says nothing at all.
+ */
+export function createAutosave(run: (id: string) => void): {
+  touch: (id: string, seconds: number) => void;
+  cancel: (id: string) => void;
+  stop: () => void;
+} {
+  const timers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  const cancel = (id: string) => {
+    const timer = timers.get(id);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    timers.delete(id);
+  };
+
+  return {
+    touch(id, seconds) {
+      cancel(id);
+      if (seconds <= 0) return;
+      timers.set(
+        id,
+        setTimeout(() => {
+          timers.delete(id);
+          run(id);
+        }, seconds * 1000),
+      );
+    },
+    cancel,
+    stop() {
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+    },
+  };
+}
+
+const autosave = createAutosave((id) => void save(id));
+
+/** Every buffer that changes is on the same clock, one timer per document. */
+export function installAutosave(): () => void {
+  const unsubscribe = useStore.subscribe((state, previous) => {
+    if (state.docs === previous.docs) return;
+    const seconds = state.settings.files.autosave;
+    for (const doc of state.docs) {
+      const before = previous.docs.find((d) => d.id === doc.id);
+      if (!before || before.revision === doc.revision) continue;
+      // A buffer with no file of its own would open a dialog, which is not
+      // something a timer may do (spec §2a, §6).
+      if (!doc.path || doc.readOnly) continue;
+      autosave.touch(doc.id, seconds);
+    }
+    // A document that closed takes its timer with it.
+    for (const gone of previous.docs) {
+      if (!state.docs.some((d) => d.id === gone.id)) autosave.cancel(gone.id);
+    }
+  });
+  return () => {
+    unsubscribe();
+    autosave.stop();
+  };
 }

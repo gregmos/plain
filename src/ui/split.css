@@ -1,0 +1,74 @@
+/* Split view (spec §2a): edit on the left, read on the right, one document.
+   Neither column gets its usual measure — the panel is the measure. */
+
+/* Mode bar: `split` is a mode of its own, set apart from the other three. */
+.mode-split {
+  margin-left: 14px;
+}
+
+.split {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.split-panel {
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The handle is a 1px rule with a wider grab area around it. */
+.split-handle {
+  position: relative;
+  flex: none;
+  width: 9px;
+  margin: 0 -4px;
+  background: none;
+  cursor: col-resize;
+  z-index: 1;
+}
+
+.split-handle::before {
+  content: "";
+  position: absolute;
+  inset: 0 4px;
+  background: var(--border);
+}
+
+.split-handle:hover::before,
+.split-handle[data-active]::before,
+.split-handle[data-resize-handle-active]::before {
+  background: var(--muted);
+}
+
+/* Both columns fill their panel; the reading measure would leave a stripe. */
+.split .cm-content {
+  max-width: none;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+.split .cm-scroller {
+  justify-content: flex-start;
+}
+
+.split .edit-no-gutter .cm-content {
+  padding-left: 24px;
+}
+
+.split .read-column {
+  max-width: none;
+  padding: 0 24px 80px;
+}
+
+.split .content.read {
+  padding-top: 24px;
+}
+
+/* The block markers of rich would sit outside the panel. */
+.split .cm-rich-head::before,
+.split .cm-rich-quote::before {
+  display: none;
+}

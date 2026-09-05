@@ -320,3 +320,18 @@
     margin: 18mm 16mm;
   }
 }
+
+/* focus mode (spec §2a) — the document and nothing else. Banners stay: a
+   conflict or a failed save still has to be able to say so. */
+
+.app.is-focus .menubar,
+.app.is-focus .rail,
+.app.is-focus .modebar,
+.app.is-focus .statusbar {
+  display: none;
+}
+
+/* Without the mode bar the column would start at the very top edge. */
+.app.is-focus .content {
+  padding-top: 56px;
+}

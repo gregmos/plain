@@ -26,7 +26,19 @@ pub struct Node {
     /// The folder refused to be listed, or the walk stopped at MAX_DEPTH.
     /// `children` is then empty because we do not know, not because it is.
     unreadable: bool,
+    /// Files carry their two dates so the library screen can sort by them
+    /// (spec §2a); folders and anything unreadable carry 0.
+    mtime_ms: f64,
+    ctime_ms: f64,
     children: Vec<Node>,
+}
+
+/// Milliseconds since the epoch, or 0 when the platform will not say.
+fn stamp(time: std::io::Result<std::time::SystemTime>) -> f64 {
+    time.ok()
+        .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|since| since.as_millis() as f64)
+        .unwrap_or(0.0)
 }
 
 /// Creating something says either "it is already there" — which is not a
@@ -139,15 +151,25 @@ fn read_dir(dir: &Path, prefix: &str, extensions: &[String], depth: usize) -> (V
                 rel,
                 dir: true,
                 unreadable,
+                mtime_ms: 0.0,
+                ctime_ms: 0.0,
                 children,
             });
         } else if kind.is_file() && wanted(&name, extensions) {
+            // On Windows the directory scan already carries the times, so
+            // this costs nothing extra.
+            let (mtime_ms, ctime_ms) = match entry.metadata() {
+                Ok(meta) => (stamp(meta.modified()), stamp(meta.created())),
+                Err(_) => (0.0, 0.0),
+            };
             files.push(Node {
                 name,
                 path: path.to_string_lossy().into_owned(),
                 rel,
                 dir: false,
                 unreadable: false,
+                mtime_ms,
+                ctime_ms,
                 children: Vec::new(),
             });
         }
@@ -231,6 +253,24 @@ mod tests {
     }
 
     /// Review #4: a file the tree never showed must survive `new file`.
+    /// The library screen sorts by these, so they have to be real (spec §2a).
+    #[test]
+    fn files_carry_their_dates() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("a.md"), "x").unwrap();
+        fs::create_dir(dir.path().join("sub")).unwrap();
+
+        let tree = read_tree(dir.path().to_string_lossy().into_owned(), md()).unwrap();
+        let folder = &tree[0];
+        let file = &tree[1];
+        assert_eq!(folder.name, "sub");
+        assert_eq!(file.name, "a.md");
+        assert!(file.mtime_ms > 0.0, "a file knows when it changed");
+        assert!(file.ctime_ms > 0.0, "and when it was made");
+        // A folder is never a row on that screen, so it carries nothing.
+        assert_eq!(folder.mtime_ms, 0.0);
+    }
+
     #[test]
     fn create_file_never_overwrites() {
         let dir = tempfile::tempdir().unwrap();

@@ -22,6 +22,9 @@ import { readingMinutes } from "./words";
 import "katex/dist/katex.min.css";
 import "../ui/read.css";
 
+/** How many tags the meta line spells out before it counts them (spec §2a). */
+const META_TAGS = 6;
+
 /** Spec §8: above this the document is only built on request. */
 const LARGE = 2 * 1024 * 1024;
 
@@ -67,6 +70,18 @@ async function openInViewer(path: string): Promise<void> {
   if (!inTauri) return;
   const { openPath } = await import("@tauri-apps/plugin-opener");
   await openPath(path);
+}
+
+/**
+ * Clicking a tag asks the library screen for the notes carrying it. The
+ * store action belongs to the library (wave 5a); until it lands, the event
+ * says the same thing and the library subscribes to it.
+ */
+function filterByTag(tag: string): void {
+  if (tag === "") return;
+  const store = useStore.getState() as { openLibraryWithTag?: (tag: string) => void };
+  if (typeof store.openLibraryWithTag === "function") store.openLibraryWithTag(tag);
+  else window.dispatchEvent(new CustomEvent("plain:filter-tag", { detail: tag }));
 }
 
 async function copy(text: string): Promise<void> {
@@ -189,13 +204,19 @@ export function ReadView({ doc }: { doc: Doc }) {
   const meta = useMemo(() => {
     if (!result) return null;
     const date = frontmatterDate(result.frontmatter?.["date"]) ?? mtime;
-    const parts = [
+    return [
       ...(date ? [formatDate(date)] : []),
       `${result.words.toLocaleString("en-US")} words`,
       `${readingMinutes(result.words)} min`,
-    ];
-    return parts.join(" · ");
+    ].join(" · ");
   }, [result, mtime]);
+
+  // The document's tags follow the meta line; a long list keeps its count
+  // rather than wrapping over the title (spec §2a).
+  const metaTags = useMemo(() => {
+    const tags = result?.tags ?? [];
+    return { shown: tags.slice(0, META_TAGS), rest: Math.max(0, tags.length - META_TAGS) };
+  }, [result]);
 
   /* ------------------------------------------------------------ the dom */
 
@@ -343,6 +364,13 @@ export function ReadView({ doc }: { doc: Doc }) {
       return;
     }
 
+    const tag = node.closest<HTMLElement>("a.tag");
+    if (tag) {
+      event.preventDefault();
+      filterByTag(tag.dataset["tag"] ?? "");
+      return;
+    }
+
     const anchor = node.closest<HTMLElement>(".h-anchor");
     if (anchor) {
       event.preventDefault();
@@ -433,7 +461,23 @@ export function ReadView({ doc }: { doc: Doc }) {
             </div>
           ) : (
             <>
-              {meta && <div className="read-meta">{meta}</div>}
+              {meta && (
+                <div className="read-meta">
+                  {meta}
+                  {metaTags.shown.length > 0 && <span className="meta-sep"> · </span>}
+                  {metaTags.shown.map((tag) => (
+                    <button
+                      key={tag}
+                      className="meta-tag"
+                      onClick={() => filterByTag(tag)}
+                      title={`notes tagged #${tag}`}
+                    >
+                      #{tag}
+                    </button>
+                  ))}
+                  {metaTags.rest > 0 && <span className="meta-tag-rest">+{metaTags.rest}</span>}
+                </div>
+              )}
               <div className="read-html" ref={body} onClick={onClick} onMouseOver={onHover} />
             </>
           )}

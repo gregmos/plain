@@ -38,6 +38,22 @@ describe("state.json", () => {
     expect(back?.reading).toContainEqual(["c:/notes/a.md", "intro"]);
   });
 
+  it("keeps the split width and the split mode", () => {
+    const store = useStore.getState();
+    store.openDoc(makeDoc({ id: "c:/notes/s.md", path: "C:/notes/s.md", text: "s", mode: "split" }));
+    useStore.getState().setSplitRatio(0.62);
+
+    const back = parseSession(JSON.stringify(toSession()));
+    expect(back?.files[0]?.mode).toBe("split");
+    expect(back?.split).toBeCloseTo(0.62);
+  });
+
+  it("refuses a width that would hide a panel", () => {
+    expect(parseSession(JSON.stringify({ files: [], split: 0.02 }))?.split).toBe(0.5);
+    expect(parseSession(JSON.stringify({ files: [], split: 1.4 }))?.split).toBe(0.5);
+    expect(parseSession(JSON.stringify({ files: [] }))?.split).toBe(0.5);
+  });
+
   it("remembers which folders of the tree were folded shut (spec §6)", () => {
     useStore.getState().setLibraryPath("C:/notes");
     useStore.getState().toggleCollapsed("archive");

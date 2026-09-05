@@ -25,7 +25,7 @@ pub struct FsError {
 }
 
 impl FsError {
-    fn io(message: impl Into<String>) -> Self {
+    pub fn io(message: impl Into<String>) -> Self {
         Self {
             kind: "io",
             message: message.into(),
@@ -396,6 +396,10 @@ pub struct WriteRequest {
     /// The file was deleted from under us and the user wants it back (§8).
     #[serde(default)]
     pub allow_missing: bool,
+    /// When set, a successful write also leaves a copy in the history folder
+    /// under this id, at most one every five minutes (spec §2a).
+    #[serde(default)]
+    pub snapshot_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -408,10 +412,9 @@ pub struct WriteResult {
 /// racing over their temp files.
 static WRITE_LOCK: Mutex<()> = Mutex::new(());
 
-pub fn write_checked(request: &WriteRequest) -> FsResult<String> {
-    let _guard = WRITE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    let path = PathBuf::from(&request.path);
-
+/// Exactly the bytes a write would put on disk: BOM, the file's own line
+/// endings, its own encoding. The history keeps a copy of these (spec §2a).
+pub fn encoded_bytes(request: &WriteRequest) -> FsResult<Vec<u8>> {
     let mut bytes = Vec::new();
     if request.bom {
         bytes.extend_from_slice(bom_bytes(&request.encoding));
@@ -420,6 +423,20 @@ pub fn write_checked(request: &WriteRequest) -> FsResult<String> {
         &apply_eol(&request.text, &request.eol),
         &request.encoding,
     )?);
+    Ok(bytes)
+}
+
+pub fn write_checked(request: &WriteRequest) -> FsResult<String> {
+    write_written(request).map(|(hash, _)| hash)
+}
+
+/// The hash and the bytes, so the caller can keep a copy without encoding
+/// the whole document a second time.
+fn write_written(request: &WriteRequest) -> FsResult<(String, Vec<u8>)> {
+    let _guard = WRITE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let path = PathBuf::from(&request.path);
+
+    let bytes = encoded_bytes(request)?;
 
     let dir = path
         .parent()
@@ -455,12 +472,18 @@ pub fn write_checked(request: &WriteRequest) -> FsResult<String> {
     }
 
     commit(&path, &temp, existed)?;
-    Ok(blake3::hash(&bytes).to_hex().to_string())
+    let hash = blake3::hash(&bytes).to_hex().to_string();
+    Ok((hash, bytes))
 }
 
 #[tauri::command]
-pub fn write_file_atomic(request: WriteRequest) -> FsResult<WriteResult> {
-    write_checked(&request).map(|hash| WriteResult { hash })
+pub fn write_file_atomic(app: tauri::AppHandle, request: WriteRequest) -> FsResult<WriteResult> {
+    let (hash, bytes) = write_written(&request)?;
+    // Keeping a copy is a courtesy; failing at it must not fail the save.
+    if let Some(id) = request.snapshot_id.as_deref() {
+        let _ = crate::history::keep(&app, id, &bytes);
+    }
+    Ok(WriteResult { hash })
 }
 
 /// Drafts and state.json: same temp-and-replace, always UTF-8, never
@@ -475,6 +498,7 @@ pub fn write_text_atomic(path: String, text: String) -> FsResult<()> {
         eol: "keep".into(),
         base_hash: None,
         allow_missing: true,
+        snapshot_id: None,
     })
     .map(|_| ())
 }
@@ -501,6 +525,7 @@ mod tests {
             eol: "lf".into(),
             base_hash: None,
             allow_missing: false,
+            snapshot_id: None,
         }
     }
 
@@ -711,6 +736,7 @@ mod tests {
                 eol: info.dominant_eol.clone(),
                 base_hash: Some(info.hash.clone()),
                 allow_missing: false,
+                snapshot_id: None,
             })
             .unwrap();
 
@@ -736,6 +762,7 @@ mod tests {
             eol: info.dominant_eol.clone(),
             base_hash: Some(info.hash.clone()),
             allow_missing: false,
+            snapshot_id: None,
         })
         .unwrap();
 
@@ -763,6 +790,7 @@ mod tests {
             eol: info.dominant_eol.clone(),
             base_hash: Some(info.hash.clone()),
             allow_missing: false,
+            snapshot_id: None,
         })
         .unwrap();
         assert_eq!(fs::read(&file).unwrap(), b"a\r\nb\r\nc\r\nd\r\n");
@@ -785,6 +813,7 @@ mod tests {
             eol: info.dominant_eol.clone(),
             base_hash: Some(info.hash.clone()),
             allow_missing: false,
+            snapshot_id: None,
         })
         .unwrap();
 

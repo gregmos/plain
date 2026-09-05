@@ -6,6 +6,7 @@ import {
   copyPath,
   copyPlainText,
   exitApp,
+  exportHtmlFile,
   exportPdf,
   exportPlainText,
   newDoc,
@@ -97,6 +98,15 @@ export const commands: Command[] = [
     when: hasDoc,
   },
   {
+    id: "file.history",
+    title: "version history…",
+    run: () => {
+      const id = store().activeId;
+      if (id) useStore.getState().setHistory(id);
+    },
+    when: hasDoc,
+  },
+  {
     id: "file.copyPlain",
     title: "copy as plain text",
     chord: "Ctrl+Shift+Alt+C",
@@ -107,6 +117,12 @@ export const commands: Command[] = [
     id: "file.exportText",
     title: "export as text…",
     run: () => void exportPlainText(),
+    when: hasDoc,
+  },
+  {
+    id: "file.exportHtml",
+    title: "export as html…",
+    run: () => void exportHtmlFile(),
     when: hasDoc,
   },
   {
@@ -163,7 +179,21 @@ export const commands: Command[] = [
   { id: "view.read", title: "read", chord: "Ctrl+Alt+1", run: () => store().setMode("read"), when: hasDoc },
   { id: "view.edit", title: "edit", chord: "Ctrl+Alt+2", run: () => store().setMode("edit"), when: hasDoc },
   { id: "view.rich", title: "rich", chord: "Ctrl+Alt+3", run: () => store().setMode("rich"), when: hasDoc },
+  {
+    id: "view.split",
+    title: "split",
+    chord: "Ctrl+Shift+\\",
+    run: () => store().setMode("split"),
+    when: hasDoc,
+  },
   { id: "view.toggleRail", title: "toggle rail", chord: "Ctrl+\\", run: () => store().toggleRail() },
+  {
+    id: "view.library",
+    title: "library",
+    chord: "Ctrl+Alt+L",
+    run: () => store().setLibraryOpen(!store().libraryOpen),
+    when: () => store().libraryPath !== null,
+  },
   { id: "view.files", title: "files", run: () => store().setRailView("files") },
   { id: "view.outline", title: "outline", run: () => store().setRailView("outline") },
   { id: "view.toggleTheme", title: "toggle theme", chord: "Ctrl+Shift+D", run: () => store().toggleTheme() },
@@ -173,6 +203,12 @@ export const commands: Command[] = [
   { id: "view.lineNumbers", title: "line numbers", chord: "Ctrl+Shift+9", run: () => toggleLineNumbers() },
   { id: "view.alwaysOnTop", title: "always on top", chord: "Ctrl+Shift+A", run: () => void toggleAlwaysOnTop() },
   { id: "view.fullscreen", title: "fullscreen", chord: "F11", run: () => void toggleFullscreen() },
+  {
+    id: "view.focus",
+    title: "focus",
+    chord: "F8",
+    run: () => store().setFocus(!store().focus),
+  },
   { id: "view.zoomIn", title: "zoom in", hint: "Ctrl+=", run: () => zoomIn() },
   { id: "view.zoomOut", title: "zoom out", hint: "Ctrl+-", run: () => zoomOut() },
   { id: "view.zoomReset", title: "reset zoom", hint: "Ctrl+0", run: () => zoomReset() },

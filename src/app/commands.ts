@@ -67,7 +67,11 @@ export async function openPaths(paths: string[]): Promise<boolean> {
     }
   }
   // The complaint was about a file that is no longer the one on screen.
-  if (opened) useStore.getState().dismissBanner("open-failed");
+  if (opened) {
+    useStore.getState().dismissBanner("open-failed");
+    // You asked for a document; the library screen has served its purpose.
+    useStore.getState().setLibraryOpen(false);
+  }
   return opened;
 }
 
@@ -545,5 +549,47 @@ export async function exportPdf(): Promise<void> {
   } catch {
     store.setMessage("couldn't open the print dialog");
     restore();
+  }
+}
+
+/**
+ * Export the open document to one self-contained `.html` (spec §2a).
+ * The build lives in read/export.ts; this is the dialog and the write.
+ */
+export async function exportHtmlFile(): Promise<void> {
+  const store = useStore.getState();
+  const current = store.docs.find((d) => d.id === store.activeId);
+  if (!current) return;
+  if (!inTauri) {
+    store.setMessage("export needs the app");
+    return;
+  }
+
+  const [{ save }, { exportHtml }, { dirname }] = await Promise.all([
+    import("@tauri-apps/plugin-dialog"),
+    import("../read/export"),
+    import("./paths"),
+  ]);
+
+  const name = current.title.replace(/\.[^.]+$/, "");
+  const folder = current.path ? dirname(current.path) : store.libraryPath;
+  const picked = await save({
+    defaultPath: folder ? `${folder}\${name}.html` : `${name}.html`,
+    filters: [{ name: "html", extensions: ["html"] }],
+  });
+  if (typeof picked !== "string") return;
+
+  try {
+    const html = await exportHtml(
+      current.text,
+      name,
+      current.path ? dirname(current.path) : null,
+      { useDrawnDiagrams: current.mode === "read" && current.id === store.activeId },
+    );
+    await invoke("write_text_atomic", { path: picked, text: html });
+    useStore.getState().setMessage(`exported ${basename(picked)}`);
+  } catch (error) {
+    const why = error instanceof Error ? error.message : String(error);
+    useStore.getState().setMessage(`couldn't export — ${why}`);
   }
 }

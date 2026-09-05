@@ -13,6 +13,7 @@ import { visit, SKIP } from "unist-util-visit";
 import type { Plugin, Preset } from "unified";
 import type { Root } from "mdast";
 import { remarkCallouts } from "./callout";
+import { remarkTags } from "./tags";
 import { remarkWikiLink } from "./wikilink";
 
 /**
@@ -54,6 +55,7 @@ export const markdownPreset: Preset = {
     remarkMathGuard,
     [remarkMarkers, { markerTagName: "mark", markerClassName: () => [] }],
     remarkWikiLink,
+    remarkTags,
     remarkCallouts,
   ],
 };

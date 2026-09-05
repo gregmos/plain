@@ -10,7 +10,7 @@ import { basename, pathKey } from "./paths";
 /** Over this, highlighting is off and read renders on demand (spec §8). */
 export const LARGE_TEXT = 2 * 1024 * 1024;
 
-export type Mode = "read" | "edit" | "rich";
+export type Mode = "read" | "edit" | "rich" | "split";
 export type RailView = "files" | "outline";
 
 export interface Heading {
@@ -119,7 +119,31 @@ export interface TreeNode {
   dir: boolean;
   /** The folder would not be listed; `children` is unknown, not empty (#20). */
   unreadable: boolean;
+  /** Files carry both dates for the library screen; folders carry 0 (§2a). */
+  mtimeMs: number;
+  ctimeMs: number;
   children: TreeNode[];
+}
+
+/** What the library screen sorts by (spec §2a). */
+export type LibrarySort = "modified" | "name" | "created";
+
+/** One tag of the library, with the files it appears in (spec §2a). */
+export interface TagCount {
+  /** Lowercase, without the `#`. */
+  tag: string;
+  count: number;
+  files: string[];
+}
+
+/** A line in another file that points at the open one (spec §2a). */
+export interface Backlink {
+  path: string;
+  rel: string;
+  name: string;
+  /** 1-based. */
+  line: number;
+  text: string;
 }
 
 /** The row the tree is about to create; `Enter` in the inline field makes it. */
@@ -127,6 +151,23 @@ export interface TreeDraft {
   /** Absolute path of the folder it goes into. */
   parent: string;
   kind: "file" | "folder";
+}
+
+/** What the diff screen is comparing; `left` is the older of the two. */
+export interface Comparison {
+  /** The document the buffer belongs to. */
+  id: string;
+  leftLabel: string;
+  left: string;
+  rightLabel: string;
+  right: string;
+  /** `take disk` / `take snapshot`: what replaces the buffer. */
+  takeLabel: string;
+  /**
+   * The left side is the file as it is on disk, so taking it is a reload —
+   * base hash and all. A snapshot only replaces the buffer (spec §2a).
+   */
+  fromDisk: boolean;
 }
 
 /** `Ctrl+K`; `seed` is `>` when the palette was asked for (spec §4). */
@@ -153,6 +194,8 @@ interface AppState {
   resolvedTheme: "light" | "dark";
   railCollapsed: boolean;
   railView: RailView;
+  /** Editor's share of the width in split; the session keeps it (§2a). */
+  splitRatio: number;
   libraryPath: string | null;
   recent: string[];
   /** Transient status-bar message; clears itself after 3 s. */
@@ -184,12 +227,32 @@ interface AppState {
   /** `Ctrl+Shift+F` takes over the content area (spec §7). */
   folderSearch: boolean;
 
+  /* ---------------------------------------------- history and diff (v0.2) */
+
+  /** Id of the document whose version history is on screen (spec §2a). */
+  history: string | null;
+  /** The two texts the diff screen shows, or null when it is closed. */
+  comparison: Comparison | null;
+
+  /* ------------------------------------------------ the library (v0.2) */
+
+  /** `Ctrl+Alt+L`: the library screen instead of the document (spec §2a). */
+  libraryOpen: boolean;
+  librarySort: LibrarySort;
+  /** Only files carrying this tag are listed; null shows all of them. */
+  libraryFilterTag: string | null;
+  /** Every tag in the library, most used first. */
+  tags: TagCount[];
+  /** Lines pointing at the active document; the `links here` rail section. */
+  backlinks: Backlink[];
+
   /* ------------------------------------------ menu and settings (wave 5b) */
 
   /** The settings screen takes over the content area too (spec §10). */
   settingsOpen: boolean;
   /** `F1` / `help -> shortcuts`: the key list, in the same place. */
   shortcutsOpen: boolean;
+  focus: boolean;
   /** WebView2 zoom factor the view menu drives; 1 is 100% (spec §4). */
   zoom: number;
 
@@ -198,6 +261,8 @@ interface AppState {
   changeSettings: (settings: Settings) => void;
   setSettingsOpen: (open: boolean) => void;
   setShortcutsOpen: (open: boolean) => void;
+  /** Focus mode hides the chrome (spec §2a); not kept in the session. */
+  setFocus: (focus: boolean) => void;
   setZoom: (zoom: number) => void;
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
@@ -215,6 +280,8 @@ interface AppState {
   closeDoc: (id: string) => void;
   cycleDoc: (step: number) => void;
   setMode: (mode: Mode) => void;
+  /** Share of the width the editor takes in split (spec §2a). */
+  setSplitRatio: (ratio: number) => void;
   toggleMode: () => void;
   setMessage: (message: string | null) => void;
   setNote: (note: string | null) => void;
@@ -235,6 +302,15 @@ interface AppState {
   setTreeRenaming: (path: string | null) => void;
   setQuickSearch: (quickSearch: QuickSearch | null) => void;
   setFolderSearch: (open: boolean) => void;
+  setHistory: (id: string | null) => void;
+  setComparison: (comparison: Comparison | null) => void;
+
+  setLibraryOpen: (open: boolean) => void;
+  setLibrarySort: (sort: LibrarySort) => void;
+  /** Clicking the tag that is already on takes the filter off again. */
+  toggleLibraryFilter: (tag: string | null) => void;
+  setTags: (tags: TagCount[]) => void;
+  setBacklinks: (backlinks: Backlink[]) => void;
 }
 
 function countFiles(nodes: TreeNode[]): number {
@@ -258,6 +334,7 @@ export const useStore = create<AppState>()((set, get) => ({
   resolvedTheme: resolveTheme(DEFAULTS.appearance.theme),
   railCollapsed: false,
   railView: "files",
+  splitRatio: 0.5,
   libraryPath: null,
   recent: [],
   message: null,
@@ -274,8 +351,16 @@ export const useStore = create<AppState>()((set, get) => ({
   treeRenaming: null,
   quickSearch: null,
   folderSearch: false,
+  history: null,
+  comparison: null,
+  libraryOpen: false,
+  librarySort: "modified",
+  libraryFilterTag: null,
+  tags: [],
+  backlinks: [],
   settingsOpen: false,
   shortcutsOpen: false,
+  focus: false,
   zoom: 1,
 
   applySettings: (settings) => {
@@ -298,6 +383,7 @@ export const useStore = create<AppState>()((set, get) => ({
 
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setShortcutsOpen: (shortcutsOpen) => set({ shortcutsOpen }),
+  setFocus: (focus) => set({ focus }),
   setZoom: (zoom) => set({ zoom }),
 
   // The theme is a setting like any other, so picking one writes the file
@@ -379,6 +465,8 @@ export const useStore = create<AppState>()((set, get) => ({
     if (next) set({ activeId: next.id });
   },
 
+  setSplitRatio: (splitRatio) => set({ splitRatio }),
+
   setMode: (mode) =>
     set((s) => ({
       docs: s.docs.map((d) => (d.id === s.activeId ? { ...d, mode } : d)),
@@ -437,6 +525,20 @@ export const useStore = create<AppState>()((set, get) => ({
   setTreeRenaming: (treeRenaming) => set({ treeRenaming }),
   setQuickSearch: (quickSearch) => set({ quickSearch }),
   setFolderSearch: (folderSearch) => set({ folderSearch }),
+  setHistory: (history) => set({ history }),
+  setComparison: (comparison) => set({ comparison }),
+
+  setLibraryOpen: (libraryOpen) =>
+    set(libraryOpen ? { libraryOpen } : { libraryOpen, libraryFilterTag: null }),
+  setLibrarySort: (librarySort) => set({ librarySort }),
+  toggleLibraryFilter: (tag) =>
+    set((s) => ({
+      libraryFilterTag: tag !== null && s.libraryFilterTag === tag ? null : tag,
+      // A tag is a way into the library screen, so it opens it.
+      libraryOpen: tag === null ? s.libraryOpen : true,
+    })),
+  setTags: (tags) => set({ tags }),
+  setBacklinks: (backlinks) => set({ backlinks }),
 }));
 
 export function activeDoc(state: AppState): Doc | null {

@@ -50,6 +50,13 @@ export function ModeBar() {
             {mode}
           </button>
         ))}
+        {/* Split is the two of them at once, so it stands a little apart. */}
+        <button
+          className={"mode mode-split" + (doc?.mode === "split" ? " is-active" : "")}
+          onClick={() => doc && setMode("split")}
+        >
+          split
+        </button>
       </div>
     </div>
   );
