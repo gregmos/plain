@@ -2,19 +2,22 @@
 // save.ts and closing in close.ts; the rest is here.
 
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { mkdir } from "@tauri-apps/plugin-fs";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { flushActiveEditor } from "../editor";
 import { isDirty } from "../editor/buffers";
 import { emitRerender } from "../read/events";
+import { render } from "../read/pipeline";
+import { countWords } from "../read/words";
+import { serialize } from "./eol";
 import { inTauri } from "./env";
 import { docFields, fsError, hashFile, readFile, writeTextAtomic } from "./fs";
 import { basename, pathKey } from "./paths";
 import { reloadFromDisk } from "./save";
 import { SETTINGS_FILE, serializeSettings } from "./settings";
-import { activeDoc, makeDoc, useStore } from "./store";
+import { activeDoc, makeDoc, useStore, type Doc } from "./store";
 
 /**
  * Reads each path into the open list; the first one becomes active.
@@ -318,4 +321,215 @@ export async function showAbout(): Promise<void> {
 export async function exitApp(): Promise<void> {
   if (!inTauri) return;
   await getCurrentWindow().close();
+}
+
+/* -------------------------------------------------- plain text (wave 5b) */
+
+/** Chrome the reader sees but a paste should not carry. */
+const DROP_CLASSES = ["code-bar", "h-anchor", "img-holder"];
+
+/** A blank line around them, the way a paragraph reads. */
+const PARAGRAPH_TAGS = new Set([
+  "p", "div", "h1", "h2", "h3", "h4", "h5", "h6",
+  "pre", "blockquote", "section", "article", "figure", "table", "hr", "details",
+]);
+
+/** One line each — a list is a list, not a stack of paragraphs. */
+const LINE_TAGS = new Set([
+  "li", "ul", "ol", "tr", "dl", "dt", "dd", "figcaption", "summary",
+]);
+
+const ENTITIES: Record<string, string> = {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", hellip: "…", mdash: "—", ndash: "–",
+};
+
+function decode(text: string): string {
+  return text.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (whole, body: string) => {
+    if (body.startsWith("#")) {
+      const code = body[1] === "x" || body[1] === "X"
+        ? parseInt(body.slice(2), 16)
+        : parseInt(body.slice(1), 10);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : whole;
+    }
+    return ENTITIES[body.toLowerCase()] ?? whole;
+  });
+}
+
+function attribute(tag: string, name: string): string | null {
+  const m = new RegExp(`\\s${name}\\s*=\\s*("([^"]*)"|'([^']*)')`, "i").exec(tag);
+  return m ? decode(m[2] ?? m[3] ?? "") : null;
+}
+
+/**
+ * The rendered HTML as text a mail client would accept: no `#`, no `*`, one
+ * list item per line. Done on the string rather than through a DOM, so it
+ * needs no layout, no document, and runs the same in a test as in the app.
+ */
+export function htmlToPlainText(html: string): string {
+  let out = "";
+  let pre = 0;
+  let i = 0;
+
+  const push = (text: string) => {
+    // A collapsed space right after a line break is the markup's, not the
+    // author's — except inside `pre`, where every space is the author's.
+    out += pre === 0 && out.endsWith("\n") ? text.replace(/^[ \t]+/, "") : text;
+  };
+  /** At least `n` line breaks here — never more than are wanted. */
+  const brk = (n: number) => {
+    if (out === "") return;
+    out = out.replace(/[ \t]+$/, "");
+    const have = /\n*$/.exec(out)?.[0].length ?? 0;
+    out += "\n".repeat(Math.max(0, n - have));
+  };
+
+  while (i < html.length) {
+    const lt = html.indexOf("<", i);
+    if (lt < 0) {
+      push(pre > 0 ? decode(html.slice(i)) : decode(html.slice(i)).replace(/\s+/g, " "));
+      break;
+    }
+    if (lt > i) {
+      const text = decode(html.slice(i, lt));
+      push(pre > 0 ? text : text.replace(/\s+/g, " "));
+    }
+    const gt = html.indexOf(">", lt);
+    if (gt < 0) break;
+
+    const tag = html.slice(lt, gt + 1);
+    const name = /^<\/?\s*([a-z0-9]+)/i.exec(tag)?.[1]?.toLowerCase() ?? "";
+    const closing = tag[1] === "/";
+
+    // A comment or a doctype carries nothing.
+    if (tag.startsWith("<!")) {
+      i = gt + 1;
+      continue;
+    }
+
+    const classes = closing ? null : attribute(tag, "class");
+    if (classes && DROP_CLASSES.some((c) => classes.split(/\s+/).includes(c))) {
+      i = skipElement(html, gt + 1, name);
+      continue;
+    }
+
+    if (name === "img") push(attribute(tag, "alt") ?? "");
+    else if (name === "br") brk(1);
+    else if (name === "pre") pre += closing ? -1 : 1;
+
+    if (PARAGRAPH_TAGS.has(name)) brk(2);
+    else if (LINE_TAGS.has(name)) brk(1);
+    i = gt + 1;
+  }
+
+  return out
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** Position just past the matching close tag of an element already opened. */
+function skipElement(html: string, from: number, name: string): number {
+  let depth = 1;
+  let i = from;
+  const tags = new RegExp(`<(/?)${name}\\b[^>]*>`, "gi");
+  tags.lastIndex = from;
+  for (let m = tags.exec(html); m; m = tags.exec(html)) {
+    depth += m[1] ? -1 : 1;
+    i = tags.lastIndex;
+    if (depth === 0) return i;
+  }
+  return html.length;
+}
+
+/**
+ * The document as it looks, not as it is written. Null when it is too big to
+ * render at all (spec §8).
+ */
+export function plainTextOf(doc: Doc): string | null {
+  if (doc.large) return null;
+  return htmlToPlainText(render(doc.text).html);
+}
+
+/** `Ctrl+Shift+Alt+C`: the document as plain text, on the clipboard. */
+export async function copyPlainText(): Promise<void> {
+  const store = useStore.getState();
+  flushActiveEditor();
+  const doc = activeDoc(useStore.getState());
+  if (!doc) return;
+
+  const text = plainTextOf(doc);
+  if (text === null) {
+    store.setMessage("too large to render");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    store.setMessage(`copied as plain text · ${countWords(text).toLocaleString("en-US")} words`);
+  } catch {
+    store.setMessage("couldn't copy");
+  }
+}
+
+/** `file → export as text…`: the same text, written as a `.txt`. */
+export async function exportPlainText(): Promise<void> {
+  if (!inTauri) return;
+  const store = useStore.getState();
+  flushActiveEditor();
+  const doc = activeDoc(useStore.getState());
+  if (!doc) return;
+
+  const text = plainTextOf(doc);
+  if (text === null) {
+    store.setMessage("too large to render");
+    return;
+  }
+
+  const name = doc.path ? basename(doc.path) : doc.title;
+  const picked = await save({
+    defaultPath: `${name.replace(/\.[^.]+$/, "")}.txt`,
+    filters: [{ name: "text", extensions: ["txt"] }],
+  });
+  if (typeof picked !== "string") return;
+
+  try {
+    // UTF-8, no BOM; the line endings new files get (spec §10).
+    await writeTextAtomic(picked, serialize(text, store.settings.files.newFileEol));
+    store.setMessage(`exported ${basename(picked)}`);
+  } catch (error) {
+    store.setMessage(`couldn't export — ${fsError(error).message}`);
+  }
+}
+
+/* ------------------------------------------------------- pdf (spec §4) */
+
+/**
+ * `Ctrl+P`. Printing prints what is on screen, so the document has to be in
+ * read first; the mode goes back after the dialog closes.
+ */
+export async function exportPdf(): Promise<void> {
+  const store = useStore.getState();
+  const doc = activeDoc(store);
+  if (!doc) return;
+
+  const was = doc.mode;
+  if (was !== "read") {
+    flushActiveEditor();
+    store.setMode("read");
+    // The read view builds the document on entry; printing before it is
+    // ready would print an empty page.
+    await new Promise((done) => setTimeout(done, 400));
+  }
+
+  const restore = () => {
+    window.removeEventListener("afterprint", restore);
+    if (was !== "read") useStore.getState().setMode(was);
+  };
+  window.addEventListener("afterprint", restore);
+
+  try {
+    window.print();
+  } catch {
+    store.setMessage("couldn't open the print dialog");
+    restore();
+  }
 }

@@ -135,6 +135,16 @@ export function menuModel(): MenuSection[] {
         separator(),
         entry("file.save"),
         entry("file.saveAs"),
+        entry("file.copyPlain"),
+        {
+          kind: "submenu",
+          key: "export",
+          label: "export",
+          items: [
+            entry("file.exportText", "text…"),
+            entry("file.exportPdf", "pdf…"),
+          ],
+        },
         { kind: "submenu", key: "reopen", label: "reopen as", items: reopenItems() },
         separator(),
         entry("file.close"),
@@ -203,7 +213,7 @@ export function menuModel(): MenuSection[] {
     {
       key: "help",
       label: "help",
-      items: [entry("app.settings"), entry("app.about")],
+      items: [entry("app.settings"), entry("app.shortcuts"), entry("app.about")],
     },
   ];
 }

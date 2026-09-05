@@ -249,3 +249,70 @@
 .theme-toggle {
   font-size: inherit;
 }
+
+/* print / export as pdf (spec §4). Everything that is not the document goes
+   away, and the page is black on white whatever the theme is. */
+
+@media print {
+  :root {
+    --bg: #ffffff;
+    --fg: #000000;
+    --muted: #444444;
+    --muted-soft: #666666;
+    --faint: #888888;
+    --border: #cccccc;
+    --surface: #f4f4f4;
+    --surface-2: #eeeeee;
+    --quote: #333333;
+    --accent: #000000;
+    --selection: transparent;
+    color-scheme: light;
+  }
+
+  html,
+  body,
+  #root,
+  .app {
+    height: auto;
+    overflow: visible;
+    background: #ffffff;
+    color: #000000;
+  }
+
+  .menubar,
+  .rail,
+  .modebar,
+  .statusbar,
+  .banner,
+  .find,
+  .cm-panels,
+  .format-toolbar,
+  .scrim,
+  .qs {
+    display: none !important;
+  }
+
+  .app-body,
+  .main,
+  .content {
+    display: block;
+    overflow: visible;
+    height: auto;
+    padding: 0;
+  }
+
+  /* The page is the column now. */
+  .read,
+  .read-html,
+  .raw {
+    max-width: none !important;
+    width: auto !important;
+    margin: 0;
+    font-size: 12pt;
+    line-height: 1.5;
+  }
+
+  @page {
+    margin: 18mm 16mm;
+  }
+}

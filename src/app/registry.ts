@@ -4,7 +4,10 @@
 
 import {
   copyPath,
+  copyPlainText,
   exitApp,
+  exportPdf,
+  exportPlainText,
   newDoc,
   openFile,
   openFolderSearch,
@@ -91,6 +94,26 @@ export const commands: Command[] = [
       const id = store().activeId;
       if (id) void saveAs(id);
     },
+    when: hasDoc,
+  },
+  {
+    id: "file.copyPlain",
+    title: "copy as plain text",
+    chord: "Ctrl+Shift+Alt+C",
+    run: () => void copyPlainText(),
+    when: hasDoc,
+  },
+  {
+    id: "file.exportText",
+    title: "export as text…",
+    run: () => void exportPlainText(),
+    when: hasDoc,
+  },
+  {
+    id: "file.exportPdf",
+    title: "print / export as pdf…",
+    chord: "Ctrl+P",
+    run: () => void exportPdf(),
     when: hasDoc,
   },
   { id: "file.close", title: "close", chord: "Ctrl+W", run: () => closeActive(), when: hasDoc },
@@ -249,6 +272,12 @@ export const commands: Command[] = [
     id: "app.settingsFile",
     title: "open settings.json",
     run: () => void openSettingsFile(),
+  },
+  {
+    id: "app.shortcuts",
+    title: "shortcuts",
+    chord: "F1",
+    run: () => store().setShortcutsOpen(true),
   },
   { id: "app.about", title: "about", run: () => void showAbout() },
 ];

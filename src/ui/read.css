@@ -532,3 +532,39 @@
   color: var(--fg);
   background: var(--surface);
 }
+
+/* print: keep blocks whole and drop the reader's chrome (spec §4) */
+
+@media print {
+  .read-html pre,
+  .read-html table,
+  .read-html img,
+  .read-html blockquote,
+  .read-html .codeblock {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .read-html h1,
+  .read-html h2,
+  .read-html h3 {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  .read-html a {
+    color: #000000;
+    text-decoration: none;
+  }
+
+  .read-html img {
+    max-width: 100%;
+  }
+
+  /* The language label and the `copy` button are screen furniture. */
+  .code-bar,
+  .h-anchor,
+  .read-meta {
+    display: none !important;
+  }
+}
