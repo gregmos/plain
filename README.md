@@ -20,7 +20,7 @@ Double-click a `.md` file and you are reading. Make a change, and the file stays
 ## Installation
 
 1. Unpack `Plain-0.1.0-win-x64.zip` into any folder, for example `C:\Program Files\Plain` or `%LOCALAPPDATA%\Programs\Plain`. It contains a single `plain.exe`; there is no installer.
-2. Run `plain.exe`. On first launch, Windows SmartScreen shows a blue "Windows protected your PC" dialog because the program is not code-signed. Click **More info → Run anyway**. It will not ask again.
+2. Run `plain.exe`. On first launch, Windows SmartScreen shows a blue "Windows protected your PC" dialog because the program is not code-signed. Click **More info → Run anyway**. Windows remembers the decision for that copy of the file; a new version may ask once more.
 3. To open `.md` files in Plain with a double-click: right-click any `.md` file → **Open with → Choose another app → Plain → Always**. Plain appears in that list after its first launch, but it never makes itself the default on its own.
 
 Nothing else needs to be installed: no Node, no Rust, no separate WebView2 runtime. Everything Plain needs already ships with Windows 11. If you move the folder later, just run the exe from its new location.
@@ -51,7 +51,7 @@ In `%APPDATA%\Plain` (that is `C:\Users\<you>\AppData\Roaming\Plain`):
 
 Put a folder called `data` next to `plain.exe` and all four live in it instead — that is portable mode.
 
-Plain creates nothing inside your own folders.
+Plain keeps no indexes, caches, or hidden service files in your folders. The only things it writes there are the documents you save and, if you paste an image, the `assets/` folder next to the document.
 
 ## How it treats your files
 
