@@ -7,6 +7,8 @@ import { normalizeEol, type Eol } from "./eol";
 import { LARGE_TEXT, useStore, type Doc } from "./store";
 
 export interface FileInfo {
+  /** The one spelling of this file, from Rust — see `canonicalPath`. */
+  path: string;
   text: string;
   encoding: string;
   bom: boolean;
@@ -55,6 +57,16 @@ export async function writeFileAtomic(request: WriteRequest): Promise<string> {
     request: { allowMissing: false, ...request },
   });
   return hash;
+}
+
+/**
+ * The spelling the disk itself uses: 8.3 aliases expanded, the real case, one
+ * separator. Two spellings of one file must not become two documents (§8).
+ * `readFile` already returns it; this is for paths that never go through it,
+ * such as the name the Save As dialog gives back.
+ */
+export function canonicalPath(path: string): Promise<string> {
+  return invoke<string>("canonical_path", { path });
 }
 
 /** null when the file is not there. */

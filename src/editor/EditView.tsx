@@ -4,8 +4,9 @@ import type { Doc, Heading } from "../app/store";
 import { useStore } from "../app/store";
 import { buffer, keepBuffer, markSaved, moveBuffer, setBufferText } from "./buffers";
 import { headingsOf } from "../read/headings";
+import { richConf, richExtension } from "./rich";
 import { gutterConf, gutterExtension, lineNumbersOn, onLineNumbers } from "./setup";
-import { flushText, syncCaret } from "./sync";
+import { flushText, setSyncTarget, syncCaret } from "./sync";
 import "../ui/editor.css";
 
 const GOTO_LINE = "plain:goto-line";
@@ -157,7 +158,8 @@ function announceHeading(view: EditorView, id: string): void {
   }, 0);
 }
 
-export function EditView({ doc }: { doc: Doc }) {
+/** `rich` is the same editor with the markers hidden (spec §5.3). */
+export function EditView({ doc, rich = false }: { doc: Doc; rich?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const shown = useRef(doc.id);
@@ -174,6 +176,7 @@ export function EditView({ doc }: { doc: Doc }) {
     view.current = created;
     live = created;
     liveId = doc.id;
+    setSyncTarget(doc.id);
     shown.current = doc.id;
     syncCaret(created, doc.id);
     // Focus first: focusing scrolls the caret into view, so anything we do
@@ -189,6 +192,7 @@ export function EditView({ doc }: { doc: Doc }) {
       announceHeading(created, id);
       live = null;
       liveId = null;
+      setSyncTarget(null);
       view.current = null;
       created.destroy();
     };
@@ -201,22 +205,43 @@ export function EditView({ doc }: { doc: Doc }) {
     if (!current || shown.current === doc.id) return;
     const previous = shown.current;
     flushText(current, previous);
+    setSyncTarget(null);
     keepBuffer(previous, current.state, current.scrollDOM.scrollTop);
 
     const next = buffer(doc, useStore.getState().settings);
     current.setState(next.state);
-    current.dispatch({ effects: gutterConf.reconfigure(gutterExtension(lineNumbersOn())) });
+    current.dispatch({
+      effects: [
+        gutterConf.reconfigure(gutterExtension(lineNumbersOn() && !rich)),
+        richConf.reconfigure(rich ? richExtension : []),
+      ],
+    });
     shown.current = doc.id;
     liveId = doc.id;
+    setSyncTarget(doc.id);
     syncCaret(current, doc.id);
     current.focus();
     current.scrollDOM.scrollTop = next.scrollTop;
     takePending(current);
   }, [doc.id]);
 
-  useEffect(() => {
-    view.current?.dispatch({ effects: gutterConf.reconfigure(gutterExtension(numbers)) });
-  }, [numbers]);
+  // Rich gives the left margin to the block markers instead (mockup 1d), so
+  // the text column stays where it is in edit.
+  const gutter = numbers && !rich;
 
-  return <div className={"edit" + (numbers ? "" : " edit-no-gutter")} ref={host} />;
+  useEffect(() => {
+    view.current?.dispatch({ effects: gutterConf.reconfigure(gutterExtension(gutter)) });
+  }, [gutter]);
+
+  // Entering or leaving rich: the buffer, the caret and the scroll stay put.
+  useEffect(() => {
+    view.current?.dispatch({ effects: richConf.reconfigure(rich ? richExtension : []) });
+  }, [rich]);
+
+  return (
+    <div
+      className={"edit" + (gutter ? "" : " edit-no-gutter") + (rich ? " edit-rich" : "")}
+      ref={host}
+    />
+  );
 }

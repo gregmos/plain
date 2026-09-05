@@ -39,6 +39,7 @@ import { detectIndent, urlPaste } from "./commands";
 import { editorKeymap } from "./keymap";
 import { findPanel } from "./findPanel";
 import { remoteCommands } from "./remote";
+import { richConf } from "./rich";
 import { storeSync } from "./sync";
 import { formatToolbar } from "./toolbar";
 import { editorTheme, highlightStyle } from "./theme";
@@ -221,6 +222,9 @@ export function editorExtensions(doc: Doc, settings: Settings): Extension {
     closeBrackets(),
     search({ top: true, createPanel: findPanel }),
     gutterConf.of(gutterExtension(lineNumbersOn())),
+    // Rich is the same buffer with the markers hidden; the mode switch just
+    // reconfigures this (spec §5.3).
+    richConf.of([]),
     indentUnit.of(detectIndent(doc.text, unit)),
     languageExtension(doc.large),
     pasteLink,

@@ -65,7 +65,12 @@ const store = () => useStore.getState();
 const hasDoc = () => store().activeId !== null;
 const hasFile = () => activeDoc(store())?.path != null;
 const hasLibrary = () => store().libraryPath !== null;
-const inEdit = () => activeDoc(store())?.mode === "edit";
+// Rich is edit with the markers hidden: every editing command works there
+// too (spec §5.3).
+const inEdit = () => {
+  const mode = activeDoc(store())?.mode;
+  return mode === "edit" || mode === "rich";
+};
 
 export const commands: Command[] = [
   /* ------------------------------------------------------------- file */
@@ -134,6 +139,7 @@ export const commands: Command[] = [
   { id: "view.toggleMode", title: "toggle read/edit", chord: "Ctrl+/", run: () => store().toggleMode(), when: hasDoc },
   { id: "view.read", title: "read", chord: "Ctrl+Alt+1", run: () => store().setMode("read"), when: hasDoc },
   { id: "view.edit", title: "edit", chord: "Ctrl+Alt+2", run: () => store().setMode("edit"), when: hasDoc },
+  { id: "view.rich", title: "rich", chord: "Ctrl+Alt+3", run: () => store().setMode("rich"), when: hasDoc },
   { id: "view.toggleRail", title: "toggle rail", chord: "Ctrl+\\", run: () => store().toggleRail() },
   { id: "view.files", title: "files", run: () => store().setRailView("files") },
   { id: "view.outline", title: "outline", run: () => store().setRailView("outline") },

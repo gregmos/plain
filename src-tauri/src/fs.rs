@@ -60,6 +60,10 @@ pub type FsResult<T> = Result<T, FsError>;
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileInfo {
+    /// The one spelling of this file — see `canonical`. The front end keys
+    /// its documents off it, so `C:\Users\KOTENO~1\a.md` and the long name
+    /// behind it never end up as two buffers over one file.
+    path: String,
     text: String,
     /// encoding_rs label, lowercase: `utf-8`, `utf-16le`, `windows-1251`…
     encoding: String,
@@ -167,6 +171,54 @@ fn line_endings(text: &str) -> (&'static str, &'static str) {
     (eol, dominant)
 }
 
+/* ------------------------------------------------------ one path per file */
+
+/// `fs::canonicalize` hands back a verbatim path (`\\?\C:\…`) that no user
+/// ever types and half of Windows will not take. This puts it back into the
+/// ordinary form without giving up what canonicalizing found.
+fn plain_path(path: PathBuf) -> PathBuf {
+    let text = path.as_os_str().to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    if let Some(rest) = text.strip_prefix(r"\\?\") {
+        // A drive letter is safe to unwrap; a device path is left alone.
+        let mut start = rest.chars();
+        if matches!((start.next(), start.next()), (Some(letter), Some(':')) if letter.is_ascii_alphabetic())
+        {
+            return PathBuf::from(rest);
+        }
+    }
+    path
+}
+
+/// The spelling the disk itself uses: 8.3 aliases expanded, links followed,
+/// the real case. One file must have one identity or it gets two buffers
+/// (spec §8). A file that does not exist yet — Save As onto a new name — is
+/// resolved through its folder instead.
+pub fn canonical(path: &Path) -> PathBuf {
+    if let Ok(found) = fs::canonicalize(path) {
+        return plain_path(found);
+    }
+    let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
+        return path.to_path_buf();
+    };
+    if parent.as_os_str().is_empty() {
+        return path.to_path_buf();
+    }
+    match fs::canonicalize(parent) {
+        Ok(folder) => plain_path(folder).join(name),
+        Err(_) => path.to_path_buf(),
+    }
+}
+
+/// For the paths that do not come back through `read_file`: the Save As
+/// dialog, and anything else that hands us a name the user typed.
+#[tauri::command]
+pub fn canonical_path(path: String) -> String {
+    canonical(Path::new(&path)).to_string_lossy().into_owned()
+}
+
 fn mtime_ms(meta: &fs::Metadata) -> f64 {
     meta.modified()
         .ok()
@@ -184,6 +236,7 @@ pub fn read_info(path: &Path, forced: Option<&str>) -> FsResult<FileInfo> {
     let (text, decode_errors) = encoding.decode_without_bom_handling(&bytes[skip..]);
     let (eol, dominant) = line_endings(&text);
     Ok(FileInfo {
+        path: canonical(path).to_string_lossy().into_owned(),
         decode_errors,
         final_newline: text.ends_with('\n') || text.ends_with('\r'),
         eol: eol.into(),
@@ -790,6 +843,82 @@ mod tests {
         let info = read_info(&broken, Some("utf-8")).unwrap();
         assert!(info.decode_errors);
         assert!(info.text.contains('\u{FFFD}'));
+    }
+
+    /// The 8.3 alias Windows keeps for a long folder name, or `None` when the
+    /// volume has short names turned off.
+    fn short_name(path: &Path) -> Option<PathBuf> {
+        use windows::Win32::Storage::FileSystem::GetShortPathNameW;
+        let wide_path = wide(path);
+        let mut buffer = vec![0u16; 1024];
+        let written = unsafe {
+            GetShortPathNameW(PCWSTR(wide_path.as_ptr()), Some(buffer.as_mut_slice()))
+        };
+        if written == 0 || written as usize >= buffer.len() {
+            return None;
+        }
+        buffer.truncate(written as usize);
+        let short = PathBuf::from(String::from_utf16_lossy(&buffer));
+        (short != path).then_some(short)
+    }
+
+    /// One file, one identity: the short name, the wrong case and the wrong
+    /// separator all have to land on the same string (spec §8).
+    #[test]
+    fn a_canonical_path_is_the_one_the_disk_uses() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("A Folder With A Long Name");
+        fs::create_dir(&folder).unwrap();
+        let file = folder.join("Note.md");
+        fs::write(&file, b"x").unwrap();
+
+        let wanted = canonical(&file);
+        assert!(!wanted.to_string_lossy().starts_with(r"\\?\"), "{wanted:?}");
+        assert_eq!(fs::read(&wanted).unwrap(), b"x");
+
+        // Forward slashes and a lower-case drive letter.
+        let sloppy = PathBuf::from(file.to_string_lossy().replace('\\', "/").to_lowercase());
+        assert_eq!(canonical(&sloppy), wanted);
+
+        // The `~1` alias of the folder, when the volume still keeps one.
+        match short_name(&folder) {
+            Some(alias) => {
+                assert_ne!(alias, folder, "the alias should differ");
+                assert_eq!(canonical(&alias.join("Note.md")), wanted);
+            }
+            None => eprintln!("8.3 names are off on this volume; alias case not covered"),
+        }
+    }
+
+    #[test]
+    fn a_file_that_does_not_exist_yet_is_resolved_through_its_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("Another Long Folder");
+        fs::create_dir(&folder).unwrap();
+
+        // Save As onto a name nothing has written yet.
+        let wanted = canonical(&folder).join("new.md");
+        assert_eq!(canonical(&folder.join("new.md")), wanted);
+        if let Some(alias) = short_name(&folder) {
+            assert_eq!(canonical(&alias.join("new.md")), wanted);
+        }
+    }
+
+    #[test]
+    fn a_verbatim_prefix_is_taken_back_off() {
+        assert_eq!(
+            plain_path(PathBuf::from(r"\\?\C:\notes\a.md")),
+            PathBuf::from(r"C:\notes\a.md")
+        );
+        assert_eq!(
+            plain_path(PathBuf::from(r"\\?\UNC\server\share\a.md")),
+            PathBuf::from(r"\\server\share\a.md")
+        );
+        // Not a drive letter: left exactly as it came.
+        assert_eq!(
+            plain_path(PathBuf::from(r"\\?\Volume{1234}\a.md")),
+            PathBuf::from(r"\\?\Volume{1234}\a.md")
+        );
     }
 
     #[test]

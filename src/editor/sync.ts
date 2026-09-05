@@ -33,6 +33,17 @@ export function caretOf(state: EditorState): { line: number; col: number } {
 let idle: number | null = null;
 let frame: number | null = null;
 
+/**
+ * The document the mounted editor is showing. Not `activeId`: between the
+ * store switching documents and the view catching up there is a window where
+ * the two disagree, and text must never land on the wrong document (§1.3).
+ */
+let shownId: string | null = null;
+
+export function setSyncTarget(id: string | null): void {
+  shownId = id;
+}
+
 function cancelIdle(): void {
   if (idle === null) return;
   if (typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(idle);
@@ -118,10 +129,10 @@ function scheduleCaret(view: EditorView, id: string, dirty: boolean): void {
   });
 }
 
-/** The editor always shows the active document, so that is the id to patch. */
+/** Patches the document the view is actually showing. */
 export const storeSync = EditorView.updateListener.of((update) => {
   if (!update.docChanged && !update.selectionSet) return;
-  const id = useStore.getState().activeId;
+  const id = shownId;
   if (id === null) return;
   if (update.docChanged) scheduleText(update.view, id);
   scheduleCaret(update.view, id, update.docChanged);

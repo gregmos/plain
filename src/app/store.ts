@@ -10,7 +10,7 @@ import { basename, pathKey } from "./paths";
 /** Over this, highlighting is off and read renders on demand (spec §8). */
 export const LARGE_TEXT = 2 * 1024 * 1024;
 
-export type Mode = "read" | "edit";
+export type Mode = "read" | "edit" | "rich";
 export type RailView = "files" | "outline";
 
 export interface Heading {
@@ -377,6 +377,7 @@ export const useStore = create<AppState>()((set, get) => ({
       docs: s.docs.map((d) => (d.id === s.activeId ? { ...d, mode } : d)),
     })),
 
+  // `Ctrl+/` is the read/edit switch (spec §4); from rich it goes to read.
   toggleMode: () =>
     set((s) => ({
       docs: s.docs.map((d) =>

@@ -38,7 +38,9 @@ export function StatusBar() {
 
   // Messages win for their three seconds; otherwise edit shows the caret.
   const caret =
-    doc?.mode === "edit" && doc.caret ? `ln ${doc.caret.line}, col ${doc.caret.col}` : null;
+    doc && doc.mode !== "read" && doc.caret
+      ? `ln ${doc.caret.line}, col ${doc.caret.col}`
+      : null;
   const left = message ?? caret;
 
   // Wave 3 changes the text on every keystroke, so keep this off that path.

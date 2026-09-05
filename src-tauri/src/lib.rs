@@ -1,7 +1,10 @@
 mod assoc;
-mod fs;
-mod search;
-mod tree;
+// `fs`, `search` and `tree` are the three modules the integration test in
+// `tests/pack.rs` drives directly (spec §16). Nothing about them changes —
+// only who is allowed to say their names.
+pub mod fs;
+pub mod search;
+pub mod tree;
 mod watch;
 
 use std::path::{Path, PathBuf};
@@ -194,6 +197,7 @@ pub fn run() {
             assoc::unregister_file_association,
             assoc::file_association_registered,
             fs::read_file,
+            fs::canonical_path,
             fs::write_file_atomic,
             fs::write_text_atomic,
             fs::hash_file,

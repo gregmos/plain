@@ -2,7 +2,11 @@ import type { Doc } from "../app/store";
 import { ReadView } from "../read/ReadView";
 import { EditView } from "../editor/EditView";
 
-/** Read and edit are two views over the same buffer (spec §5.0). */
+/**
+ * Three views over one buffer (spec §5.0): read renders it, edit shows the
+ * source, rich is edit with the markers hidden (§5.3).
+ */
 export function DocView({ doc }: { doc: Doc }) {
-  return doc.mode === "read" ? <ReadView doc={doc} /> : <EditView doc={doc} />;
+  if (doc.mode === "read") return <ReadView doc={doc} />;
+  return <EditView doc={doc} rich={doc.mode === "rich"} />;
 }

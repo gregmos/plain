@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "tauri": "tauri",
-    "pack": "powershell -ExecutionPolicy Bypass -File scripts/pack.ps1"
+    "pack": "powershell -ExecutionPolicy Bypass -File scripts/pack.ps1",
+    "pack:gen": "node tests/pack/generate.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

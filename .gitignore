@@ -7,3 +7,4 @@ src-tauri/gen/schemas/
 .DS_Store
 Thumbs.db
 review/codex-stderr-*.txt
+tests/pack/generated/

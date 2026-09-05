@@ -25,17 +25,28 @@ export async function openPaths(paths: string[]): Promise<boolean> {
   let opened = false;
 
   for (const path of paths) {
-    // Already open under another spelling of the same path: just show it,
-    // and do not read the file a second time.
-    const existing = useStore.getState().docs.find((d) => d.id === pathKey(path));
-    if (existing) {
-      activate(existing.id);
+    // The same spelling is already open: show it, and do not read the file
+    // a second time.
+    const known = useStore.getState().docs.find((d) => d.id === pathKey(path));
+    if (known) {
+      activate(known.id);
       opened = true;
       continue;
     }
     try {
-      const fields = docFields(await readFile(path));
-      openDoc(makeDoc({ id: pathKey(path), path, ...fields }));
+      const info = await readFile(path);
+      // Rust hands back the one spelling the disk uses. A short `KOTENO~1`
+      // name, another case or the other separator is the same file, and one
+      // file gets one buffer (spec §8).
+      const id = pathKey(info.path);
+      const existing = useStore.getState().docs.find((d) => d.id === id);
+      if (existing) {
+        activate(existing.id);
+        opened = true;
+        continue;
+      }
+      const fields = docFields(info);
+      openDoc(makeDoc({ id, path: info.path, ...fields }));
       // Bytes the encoding could not read are showing as `�`; saying so
       // now is what makes the question at save time make sense (spec §8).
       if (fields.decodeErrors) useStore.getState().setNote("decoded with errors");

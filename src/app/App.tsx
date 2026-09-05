@@ -4,6 +4,7 @@ import { Banner } from "../ui/Banner";
 import { DocView } from "../ui/DocView";
 import { Empty } from "../ui/Empty";
 import { FolderSearch } from "../ui/FolderSearch";
+import { MenuBar } from "../ui/MenuBar";
 import { Modal } from "../ui/Modal";
 import { ModeBar } from "../ui/ModeBar";
 import { QuickSearch } from "../ui/QuickSearch";
@@ -16,7 +17,6 @@ import { installCloseGuard } from "./close";
 import { installDrafts } from "./drafts";
 import { inTauri } from "./env";
 import { installKeys } from "./keys";
-import { installMenu } from "./menu";
 import { installDrop } from "../library/dnd";
 import { installTree } from "../library/tree";
 import { installSession } from "./session";
@@ -34,7 +34,6 @@ export function App() {
   const doc = useStore(activeDoc);
 
   useEffect(() => installKeys(), []);
-  useEffect(() => installMenu(), []);
   useEffect(() => installDrafts(), []);
   useEffect(() => installSession(), []);
   useEffect(() => installWatcher(), []);
@@ -56,6 +55,7 @@ export function App() {
 
   return (
     <div className={"app" + (searching ? " is-searching" : "")}>
+      <MenuBar />
       <div className="app-body">
         {!railCollapsed && <Rail />}
         <div className="main">

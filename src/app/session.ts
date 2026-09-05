@@ -85,7 +85,7 @@ export function parseSession(text: string): SessionFile | null {
       .filter((f) => f && typeof f.path === "string")
       .map((f) => ({
         path: f.path,
-        mode: f.mode === "edit" ? "edit" : "read",
+        mode: f.mode === "edit" || f.mode === "rich" ? f.mode : "read",
         caret: f.caret && typeof f.caret.line === "number" ? f.caret : null,
       })),
     active: typeof value.active === "string" ? value.active : null,

@@ -338,6 +338,23 @@ export const toggleCheckbox: StateCommand = editing(({ state, dispatch }) => {
   return true;
 });
 
+/**
+ * Ticks the box on the line at `pos`, whoever asks — the rich view's glyph
+ * is a click target, and it must not move the caret to do it (spec §5.3).
+ */
+export function toggleCheckboxAt(view: EditorView, pos: number): boolean {
+  if (view.state.readOnly) return false;
+  const line = view.state.doc.lineAt(pos);
+  const task = /^(\s*[-*+] )\[([ xX])\]/.exec(line.text);
+  if (!task) return false;
+  const at = line.from + (task[1]?.length ?? 0) + 1;
+  view.dispatch({
+    changes: { from: at, to: at + 1, insert: task[2] === " " ? "x" : " " },
+    userEvent: "input",
+  });
+  return true;
+}
+
 /** `#` * level on every selected line; the same level again takes it off. */
 export function toggleHeading(level: number): StateCommand {
   const prefix = "#".repeat(level) + " ";

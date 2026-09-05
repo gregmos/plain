@@ -10,7 +10,7 @@ import { flushActiveEditor, isDirty, markSaved, renameBuffer, replaceText } from
 import { dropDraft, writeDraft } from "./drafts";
 import { inTauri } from "./env";
 import { encodingLabel, isLegacy, normalizeEol, serialize } from "./eol";
-import { docFields, fsError, readFile, writeFileAtomic } from "./fs";
+import { canonicalPath, docFields, fsError, readFile, writeFileAtomic } from "./fs";
 import { dirname, pathKey } from "./paths";
 import { activeDoc, useStore, type Doc } from "./store";
 
@@ -190,7 +190,10 @@ async function saveAsNow(id: string): Promise<boolean> {
   });
   if (typeof picked !== "string") return false;
 
-  const nextId = pathKey(picked);
+  // The dialog gives back whatever the user navigated to; the document is
+  // keyed off the one spelling the disk uses (spec §8).
+  const target = await canonicalPath(picked).catch(() => picked);
+  const nextId = pathKey(target);
   // Writing over a file that is open would leave that document's buffer and
   // its draft pointing at bytes it never agreed to (spec §8).
   const clash = useStore.getState().docs.find((d) => d.id === nextId && d.id !== id);
@@ -214,7 +217,7 @@ async function saveAsNow(id: string): Promise<boolean> {
   const adopt = (): string => {
     if (nextId !== id) {
       renameBuffer(id, nextId);
-      useStore.getState().renameDoc(id, picked);
+      useStore.getState().renameDoc(id, target);
     }
     useStore.getState().updateDoc(nextId, {
       encoding,
@@ -230,7 +233,7 @@ async function saveAsNow(id: string): Promise<boolean> {
   // be visible to it; it is undone again if the write fails.
   if (legacy) useStore.getState().updateDoc(id, { encoding, bom });
   const written = await write(id, {
-    path: picked,
+    path: target,
     baseHash: null,
     allowMissing: true,
     adopt,

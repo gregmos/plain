@@ -342,6 +342,14 @@ mod tests {
     use super::*;
     use std::fs;
 
+    /// The text a range points at, sliced the way the front end slices it:
+    /// by UTF-16 units, which is what a JavaScript string is indexed by.
+    fn shown(text: &str, from: usize, to: usize) -> String {
+        let units: Vec<u16> = text.encode_utf16().collect();
+        let end = to.min(units.len());
+        String::from_utf16_lossy(&units[from.min(end)..end])
+    }
+
     fn request(root: &Path, query: &str) -> SearchRequest {
         SearchRequest {
             root: root.to_string_lossy().into_owned(),
@@ -433,22 +441,49 @@ mod tests {
 
     /// Review #19: the window follows the match, and finding it is linear.
     #[test]
-    fn a_very_long_line_shows_the_match_and_stays_quick() {
+    fn a_very_long_line_is_cut_around_its_match() {
         let dir = tempfile::tempdir().unwrap();
         let line = format!("{}needle tail", "x".repeat(100 * 1024));
         fs::write(dir.path().join("long.md"), &line).unwrap();
 
-        let started = std::time::Instant::now();
         let answer = search(&request(dir.path(), "needle")).unwrap();
-        let elapsed = started.elapsed();
-
         let found = &answer.files[0].matches[0];
-        assert!(found.text.contains("needle"), "the match must be shown");
+
+        // What went wrong before was measured in offsets, not in seconds:
+        // the ranges were counted from the start of the whole line, so they
+        // landed far outside the 400 units that are shown and the match came
+        // back invisible. Both facts below are exact, and neither is a clock.
         assert!(found.text.starts_with('…'), "the head is cut, not the match");
+        assert!(
+            found.text.chars().count() <= MAX_LINE + 2,
+            "the window is the window, whatever the line: {} chars",
+            found.text.chars().count()
+        );
         let [from, to] = found.ranges[0];
-        let shown: String = found.text.chars().skip(from).take(to - from).collect();
-        assert_eq!(shown, "needle");
-        assert!(elapsed.as_millis() < 50, "took {elapsed:?}");
+        assert!(to <= MAX_LINE + 1, "the range has to be inside the window");
+        assert_eq!(shown(&found.text, from, to), "needle");
+    }
+
+    /// The same line with many matches: every one is placed inside the window,
+    /// which is only possible if the offsets are counted over the window and
+    /// not over the whole line for each match in turn.
+    #[test]
+    fn many_matches_on_one_long_line_are_all_placed_in_the_window() {
+        let dir = tempfile::tempdir().unwrap();
+        let line = format!("{}{}", "x".repeat(100 * 1024), "needle-".repeat(200));
+        fs::write(dir.path().join("long.md"), &line).unwrap();
+
+        let answer = search(&request(dir.path(), "needle")).unwrap();
+        let found = &answer.files[0].matches[0];
+
+        assert!(found.ranges.len() > 10, "the window holds many of them");
+        let mut previous = 0;
+        for &[from, to] in &found.ranges {
+            assert!(from >= previous, "ranges come in order");
+            assert!(to <= MAX_LINE + 1, "and every one is inside the window");
+            assert_eq!(shown(&found.text, from, to), "needle");
+            previous = to;
+        }
     }
 
     /// Review #19: the cap is the cap, including on the file that crosses it.

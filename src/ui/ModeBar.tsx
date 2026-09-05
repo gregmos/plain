@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import { breadcrumbs } from "../app/paths";
 import { activeDoc, useStore, type Mode } from "../app/store";
 
-const MODES: Mode[] = ["read", "edit"];
+const MODES: Mode[] = ["read", "edit", "rich"];
 
 /** Root is bold, the file name is plain fg, anything between is muted. */
 function crumbClass(index: number, total: number): string {

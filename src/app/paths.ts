@@ -14,9 +14,11 @@ export function dirname(path: string): string {
 }
 
 /**
- * Identity of a file, used to keep one buffer per file. On Windows the same
- * file arrives with either separator and in any case. Wave 4 will get a
- * canonical path back from Rust; this stays the place that normalises it.
+ * Identity of a file, used to keep one buffer per file. Feed it the path
+ * Rust canonicalized (`read_file` returns one, `canonical_path` makes one):
+ * that is what expands an 8.3 name like `KOTENO~1` and settles the case the
+ * disk really uses. This only finishes the job — separator and case — so a
+ * raw path from a dialog or a link still keys consistently with itself.
  */
 export function pathKey(path: string): string {
   return path.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();

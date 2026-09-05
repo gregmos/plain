@@ -2,9 +2,11 @@
 // its own capitals; this one is the app's typography. The entries come from
 // app/menu.ts, which reads the command registry, so nothing is written twice.
 
+import { useEffect, useReducer } from "react";
 import * as Menubar from "@radix-ui/react-menubar";
 import { menuModel, type MenuNode } from "../app/menu";
-import { useStore } from "../app/store";
+import { activeDoc, useStore } from "../app/store";
+import { onLineNumbers } from "../editor/setup";
 import "./menubar.css";
 
 function Row({ node }: { node: MenuNode }) {
@@ -41,10 +43,22 @@ function Row({ node }: { node: MenuNode }) {
 }
 
 export function MenuBar() {
-  // Everything the model reads — the recent list, the theme, always on top,
-  // the active document — lives in the store, so one subscription is enough
-  // to keep the ticks and the greyed-out entries honest.
-  useStore((s) => s);
+  // Only what the model actually reads — the ticks, the recent list and the
+  // `when()` predicates. Subscribing to the whole store would rebuild the
+  // model on every keystroke, because the caret lives there too.
+  useStore((s) => s.recent);
+  useStore((s) => s.theme);
+  useStore((s) => s.alwaysOnTop);
+  useStore((s) => s.activeId);
+  useStore((s) => s.libraryPath);
+  useStore((s) => s.treeSelected);
+  useStore((s) => activeDoc(s)?.mode);
+  useStore((s) => activeDoc(s)?.path);
+
+  // `Ctrl+Shift+9` flips the line numbers outside the store (editor/setup).
+  const [, bump] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => onLineNumbers(bump), []);
+
   const sections = menuModel();
 
   return (
