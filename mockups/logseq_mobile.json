@@ -1,0 +1,837 @@
+{
+  "total_count": 4466,
+  "incomplete_results": false,
+  "items": [
+    {
+      "url": "https://api.github.com/repos/logseq/logseq/issues/4709",
+      "repository_url": "https://api.github.com/repos/logseq/logseq",
+      "labels_url": "https://api.github.com/repos/logseq/logseq/issues/4709/labels{/name}",
+      "comments_url": "https://api.github.com/repos/logseq/logseq/issues/4709/comments",
+      "events_url": "https://api.github.com/repos/logseq/logseq/issues/4709/events",
+      "html_url": "https://github.com/logseq/logseq/issues/4709",
+      "id": 1179014769,
+      "node_id": "I_kwDOD95dbc5GRlZx",
+      "number": 4709,
+      "title": "Aliases are duplicating in the graph view and the searching result",
+      "user": {
+        "login": "Konfido",
+        "id": 25447610,
+        "node_id": "MDQ6VXNlcjI1NDQ3NjEw",
+        "avatar_url": "https://avatars.githubusercontent.com/u/25447610?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/Konfido",
+        "html_url": "https://github.com/Konfido",
+        "followers_url": "https://api.github.com/users/Konfido/followers",
+        "following_url": "https://api.github.com/users/Konfido/following{/other_user}",
+        "gists_url": "https://api.github.com/users/Konfido/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/Konfido/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/Konfido/subscriptions",
+        "organizations_url": "https://api.github.com/users/Konfido/orgs",
+        "repos_url": "https://api.github.com/users/Konfido/repos",
+        "events_url": "https://api.github.com/users/Konfido/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/Konfido/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "labels": [
+        {
+          "id": 2081581843,
+          "node_id": "MDU6TGFiZWwyMDgxNTgxODQz",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/:type/enhancement",
+          "name": ":type/enhancement",
+          "color": "930A91",
+          "default": false,
+          "description": "Enhancement to product. Does not affect the overall basic use."
+        },
+        {
+          "id": 2320314666,
+          "node_id": "MDU6TGFiZWwyMzIwMzE0NjY2",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/graph",
+          "name": "graph",
+          "color": "02E265",
+          "default": false,
+          "description": "Graph view"
+        },
+        {
+          "id": 2461004247,
+          "node_id": "MDU6TGFiZWwyNDYxMDA0MjQ3",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/search",
+          "name": "search",
+          "color": "dafca4",
+          "default": false,
+          "description": ""
+        },
+        {
+          "id": 2971745046,
+          "node_id": "MDU6TGFiZWwyOTcxNzQ1MDQ2",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/ux",
+          "name": "ux",
+          "color": "94ECC7",
+          "default": false,
+          "description": ""
+        },
+        {
+          "id": 3495492287,
+          "node_id": "LA_kwDOD95dbc7QWPq_",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/page-ref",
+          "name": "page-ref",
+          "color": "B6AAF5",
+          "default": false,
+          "description": "page reference"
+        },
+        {
+          "id": 3806083110,
+          "node_id": "LA_kwDOD95dbc7i3Dgm",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/props:alias",
+          "name": "props:alias",
+          "color": "CFD5CA",
+          "default": false,
+          "description": ""
+        }
+      ],
+      "state": "open",
+      "locked": false,
+      "assignees": [
+
+      ],
+      "milestone": null,
+      "comments": 26,
+      "created_at": "2022-03-24T05:15:03Z",
+      "updated_at": "2025-06-17T02:32:55Z",
+      "closed_at": null,
+      "assignee": null,
+      "author_association": "NONE",
+      "issue_field_values": [
+
+      ],
+      "type": null,
+      "active_lock_reason": null,
+      "sub_issues_summary": {
+        "total": 0,
+        "completed": 0,
+        "percent_completed": 0
+      },
+      "issue_dependencies_summary": {
+        "blocked_by": 0,
+        "total_blocked_by": 0,
+        "blocking": 0,
+        "total_blocking": 0
+      },
+      "body": "### What happened?\r\n\r\nI found the alias feature works in an unusual way, and after checking this issue https://github.com/logseq/logseq/issues/4342#issuecomment-1048049248 and the related discussion, I figured it out and think it's really nice.\r\n> this is actually a feature, not a bug :\r\n> * if [[aliaspage]] is empty,  all links are redirected to [[sourcepage]]\r\n> * if [[aliaspage]] has a different content from [[sourcepage]],links are displayed as linked refs in the sourcepage\r\n> \r\n> you can read more about the implementation and arguments in this topic: [discuss.logseq.com/t/improve-implementation-of-aliases/81/8](https://discuss.logseq.com/t/improve-implementation-of-aliases/81/8)\r\n\r\nBUT, here is what I cannot figure out:\r\n- If there no content/page for some alias which means they're **identical** to the \"source\" and not in a link-and-backlink connection, why link all the alias to each other in the graph? And it makes no sense to link all the backlinks to them separately. This causes tons of duplications in the graph view and create a huge obstacle to figure out the real relationship among them.\r\n- Same for the searching result.\r\n\r\nInstead, you could only show the source node, and list all its alias beneath it. It will make the result way much clearer and may also alleviate the potential performance issues.\r\nI list some of my rough thoughts in the following. Please consider improving current graph view experience. Thank you.\r\n\r\n### Reproduce the Bug\r\n\r\nJust preview a page with a couple of alias.\r\n\r\n### Expected Behavior\r\n\r\n_No response_\r\n\r\n### Screenshots\r\n\r\n- For a set of alias nodes:\r\n\t- `test1` is the source file\r\n\t- `test2` and `test3` is alias to `test1` and has no content.\r\n\t- `testing` is alias to `test1` but has different content.\r\n\t- `foo1` is linked to source file `test1`\r\n\t- `foo2` is linked to alias `test2`\r\n\t- `foo3` is linked to alias `testing`\r\n- A possible alternative for the graph view:\r\n\t<img width=\"1363\" alt=\"solution\" src=\"https://user-images.githubusercontent.com/25447610/159845456-aabfdeef-8eea-4c9d-9bc6-5df27c2accd7.png\">\r\n\r\n- Possible alternative for the search result:\r\n\t<img width=\"909\" alt=\"Xnip2022-03-24_12-57-44\" src=\"https://user-images.githubusercontent.com/25447610/159845488-c7ad2ec6-5f65-44dc-90ef-4f36a887bc34.png\">\r\n\r\n\r\n### Desktop Platform Information\r\n\r\n- MacOS 10.15.7\r\n- logseq 0.6.4\r\n\r\n### Mobile Platform Information\r\n\r\n_No response_\r\n\r\n### Additional Context\r\n\r\n_No response_",
+      "reactions": {
+        "url": "https://api.github.com/repos/logseq/logseq/issues/4709/reactions",
+        "total_count": 60,
+        "+1": 50,
+        "-1": 0,
+        "laugh": 0,
+        "hooray": 0,
+        "confused": 0,
+        "heart": 0,
+        "rocket": 4,
+        "eyes": 6
+      },
+      "timeline_url": "https://api.github.com/repos/logseq/logseq/issues/4709/timeline",
+      "performed_via_github_app": null,
+      "state_reason": null,
+      "pinned_comment": null,
+      "score": 1.0
+    },
+    {
+      "url": "https://api.github.com/repos/logseq/logseq/issues/11378",
+      "repository_url": "https://api.github.com/repos/logseq/logseq",
+      "labels_url": "https://api.github.com/repos/logseq/logseq/issues/11378/labels{/name}",
+      "comments_url": "https://api.github.com/repos/logseq/logseq/issues/11378/comments",
+      "events_url": "https://api.github.com/repos/logseq/logseq/issues/11378/events",
+      "html_url": "https://github.com/logseq/logseq/issues/11378",
+      "id": 2355791916,
+      "node_id": "I_kwDOD95dbc6Maogs",
+      "number": 11378,
+      "title": "Electron 28 has reached end-of-life",
+      "user": {
+        "login": "dixslyf",
+        "id": 56017218,
+        "node_id": "MDQ6VXNlcjU2MDE3MjE4",
+        "avatar_url": "https://avatars.githubusercontent.com/u/56017218?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/dixslyf",
+        "html_url": "https://github.com/dixslyf",
+        "followers_url": "https://api.github.com/users/dixslyf/followers",
+        "following_url": "https://api.github.com/users/dixslyf/following{/other_user}",
+        "gists_url": "https://api.github.com/users/dixslyf/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/dixslyf/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/dixslyf/subscriptions",
+        "organizations_url": "https://api.github.com/users/dixslyf/orgs",
+        "repos_url": "https://api.github.com/users/dixslyf/repos",
+        "events_url": "https://api.github.com/users/dixslyf/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/dixslyf/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "labels": [
+        {
+          "id": 4957155939,
+          "node_id": "LA_kwDOD95dbc8AAAABJ3gyYw",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/:status/automatic-stale",
+          "name": ":status/automatic-stale",
+          "color": "ededed",
+          "default": false,
+          "description": null
+        }
+      ],
+      "state": "closed",
+      "locked": false,
+      "assignees": [
+
+      ],
+      "milestone": null,
+      "comments": 5,
+      "created_at": "2024-06-16T14:08:28Z",
+      "updated_at": "2024-12-19T02:29:43Z",
+      "closed_at": "2024-12-19T02:29:43Z",
+      "assignee": null,
+      "author_association": "NONE",
+      "issue_field_values": [
+
+      ],
+      "type": null,
+      "active_lock_reason": null,
+      "sub_issues_summary": {
+        "total": 0,
+        "completed": 0,
+        "percent_completed": 0
+      },
+      "issue_dependencies_summary": {
+        "blocked_by": 0,
+        "total_blocked_by": 0,
+        "blocking": 0,
+        "total_blocking": 0
+      },
+      "body": "### Search first\n\n- [X] I searched and no similar issues were found\n\n### What Happened?\n\nLogseq currently uses Electron 28, which is no longer supported by upstream since last week (June 11). It would be a good idea to switch to a newer version of Electron. The release timelines can be found [here](https://www.electronjs.org/docs/latest/tutorial/electron-timelines). I'd suggest at least Electron 30 since Electron 29 will also reach EOL in August, which is not too far from now.\n\n### Reproduce the Bug\n\nN/A\n\n### Expected Behavior\n\n_No response_\n\n### Screenshots\n\n_No response_\n\n### Desktop or Mobile Platform Information\n\n_No response_\n\n### Additional Context\n\n_No response_\n\n### Are you willing to submit a PR? If you know how to fix the bug.\n\n- [ ] I'm willing to submit a PR (Thank you!)",
+      "reactions": {
+        "url": "https://api.github.com/repos/logseq/logseq/issues/11378/reactions",
+        "total_count": 52,
+        "+1": 43,
+        "-1": 0,
+        "laugh": 0,
+        "hooray": 0,
+        "confused": 0,
+        "heart": 9,
+        "rocket": 0,
+        "eyes": 0
+      },
+      "timeline_url": "https://api.github.com/repos/logseq/logseq/issues/11378/timeline",
+      "performed_via_github_app": null,
+      "state_reason": "completed",
+      "pinned_comment": null,
+      "score": 1.0
+    },
+    {
+      "url": "https://api.github.com/repos/logseq/logseq/issues/4107",
+      "repository_url": "https://api.github.com/repos/logseq/logseq",
+      "labels_url": "https://api.github.com/repos/logseq/logseq/issues/4107/labels{/name}",
+      "comments_url": "https://api.github.com/repos/logseq/logseq/issues/4107/comments",
+      "events_url": "https://api.github.com/repos/logseq/logseq/issues/4107/events",
+      "html_url": "https://github.com/logseq/logseq/issues/4107",
+      "id": 1121277409,
+      "node_id": "I_kwDOD95dbc5C1VXh",
+      "number": 4107,
+      "title": "Logseq in docker - ability to open directory on server",
+      "user": {
+        "login": "l-t-k",
+        "id": 3150962,
+        "node_id": "MDQ6VXNlcjMxNTA5NjI=",
+        "avatar_url": "https://avatars.githubusercontent.com/u/3150962?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/l-t-k",
+        "html_url": "https://github.com/l-t-k",
+        "followers_url": "https://api.github.com/users/l-t-k/followers",
+        "following_url": "https://api.github.com/users/l-t-k/following{/other_user}",
+        "gists_url": "https://api.github.com/users/l-t-k/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/l-t-k/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/l-t-k/subscriptions",
+        "organizations_url": "https://api.github.com/users/l-t-k/orgs",
+        "repos_url": "https://api.github.com/users/l-t-k/repos",
+        "events_url": "https://api.github.com/users/l-t-k/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/l-t-k/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "labels": [
+        {
+          "id": 3469433855,
+          "node_id": "LA_kwDOD95dbc7Oy1v_",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/:type/feature-request",
+          "name": ":type/feature-request",
+          "color": "5C7189",
+          "default": false,
+          "description": "Closed at will. Feature requests are in Logseq forum https://discuss.logseq.com/"
+        },
+        {
+          "id": 3806077807,
+          "node_id": "LA_kwDOD95dbc7i3CNv",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/fs",
+          "name": "fs",
+          "color": "D7D64E",
+          "default": false,
+          "description": "File system"
+        }
+      ],
+      "state": "closed",
+      "locked": true,
+      "assignees": [
+
+      ],
+      "milestone": null,
+      "comments": 29,
+      "created_at": "2022-02-01T22:45:26Z",
+      "updated_at": "2022-12-25T22:04:54Z",
+      "closed_at": "2022-12-25T22:04:54Z",
+      "assignee": null,
+      "author_association": "NONE",
+      "issue_field_values": [
+
+      ],
+      "type": null,
+      "active_lock_reason": null,
+      "sub_issues_summary": {
+        "total": 0,
+        "completed": 0,
+        "percent_completed": 0
+      },
+      "issue_dependencies_summary": {
+        "blocked_by": 0,
+        "total_blocked_by": 0,
+        "blocking": 0,
+        "total_blocking": 0
+      },
+      "body": "I'm running logseq in docker on a small server in my home network. If I try to open a directory through the webbrowser on my laptop (within my home network) I am only able to select a directory that's on my laptop but I want to select a (local) directory on my server. \r\n",
+      "reactions": {
+        "url": "https://api.github.com/repos/logseq/logseq/issues/4107/reactions",
+        "total_count": 51,
+        "+1": 51,
+        "-1": 0,
+        "laugh": 0,
+        "hooray": 0,
+        "confused": 0,
+        "heart": 0,
+        "rocket": 0,
+        "eyes": 0
+      },
+      "timeline_url": "https://api.github.com/repos/logseq/logseq/issues/4107/timeline",
+      "performed_via_github_app": null,
+      "state_reason": "completed",
+      "pinned_comment": null,
+      "score": 1.0
+    },
+    {
+      "url": "https://api.github.com/repos/logseq/logseq/issues/11644",
+      "repository_url": "https://api.github.com/repos/logseq/logseq",
+      "labels_url": "https://api.github.com/repos/logseq/logseq/issues/11644/labels{/name}",
+      "comments_url": "https://api.github.com/repos/logseq/logseq/issues/11644/comments",
+      "events_url": "https://api.github.com/repos/logseq/logseq/issues/11644/events",
+      "html_url": "https://github.com/logseq/logseq/issues/11644",
+      "id": 2738724180,
+      "node_id": "I_kwDOD95dbc6jPZ1U",
+      "number": 11644,
+      "title": "Electron version in use is outdated and marked insecure",
+      "user": {
+        "login": "XenGi",
+        "id": 1043980,
+        "node_id": "MDQ6VXNlcjEwNDM5ODA=",
+        "avatar_url": "https://avatars.githubusercontent.com/u/1043980?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/XenGi",
+        "html_url": "https://github.com/XenGi",
+        "followers_url": "https://api.github.com/users/XenGi/followers",
+        "following_url": "https://api.github.com/users/XenGi/following{/other_user}",
+        "gists_url": "https://api.github.com/users/XenGi/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/XenGi/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/XenGi/subscriptions",
+        "organizations_url": "https://api.github.com/users/XenGi/orgs",
+        "repos_url": "https://api.github.com/users/XenGi/repos",
+        "events_url": "https://api.github.com/users/XenGi/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/XenGi/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "labels": [
+
+      ],
+      "state": "closed",
+      "locked": false,
+      "assignees": [
+
+      ],
+      "milestone": null,
+      "comments": 5,
+      "created_at": "2024-12-13T16:08:39Z",
+      "updated_at": "2026-02-10T21:56:33Z",
+      "closed_at": "2025-03-11T15:17:38Z",
+      "assignee": null,
+      "author_association": "NONE",
+      "issue_field_values": [
+
+      ],
+      "type": null,
+      "active_lock_reason": null,
+      "sub_issues_summary": {
+        "total": 0,
+        "completed": 0,
+        "percent_completed": 0
+      },
+      "issue_dependencies_summary": {
+        "blocked_by": 0,
+        "total_blocked_by": 0,
+        "blocking": 0,
+        "total_blocking": 0
+      },
+      "body": "### Search first\r\n\r\n- [X] I searched and no similar issues were found\r\n\r\n### What Happened?\r\n\r\nThe current release 0.10.9 uses electron version 27 which reached EOL 2024-Apr-16. In the master branch electron version 31 is used which will reach EOL 2025-Jan-14, which is at the time of writing in 1 month.\r\n\r\nThat means that the current version of logseq already is insecure and the master branch will become insecure very shortly.\r\n\r\nTherefore I recommend upgrading electron to at least version 33 which will reach EOL 2025-Apr-29 and creating a new release.\r\n\r\nSee https://www.electronjs.org/docs/latest/tutorial/electron-timelines\r\n\r\n### Reproduce the Bug\r\n\r\n1. Download current version\r\n2. investigate dependencies\r\n3. Download master\r\n4. investigate dependencies\r\n\r\n### Expected Behavior\r\n\r\nRelease version should have an electron version which still receives security updates.\r\n\r\n### Screenshots\r\n\r\n_No response_\r\n\r\n### Desktop or Mobile Platform Information\r\n\r\n_No response_\r\n\r\n### Additional Context\r\n\r\n_No response_\r\n\r\n### Are you willing to submit a PR? If you know how to fix the bug.\r\n\r\n- [ ] I'm willing to submit a PR (Thank you!)",
+      "reactions": {
+        "url": "https://api.github.com/repos/logseq/logseq/issues/11644/reactions",
+        "total_count": 40,
+        "+1": 40,
+        "-1": 0,
+        "laugh": 0,
+        "hooray": 0,
+        "confused": 0,
+        "heart": 0,
+        "rocket": 0,
+        "eyes": 0
+      },
+      "timeline_url": "https://api.github.com/repos/logseq/logseq/issues/11644/timeline",
+      "performed_via_github_app": null,
+      "state_reason": "completed",
+      "pinned_comment": null,
+      "score": 1.0
+    },
+    {
+      "url": "https://api.github.com/repos/logseq/logseq/issues/9403",
+      "repository_url": "https://api.github.com/repos/logseq/logseq",
+      "labels_url": "https://api.github.com/repos/logseq/logseq/issues/9403/labels{/name}",
+      "comments_url": "https://api.github.com/repos/logseq/logseq/issues/9403/comments",
+      "events_url": "https://api.github.com/repos/logseq/logseq/issues/9403/events",
+      "html_url": "https://github.com/logseq/logseq/issues/9403",
+      "id": 1709712138,
+      "node_id": "I_kwDOD95dbc5l6CMK",
+      "number": 9403,
+      "title": "Android: cannot select Nextcloud-hosted directory",
+      "user": {
+        "login": "jdeluyck",
+        "id": 5451787,
+        "node_id": "MDQ6VXNlcjU0NTE3ODc=",
+        "avatar_url": "https://avatars.githubusercontent.com/u/5451787?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/jdeluyck",
+        "html_url": "https://github.com/jdeluyck",
+        "followers_url": "https://api.github.com/users/jdeluyck/followers",
+        "following_url": "https://api.github.com/users/jdeluyck/following{/other_user}",
+        "gists_url": "https://api.github.com/users/jdeluyck/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/jdeluyck/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/jdeluyck/subscriptions",
+        "organizations_url": "https://api.github.com/users/jdeluyck/orgs",
+        "repos_url": "https://api.github.com/users/jdeluyck/repos",
+        "events_url": "https://api.github.com/users/jdeluyck/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/jdeluyck/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "labels": [
+        {
+          "id": 2081581843,
+          "node_id": "MDU6TGFiZWwyMDgxNTgxODQz",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/:type/enhancement",
+          "name": ":type/enhancement",
+          "color": "930A91",
+          "default": false,
+          "description": "Enhancement to product. Does not affect the overall basic use."
+        },
+        {
+          "id": 3631462007,
+          "node_id": "LA_kwDOD95dbc7Yc7Z3",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/mobile:android",
+          "name": "mobile:android",
+          "color": "a4c639",
+          "default": false,
+          "description": ""
+        },
+        {
+          "id": 3806077807,
+          "node_id": "LA_kwDOD95dbc7i3CNv",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/fs",
+          "name": "fs",
+          "color": "D7D64E",
+          "default": false,
+          "description": "File system"
+        },
+        {
+          "id": 4965315993,
+          "node_id": "LA_kwDOD95dbc8AAAABJ_S1mQ",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/estimate:%20medium",
+          "name": "estimate: medium",
+          "color": "BFDADC",
+          "default": false,
+          "description": "Medium effort required"
+        }
+      ],
+      "state": "open",
+      "locked": false,
+      "assignees": [
+
+      ],
+      "milestone": null,
+      "comments": 47,
+      "created_at": "2023-05-15T09:42:12Z",
+      "updated_at": "2026-01-10T16:44:53Z",
+      "closed_at": null,
+      "assignee": null,
+      "author_association": "NONE",
+      "issue_field_values": [
+
+      ],
+      "type": null,
+      "active_lock_reason": null,
+      "sub_issues_summary": {
+        "total": 0,
+        "completed": 0,
+        "percent_completed": 0
+      },
+      "issue_dependencies_summary": {
+        "blocked_by": 0,
+        "total_blocked_by": 0,
+        "blocking": 0,
+        "total_blocking": 0
+      },
+      "body": "### Search first\r\n\r\n- [X] I searched and no similar issues were found\r\n\r\n### What Happened?\r\n\r\nUsing Logseq 0.9.6 on Android 13 (Security patch May 2023), I want to host my Logseq graph on Nextcloud (locally hosted on my LAN).\r\n\r\nUsing the document browser I browse to nextcloud -> select the directory where my graph resides, but this returns me this error:\r\n\r\n```\r\nError: Cannot support this directory type: content://org.nextcloud.documents/tree/e481e080734577565209f10c88a78a12%2F197/document/e481e080734577565209f10c88a78a12%2F197\r\n```\r\n\r\n![image](https://github.com/logseq/logseq/assets/5451787/b2b69baf-8070-4c1a-a607-879384d82f85)\r\n\r\n\r\n### Reproduce the Bug\r\n\r\n1. Start Logseq\r\n2. Go to \"All graphs\r\n3. \"Choose a folder\"\r\n4. Open from: Nextcloud (user@nextcloud.lan)\r\n5. Browse to directory\r\n6. Tap \"Use this folder\"\r\n\r\n### Expected Behavior\r\n\r\nLogseq opens the folder and processes the graph\r\n\r\n### Screenshots\r\n\r\n_No response_\r\n\r\n### Desktop or Mobile Platform Information\r\n\r\nLogseq 0.9.6\r\nAndroid 13 (sec patch may 2023)\r\nDevice: Samsung S22 Ultra\r\nNextcloud backend 25.0.6\r\nNextcloud client 3.24.2\r\n\r\n### Additional Context\r\n\r\n_No response_\r\n\r\n### Are you willing to submit a PR? If you know how to fix the bug.\r\n\r\n- [ ] I'm willing to submit a PR (Thank you!)",
+      "reactions": {
+        "url": "https://api.github.com/repos/logseq/logseq/issues/9403/reactions",
+        "total_count": 36,
+        "+1": 36,
+        "-1": 0,
+        "laugh": 0,
+        "hooray": 0,
+        "confused": 0,
+        "heart": 0,
+        "rocket": 0,
+        "eyes": 0
+      },
+      "timeline_url": "https://api.github.com/repos/logseq/logseq/issues/9403/timeline",
+      "performed_via_github_app": null,
+      "state_reason": null,
+      "pinned_comment": null,
+      "score": 1.0
+    },
+    {
+      "url": "https://api.github.com/repos/logseq/logseq/issues/5421",
+      "repository_url": "https://api.github.com/repos/logseq/logseq",
+      "labels_url": "https://api.github.com/repos/logseq/logseq/issues/5421/labels{/name}",
+      "comments_url": "https://api.github.com/repos/logseq/logseq/issues/5421/comments",
+      "events_url": "https://api.github.com/repos/logseq/logseq/issues/5421/events",
+      "html_url": "https://github.com/logseq/logseq/issues/5421",
+      "id": 1247083214,
+      "node_id": "I_kwDOD95dbc5KVPrO",
+      "number": 5421,
+      "title": "i18n support of the weekdays in Dates",
+      "user": {
+        "login": "elkrause",
+        "id": 53222869,
+        "node_id": "MDQ6VXNlcjUzMjIyODY5",
+        "avatar_url": "https://avatars.githubusercontent.com/u/53222869?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/elkrause",
+        "html_url": "https://github.com/elkrause",
+        "followers_url": "https://api.github.com/users/elkrause/followers",
+        "following_url": "https://api.github.com/users/elkrause/following{/other_user}",
+        "gists_url": "https://api.github.com/users/elkrause/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/elkrause/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/elkrause/subscriptions",
+        "organizations_url": "https://api.github.com/users/elkrause/orgs",
+        "repos_url": "https://api.github.com/users/elkrause/repos",
+        "events_url": "https://api.github.com/users/elkrause/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/elkrause/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "labels": [
+        {
+          "id": 2081581843,
+          "node_id": "MDU6TGFiZWwyMDgxNTgxODQz",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/:type/enhancement",
+          "name": ":type/enhancement",
+          "color": "930A91",
+          "default": false,
+          "description": "Enhancement to product. Does not affect the overall basic use."
+        },
+        {
+          "id": 3806068709,
+          "node_id": "LA_kwDOD95dbc7i2__l",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/i18n",
+          "name": "i18n",
+          "color": "BAD229",
+          "default": false,
+          "description": ""
+        },
+        {
+          "id": 4969114998,
+          "node_id": "LA_kwDOD95dbc8AAAABKC6tdg",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/estimate:%20large",
+          "name": "estimate: large",
+          "color": "BFDADC",
+          "default": false,
+          "description": "Require major refactor of a feature"
+        }
+      ],
+      "state": "open",
+      "locked": false,
+      "assignees": [
+
+      ],
+      "milestone": null,
+      "comments": 15,
+      "created_at": "2022-05-24T20:21:10Z",
+      "updated_at": "2025-03-24T20:49:02Z",
+      "closed_at": null,
+      "assignee": null,
+      "author_association": "NONE",
+      "issue_field_values": [
+
+      ],
+      "type": null,
+      "active_lock_reason": null,
+      "sub_issues_summary": {
+        "total": 0,
+        "completed": 0,
+        "percent_completed": 0
+      },
+      "issue_dependencies_summary": {
+        "blocked_by": 0,
+        "total_blocked_by": 0,
+        "blocking": 0,
+        "total_blocking": 0
+      },
+      "body": "### What happened?\n\nHi! I have changed to German language in the editor settings, but still the day of the week in the journal is in English. Also when I select a date with the date picker the day name is in English.\n\n### Reproduce the Bug\n\nJust open the editor\n\n### Expected Behavior\n\nI would expect the German names of the weekdays (Montag, Dienstag, ...)\n\n### Screenshots\n\n<img width=\"583\" alt=\"2022-05-24_22h11_20\" src=\"https://user-images.githubusercontent.com/53222869/170124875-0ff2d4d9-f08f-4be1-859d-28d9c10ac6ab.png\">\r\n<img width=\"282\" alt=\"2022-05-24_22h11_26\" src=\"https://user-images.githubusercontent.com/53222869/170124877-ef844f8d-f6d3-4842-888f-a55aacef5090.png\">\r\n\n\n### Desktop Platform Information\n\nWindows 10, Logseq 0.7.0\n\n### Mobile Platform Information\n\niOS 15.5, Logseq 0.6.9\n\n### Additional Context\n\n_No response_",
+      "reactions": {
+        "url": "https://api.github.com/repos/logseq/logseq/issues/5421/reactions",
+        "total_count": 29,
+        "+1": 29,
+        "-1": 0,
+        "laugh": 0,
+        "hooray": 0,
+        "confused": 0,
+        "heart": 0,
+        "rocket": 0,
+        "eyes": 0
+      },
+      "timeline_url": "https://api.github.com/repos/logseq/logseq/issues/5421/timeline",
+      "performed_via_github_app": null,
+      "state_reason": null,
+      "pinned_comment": null,
+      "score": 1.0
+    },
+    {
+      "url": "https://api.github.com/repos/logseq/logseq/issues/133",
+      "repository_url": "https://api.github.com/repos/logseq/logseq",
+      "labels_url": "https://api.github.com/repos/logseq/logseq/issues/133/labels{/name}",
+      "comments_url": "https://api.github.com/repos/logseq/logseq/issues/133/comments",
+      "events_url": "https://api.github.com/repos/logseq/logseq/issues/133/events",
+      "html_url": "https://github.com/logseq/logseq/issues/133",
+      "id": 678852948,
+      "node_id": "MDU6SXNzdWU2Nzg4NTI5NDg=",
+      "number": 133,
+      "title": "Google Drive storage support",
+      "user": {
+        "login": "tiensonqin",
+        "id": 479169,
+        "node_id": "MDQ6VXNlcjQ3OTE2OQ==",
+        "avatar_url": "https://avatars.githubusercontent.com/u/479169?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/tiensonqin",
+        "html_url": "https://github.com/tiensonqin",
+        "followers_url": "https://api.github.com/users/tiensonqin/followers",
+        "following_url": "https://api.github.com/users/tiensonqin/following{/other_user}",
+        "gists_url": "https://api.github.com/users/tiensonqin/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/tiensonqin/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/tiensonqin/subscriptions",
+        "organizations_url": "https://api.github.com/users/tiensonqin/orgs",
+        "repos_url": "https://api.github.com/users/tiensonqin/repos",
+        "events_url": "https://api.github.com/users/tiensonqin/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/tiensonqin/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "labels": [
+
+      ],
+      "state": "closed",
+      "locked": false,
+      "assignees": [
+
+      ],
+      "milestone": null,
+      "comments": 2,
+      "created_at": "2020-08-14T02:32:56Z",
+      "updated_at": "2022-02-10T01:49:05Z",
+      "closed_at": "2021-05-04T15:08:42Z",
+      "assignee": null,
+      "author_association": "CONTRIBUTOR",
+      "issue_field_values": [
+
+      ],
+      "type": null,
+      "active_lock_reason": null,
+      "sub_issues_summary": {
+        "total": 0,
+        "completed": 0,
+        "percent_completed": 0
+      },
+      "issue_dependencies_summary": {
+        "blocked_by": 0,
+        "total_blocked_by": 0,
+        "blocking": 0,
+        "total_blocking": 0
+      },
+      "body": "**Is your feature request related to a problem? Please describe.**\r\nAdd Google Drive sync support.",
+      "reactions": {
+        "url": "https://api.github.com/repos/logseq/logseq/issues/133/reactions",
+        "total_count": 28,
+        "+1": 26,
+        "-1": 0,
+        "laugh": 0,
+        "hooray": 0,
+        "confused": 0,
+        "heart": 2,
+        "rocket": 0,
+        "eyes": 0
+      },
+      "timeline_url": "https://api.github.com/repos/logseq/logseq/issues/133/timeline",
+      "performed_via_github_app": null,
+      "state_reason": "completed",
+      "pinned_comment": null,
+      "score": 1.0
+    },
+    {
+      "url": "https://api.github.com/repos/logseq/logseq/issues/3281",
+      "repository_url": "https://api.github.com/repos/logseq/logseq",
+      "labels_url": "https://api.github.com/repos/logseq/logseq/issues/3281/labels{/name}",
+      "comments_url": "https://api.github.com/repos/logseq/logseq/issues/3281/comments",
+      "events_url": "https://api.github.com/repos/logseq/logseq/issues/3281/events",
+      "html_url": "https://github.com/logseq/logseq/issues/3281",
+      "id": 1063952102,
+      "node_id": "I_kwDOD95dbc4_ap7m",
+      "number": 3281,
+      "title": "Can't follow links with ID in org-mode",
+      "user": {
+        "login": "degiz",
+        "id": 2385290,
+        "node_id": "MDQ6VXNlcjIzODUyOTA=",
+        "avatar_url": "https://avatars.githubusercontent.com/u/2385290?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/degiz",
+        "html_url": "https://github.com/degiz",
+        "followers_url": "https://api.github.com/users/degiz/followers",
+        "following_url": "https://api.github.com/users/degiz/following{/other_user}",
+        "gists_url": "https://api.github.com/users/degiz/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/degiz/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/degiz/subscriptions",
+        "organizations_url": "https://api.github.com/users/degiz/orgs",
+        "repos_url": "https://api.github.com/users/degiz/repos",
+        "events_url": "https://api.github.com/users/degiz/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/degiz/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "labels": [
+        {
+          "id": 2313626534,
+          "node_id": "MDU6TGFiZWwyMzEzNjI2NTM0",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/format:org-mode",
+          "name": "format:org-mode",
+          "color": "C2E0C6",
+          "default": false,
+          "description": ""
+        },
+        {
+          "id": 3640408896,
+          "node_id": "LA_kwDOD95dbc7Y_DtA",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/block-ref",
+          "name": "block-ref",
+          "color": "5319E7",
+          "default": false,
+          "description": ""
+        },
+        {
+          "id": 4957155939,
+          "node_id": "LA_kwDOD95dbc8AAAABJ3gyYw",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/:status/automatic-stale",
+          "name": ":status/automatic-stale",
+          "color": "ededed",
+          "default": false,
+          "description": null
+        },
+        {
+          "id": 5058594448,
+          "node_id": "LA_kwDOD95dbc8AAAABLYQGkA",
+          "url": "https://api.github.com/repos/logseq/logseq/labels/:status/automatic-closing",
+          "name": ":status/automatic-closing",
+          "color": "ededed",
+          "default": false,
+          "description": null
+        }
+      ],
+      "state": "closed",
+      "locked": false,
+      "assignees": [
+
+      ],
+      "milestone": null,
+      "comments": 32,
+      "created_at": "2021-11-25T22:41:22Z",
+      "updated_at": "2025-12-15T00:17:04Z",
+      "closed_at": "2025-12-15T00:17:04Z",
+      "assignee": null,
+      "author_association": "NONE",
+      "issue_field_values": [
+
+      ],
+      "type": null,
+      "active_lock_reason": null,
+      "sub_issues_summary": {
+        "total": 0,
+        "completed": 0,
+        "percent_completed": 0
+      },
+      "issue_dependencies_summary": {
+        "blocked_by": 0,
+        "total_blocked_by": 0,
+        "blocking": 0,
+        "total_blocking": 0
+      },
+      "body": "**Describe the bug**\r\nSeems to be very similar to #696\r\nLogseq won't follow the links with `ID` which are generated by org-roam v2 in Emacs.\r\n\r\n**To Reproduce**\r\nfirst.org\r\n```\r\n:PROPERTIES:\r\n:ID: 0d0c1093-7bc3-48a7-999b-534e20e92954\r\n:END:\r\n#+title: Mixing\r\n* Topics\r\n- Roland [[id:01fb71c0-798f-4485-9a8f-c6259c126469][808]]\r\n```\r\n\r\nsecond.org\r\n```\r\n:PROPERTIES:\r\n:ID:       01fb71c0-798f-4485-9a8f-c6259c126469\r\n:END:\r\n#+title: 808\r\n```\r\n\r\n\r\n**Expected behavior**\r\nFrom the `first.org` I'd expect to click on `808` and go to the corresponding file.\r\n\r\n**Screenshots**\r\nAttached is the screenshot - seems like Logseq sees the `808` as a link, but won't follow on click.\r\n![CleanShot 2021-11-25 at 23 40 38@2x](https://user-images.githubusercontent.com/2385290/143505364-a0dda696-cab6-4869-a40b-c60624dd7315.png)\r\n\r\n\r\n**Desktop (please complete the following information):**\r\n - OS: MacOs 11.6\r\n - Version 0.5.1\r\n",
+      "reactions": {
+        "url": "https://api.github.com/repos/logseq/logseq/issues/3281/reactions",
+        "total_count": 27,
+        "+1": 20,
+        "-1": 0,
+        "laugh": 0,
+        "hooray": 0,
+        "confused": 0,
+        "heart": 0,
+        "rocket": 0,
+        "eyes": 7
+      },
+      "timeline_url": "https://api.github.com/repos/logseq/logseq/issues/3281/timeline",
+      "performed_via_github_app": null,
+      "state_reason": "not_planned",
+      "pinned_comment": null,
+      "score": 1.0
+    }
+  ],
+  "search_type": "lexical"
+}
