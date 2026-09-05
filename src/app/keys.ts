@@ -3,15 +3,17 @@
 
 import { tinykeys } from "tinykeys";
 import { chordToPattern, matchesChord } from "./chords";
+import { closeActive } from "./close";
 import {
-  closeActive,
+  newDoc,
   openFile,
   openLibrary,
+  refresh,
   toggleAlwaysOnTop,
   toggleFullscreen,
 } from "./commands";
+import { saveActive, saveAs } from "./save";
 import { toggleLineNumbers } from "../editor/setup";
-import { emitRerender } from "../read/events";
 import { goBack, goForward } from "../read/history";
 import { useStore } from "./store";
 
@@ -19,7 +21,7 @@ import { useStore } from "./store";
  * WebView2 keeps its own accelerators (spec §12 leaves them on for zoom), but
  * these four must not reach it — they are ours, or they would reload the app.
  */
-const SWALLOW = ["Ctrl+F", "Ctrl+P", "Ctrl+G", "F5"];
+const SWALLOW = ["Ctrl+F", "Ctrl+P", "Ctrl+G", "F5", "Ctrl+S", "Ctrl+Shift+S", "Ctrl+N"];
 
 /** chord -> action. New shortcuts go here and nowhere else. */
 function bindings(): Record<string, () => void> {
@@ -34,13 +36,19 @@ function bindings(): Record<string, () => void> {
     "Ctrl+Shift+A": () => void toggleAlwaysOnTop(),
     "Ctrl+O": () => void openFile(),
     "Ctrl+Alt+O": () => void openLibrary(),
+    "Ctrl+N": () => newDoc(),
+    "Ctrl+S": () => void saveActive(),
+    "Ctrl+Shift+S": () => {
+      const id = store().activeId;
+      if (id) void saveAs(id);
+    },
     "Ctrl+W": () => closeActive(),
     "Ctrl+Shift+9": () => toggleLineNumbers(),
     "Ctrl+Tab": () => store().cycleDoc(1),
     "Ctrl+Shift+Tab": () => store().cycleDoc(-1),
     "Alt+Left": () => goBack(),
     "Alt+Right": () => goForward(),
-    F5: () => emitRerender(),
+    F5: () => refresh(),
   };
 }
 

@@ -3,21 +3,32 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Banner } from "../ui/Banner";
 import { DocView } from "../ui/DocView";
 import { Empty } from "../ui/Empty";
+import { Modal } from "../ui/Modal";
 import { ModeBar } from "../ui/ModeBar";
 import { Rail } from "../ui/Rail";
+import { RecoveryScreen } from "../ui/Recovery";
 import { StatusBar } from "../ui/StatusBar";
 import "../ui/app.css";
+import { installCloseGuard } from "./close";
+import { installDrafts } from "./drafts";
 import { inTauri } from "./env";
 import { installKeys } from "./keys";
+import { installSession } from "./session";
 import { activeDoc, useStore } from "./store";
 import { watchSystemTheme } from "./theme";
+import { installWatcher } from "./watcher";
 
 export function App() {
   const railCollapsed = useStore((s) => s.railCollapsed);
   const banner = useStore((s) => s.banner);
+  const recovery = useStore((s) => s.recovery);
   const doc = useStore(activeDoc);
 
   useEffect(() => installKeys(), []);
+  useEffect(() => installDrafts(), []);
+  useEffect(() => installSession(), []);
+  useEffect(() => installWatcher(), []);
+  useEffect(() => installCloseGuard(), []);
 
   useEffect(
     () => watchSystemTheme((resolved) => useStore.getState().syncSystemTheme(resolved)),
@@ -38,10 +49,17 @@ export function App() {
         <div className="main">
           <ModeBar />
           {banner && <Banner banner={banner} />}
-          {doc ? <DocView doc={doc} /> : <Empty />}
+          {recovery && recovery.length > 0 ? (
+            <RecoveryScreen entries={recovery} />
+          ) : doc ? (
+            <DocView doc={doc} />
+          ) : (
+            <Empty />
+          )}
           <StatusBar />
         </div>
       </div>
+      <Modal />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { EditorView } from "@codemirror/view";
 import type { Doc } from "../app/store";
 import { useStore } from "../app/store";
-import { buffer, keepBuffer } from "./buffers";
+import { buffer, keepBuffer, markSaved, moveBuffer, setBufferText } from "./buffers";
 import { headingAt } from "./headings";
 import { gutterConf, gutterExtension, lineNumbersOn, onLineNumbers } from "./setup";
 import { flushText, syncCaret } from "./sync";
@@ -23,6 +23,36 @@ let pending: { line: number; at: number } | null = null;
  */
 export function flushActiveEditor(): void {
   if (live && liveId) flushText(live, liveId);
+}
+
+/**
+ * Replaces the whole document in one transaction, so a silent reload from
+ * disk is a single undo step (spec §8). The new text becomes the clean one.
+ */
+export function replaceText(id: string, text: string): void {
+  if (live && liveId === id) {
+    live.dispatch({ changes: { from: 0, to: live.state.doc.length, insert: text } });
+    keepBuffer(id, live.state, live.scrollDOM.scrollTop);
+    markSaved(id, text);
+    // The dispatch queued a sync that would report the document as edited;
+    // running it now, after the new text is the clean one, settles it.
+    flushText(live, id);
+    return;
+  }
+  setBufferText(id, text);
+  markSaved(id, text);
+}
+
+/**
+ * Save As: the buffer follows the document to its new id. Whatever the live
+ * editor holds is stored first, or the move would carry a stale state.
+ */
+export function renameBuffer(from: string, to: string): void {
+  if (live && liveId === from) {
+    keepBuffer(from, live.state, live.scrollDOM.scrollTop);
+    liveId = to;
+  }
+  moveBuffer(from, to);
 }
 
 function jump(view: EditorView, line: number): void {

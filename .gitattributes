@@ -2,3 +2,6 @@
 *.png binary
 *.ico binary
 *.zip binary
+
+# Byte-exact fixtures: git must not touch their line endings.
+tests/corpus/save/* -text

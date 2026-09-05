@@ -1,3 +1,6 @@
+mod fs;
+mod watch;
+
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -12,12 +15,13 @@ struct PendingPaths(Mutex<Vec<String>>);
 
 /// argv -> absolute paths. A relative argument belongs to the working
 /// directory of the process that produced it, which for a second launch is
-/// not our own, so the cwd is always passed in.
+/// not our own, so the cwd is always passed in. Only arguments that really
+/// are files survive: `tauri dev` passes `--color always`, and dropping
+/// anything that starts with `-` would still leave `always` behind.
 fn path_args<I: IntoIterator<Item = String>>(argv: I, cwd: &Path) -> Vec<String> {
     argv.into_iter()
         .skip(1)
-        .filter(|arg| !arg.starts_with('-'))
-        .map(|arg| {
+        .filter_map(|arg| {
             let path = PathBuf::from(arg);
             let absolute = if path.is_absolute() {
                 path
@@ -25,11 +29,10 @@ fn path_args<I: IntoIterator<Item = String>>(argv: I, cwd: &Path) -> Vec<String>
                 cwd.join(path)
             };
             // Drops the "." components a shell leaves behind.
-            absolute
-                .components()
-                .collect::<PathBuf>()
-                .to_string_lossy()
-                .into_owned()
+            let cleaned: PathBuf = absolute.components().collect();
+            cleaned
+                .is_file()
+                .then(|| cleaned.to_string_lossy().into_owned())
         })
         .collect()
 }
@@ -121,12 +124,23 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(navigation_guard())
         .manage(PendingPaths::default())
+        .manage(watch::Watcher::default())
         .setup(|app| {
             let cwd = std::env::current_dir().unwrap_or_default();
             queue_paths(app.handle(), path_args(std::env::args(), &cwd));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![take_pending_paths, allow_asset_dir])
+        .invoke_handler(tauri::generate_handler![
+            take_pending_paths,
+            allow_asset_dir,
+            fs::read_file,
+            fs::write_file_atomic,
+            fs::write_text_atomic,
+            fs::hash_file,
+            fs::trash_path,
+            watch::watch,
+            watch::unwatch
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Plain");
 }
@@ -134,27 +148,46 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::path_args;
-    use std::path::Path;
 
+    /// `tauri dev` hands us `--color always`; only real files may survive.
     #[test]
-    fn drops_the_exe_and_flags() {
+    fn keeps_only_the_arguments_that_are_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.md");
+        std::fs::write(&file, "x").unwrap();
         let argv = vec![
             "plain.exe".to_string(),
-            "--flag".to_string(),
-            r"C:\notes\a.md".to_string(),
+            "--color".to_string(),
+            "always".to_string(),
+            file.to_string_lossy().into_owned(),
         ];
         assert_eq!(
-            path_args(argv, Path::new(r"D:\work")),
-            vec![r"C:\notes\a.md".to_string()]
+            path_args(argv, dir.path()),
+            vec![file.to_string_lossy().into_owned()]
         );
     }
 
     #[test]
     fn resolves_relatives_against_the_given_cwd() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("notes")).unwrap();
+        let file = dir.path().join("notes").join("b.md");
+        std::fs::write(&file, "x").unwrap();
+
         let argv = vec!["plain.exe".to_string(), r".\notes\b.md".to_string()];
         assert_eq!(
-            path_args(argv, Path::new(r"D:\work")),
-            vec![r"D:\work\notes\b.md".to_string()]
+            path_args(argv, dir.path()),
+            vec![file.to_string_lossy().into_owned()]
         );
+    }
+
+    #[test]
+    fn a_folder_is_not_a_file_argument() {
+        let dir = tempfile::tempdir().unwrap();
+        let argv = vec![
+            "plain.exe".to_string(),
+            dir.path().to_string_lossy().into_owned(),
+        ];
+        assert!(path_args(argv, dir.path()).is_empty());
     }
 }

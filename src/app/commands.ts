@@ -1,17 +1,16 @@
-// Everything a shortcut, a menu or a link can trigger. Wave 1 covers the
-// window and opening files; saving arrives in wave 4.
+// Everything a shortcut, a menu or a link can trigger. Saving lives in
+// save.ts and closing in close.ts; the rest is here.
 
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { readTextFile } from "@tauri-apps/plugin-fs";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isDirty } from "../editor/buffers";
+import { emitRerender } from "../read/events";
 import { inTauri } from "./env";
+import { docFields, fsError, readFile } from "./fs";
 import { basename, pathKey } from "./paths";
-import { useStore } from "./store";
-
-function reason(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+import { reloadFromDisk } from "./save";
+import { activeDoc, makeDoc, useStore } from "./store";
 
 /**
  * Reads each path into the open list; the first one becomes active.
@@ -31,12 +30,12 @@ export async function openPaths(paths: string[]): Promise<boolean> {
       continue;
     }
     try {
-      openDoc(path, await readTextFile(path));
+      openDoc(makeDoc({ id: pathKey(path), path, ...docFields(await readFile(path)) }));
       opened = true;
     } catch (error) {
       showBanner({
         id: "open-failed",
-        text: `couldn't open ${basename(path)} — ${reason(error)}`,
+        text: `couldn't open ${basename(path)} — ${fsError(error).message}`,
         actions: [{ label: "dismiss", run: () => useStore.getState().dismissBanner("open-failed") }],
       });
     }
@@ -45,12 +44,51 @@ export async function openPaths(paths: string[]): Promise<boolean> {
 }
 
 /**
+ * `Ctrl+N`. Without a library this is a nameless buffer whose `Ctrl+S` is
+ * Save As (spec §6); inside a library the tree will name it in wave 5, so
+ * for now it is the same buffer with the library as the default folder.
+ */
+let untitled = 0;
+
+export function newDoc(): void {
+  const store = useStore.getState();
+  untitled += 1;
+  store.openDoc(
+    makeDoc({
+      id: `untitled-${untitled}`,
+      path: null,
+      text: "",
+      mode: "edit",
+      eol: store.settings.files.newFileEol,
+    }),
+  );
+}
+
+/** `F5`: build the document again, and re-read it when it is clean. */
+export function refresh(): void {
+  const doc = activeDoc(useStore.getState());
+  if (!doc?.path) {
+    emitRerender();
+    return;
+  }
+  if (isDirty(doc.id, doc.text)) {
+    useStore.getState().setMessage("unsaved changes — save or reload from banner");
+    emitRerender();
+    return;
+  }
+  void reloadFromDisk(doc.id, "").then(emitRerender);
+}
+
+/**
  * Takes whatever Rust parked for us — launch arguments, or the argv of a
  * second launch. Opening a file this way collapses the rail (spec §6).
  */
+export async function pendingPaths(): Promise<string[]> {
+  return inTauri ? invoke<string[]>("take_pending_paths") : [];
+}
+
 export async function drainPendingPaths(): Promise<void> {
-  if (!inTauri) return;
-  const paths = await invoke<string[]>("take_pending_paths");
+  const paths = await pendingPaths();
   if (paths.length === 0) return;
   if (await openPaths(paths)) useStore.getState().setRailCollapsed(true);
 }
@@ -78,11 +116,6 @@ export async function openLibrary(): Promise<void> {
   store.setRailView("files");
   store.setRailCollapsed(false);
   store.setMessage(`library · ${basename(picked)}`);
-}
-
-export function closeActive(): void {
-  const { activeId, closeDoc } = useStore.getState();
-  if (activeId) closeDoc(activeId);
 }
 
 export async function toggleFullscreen(): Promise<void> {

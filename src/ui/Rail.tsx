@@ -1,3 +1,4 @@
+import { closeDocs } from "../app/close";
 import { openLibrary } from "../app/commands";
 import { basename } from "../app/paths";
 import { activeDoc, useStore } from "../app/store";
@@ -11,7 +12,6 @@ export function Rail() {
   const railView = useStore((s) => s.railView);
   const libraryPath = useStore((s) => s.libraryPath);
   const activate = useStore((s) => s.activate);
-  const closeDoc = useStore((s) => s.closeDoc);
   const setRailView = useStore((s) => s.setRailView);
 
   return (
@@ -32,7 +32,7 @@ export function Rail() {
               className={"rail-item" + (doc.id === activeId ? " is-active" : "")}
               onClick={() => activate(doc.id)}
               onAuxClick={(e) => {
-                if (e.button === 1) closeDoc(doc.id);
+                if (e.button === 1) closeDocs([doc.id]);
               }}
             >
               <span className="rail-item-name">{doc.title}</span>

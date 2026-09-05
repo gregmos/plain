@@ -1,0 +1,163 @@
+/* Modal (spec §4: 420px, text actions, Esc cancels) and the list screens
+   that are "in the style of the library" — 22px/600 title, rows separated by
+   a 1px line, no buttons but text. */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 160px;
+  background: color-mix(in srgb, var(--bg) 65%, transparent);
+  z-index: 20;
+}
+
+.modal {
+  width: min(420px, calc(100% - 32px));
+  max-height: calc(100% - 200px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  background: var(--modal-bg);
+  border: 1px solid var(--modal-border);
+  font-size: var(--fs-ui);
+}
+
+.modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.modal-lines {
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.modal-line {
+  padding: 5px 0;
+  border-top: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+
+/* A file list: the name at the end matters most, so the path is cut in
+   front of it. Prose lines must not get this — it moves their full stop. */
+.modal-line.is-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* list screen: unsaved work found */
+
+.screen {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  padding: 60px 20px;
+}
+
+.screen-column {
+  width: min(560px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.screen-title {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.screen-lead {
+  color: var(--muted);
+  font-size: var(--fs-small);
+  padding-bottom: 16px;
+}
+
+.screen-row {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 9px 0;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+}
+
+.screen-name {
+  flex: none;
+  color: var(--fg);
+}
+
+.screen-where {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.screen-when {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.screen-row-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-small);
+}
+
+/* Also the line that closes the list above it. */
+.screen-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-small);
+}
+
+/* status bar: reopen as… */
+
+.status-encoding {
+  position: relative;
+}
+
+.encoding-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--modal-bg);
+  border: 1px solid var(--modal-border);
+  white-space: nowrap;
+  z-index: 10;
+}

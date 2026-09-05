@@ -45,10 +45,11 @@ export function flushText(view: EditorView, id: string): void {
   const text = view.state.doc.toString();
   const caret = caretOf(view.state);
   const patch: Partial<Omit<Doc, "id">> = {};
-  if (current.text !== text) {
-    patch.text = text;
-    patch.dirty = isDirty(id, text);
-  }
+  if (current.text !== text) patch.text = text;
+  // The authority on `dirty`: the frame below only ever guesses `true`, and
+  // an undo or a reload from disk has to be able to take it back.
+  const dirty = isDirty(id, text);
+  if (current.dirty !== dirty) patch.dirty = dirty;
   const previous = current.caret;
   if (!previous || previous.line !== caret.line || previous.col !== caret.col) {
     patch.caret = caret;

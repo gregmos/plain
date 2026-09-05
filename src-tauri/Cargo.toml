@@ -3,7 +3,7 @@ name = "plain"
 version = "0.1.0"
 description = "Plain — a monospace markdown reader/editor"
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.85"
 
 [lib]
 name = "plain_lib"
@@ -22,6 +22,14 @@ tauri-plugin-window-state = "2.4"
 tauri-plugin-persisted-scope = "2.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+notify = "8.2.0"
+notify-debouncer-full = "0.7.0"
+tempfile = "3.27.0"
+trash = "5.2.7"
+encoding_rs = "0.8.35"
+chardetng = "1.0.0"
+blake3 = "1.8.7"
+windows = { version = "0.62.2", features = ["Win32_Storage_FileSystem", "Win32_Foundation"] }
 
 [profile.release]
 codegen-units = 1

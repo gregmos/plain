@@ -1,22 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { undo } from "@codemirror/commands";
 import { DEFAULTS } from "../app/settings";
-import type { Doc } from "../app/store";
+import { makeDoc, type Doc } from "../app/store";
 import { buffer, clearBuffers, isDirty, keepBuffer, markSaved } from "./buffers";
 
 function doc(text: string): Doc {
-  return {
-    id: "test",
-    path: "C:/notes/test.md",
-    title: "test.md",
-    text,
-    dirty: false,
-    mode: "edit",
-    readOnly: false,
-    headings: [],
-    caret: null,
-    large: false,
-  };
+  return makeDoc({ id: "test", path: "C:/notes/test.md", text, mode: "edit" });
 }
 
 beforeEach(clearBuffers);

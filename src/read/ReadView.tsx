@@ -3,6 +3,7 @@ import { stat } from "@tauri-apps/plugin-fs";
 import { matchesChord } from "../app/chords";
 import { openPaths, openPathsInBackground } from "../app/commands";
 import { inTauri } from "../app/env";
+import { readingPosition, rememberReading } from "../app/session";
 import { useStore, type Doc } from "../app/store";
 import { allowAssetDir } from "./assets";
 import { enhance, revealImage } from "./dom";
@@ -129,7 +130,9 @@ export function ReadView({ doc }: { doc: Doc }) {
     const id = seen?.id ?? content.querySelector("h1,h2,h3,h4,h5,h6")?.id ?? null;
     setActiveHeading(id || null);
     topLine.current = (id ? lines.get(id) : undefined) ?? 1;
-  }, [lines]);
+    // Where you were reading is remembered per file, LRU 300 (spec §8).
+    if (id && doc.path) rememberReading(doc.path, id);
+  }, [lines, doc.path]);
 
   /* --------------------------------------------------------------- scope */
 
@@ -215,8 +218,15 @@ export function ReadView({ doc }: { doc: Doc }) {
       pendingAnchor = null;
       if (scrollToId(hash)) return;
     }
-    frame.scrollTop = scrollTops.get(docId) ?? 0;
-  }, [docId, html, scrollToId]);
+    const kept = scrollTops.get(docId);
+    if (kept !== undefined) {
+      frame.scrollTop = kept;
+      return;
+    }
+    // First time this session: pick up where the last one left off (§8).
+    const heading = doc.path ? readingPosition(doc.path) : null;
+    if (!heading || !scrollToId(heading)) frame.scrollTop = 0;
+  }, [docId, doc.path, html, scrollToId]);
 
   useEffect(() => {
     const onGoto = (event: Event) => {
