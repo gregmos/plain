@@ -9,6 +9,15 @@ import { basename, pathKey } from "./paths";
 export type Mode = "read" | "edit";
 export type RailView = "files" | "outline";
 
+export interface Heading {
+  level: number;
+  text: string;
+  /** GitHub-style slug, same as the id on the rendered heading. */
+  id: string;
+  /** 1-based source line, for read -> edit "same heading" scrolling. */
+  line: number;
+}
+
 export interface Doc {
   id: string;
   /** null while the buffer has never been written to disk. */
@@ -18,6 +27,10 @@ export interface Doc {
   dirty: boolean;
   mode: Mode;
   readOnly: boolean;
+  /** Filled by the read pipeline; drives the outline (wave 2). */
+  headings: Heading[];
+  /** 1-based caret position from the editor (wave 3); null in read. */
+  caret: { line: number; col: number } | null;
 }
 
 export interface BannerAction {
@@ -55,6 +68,8 @@ interface AppState {
   setRailView: (view: RailView) => void;
   setLibraryPath: (path: string | null) => void;
   openDoc: (path: string, text: string) => void;
+  /** Generic per-document patch — the way read/edit waves update a doc. */
+  updateDoc: (id: string, patch: Partial<Omit<Doc, "id">>) => void;
   activate: (id: string) => void;
   closeDoc: (id: string) => void;
   cycleDoc: (step: number) => void;
@@ -127,6 +142,8 @@ export const useStore = create<AppState>()((set, get) => ({
       dirty: false,
       mode: "read",
       readOnly: false,
+      headings: [],
+      caret: null,
     };
     set((s) => ({
       docs: [...s.docs, doc],
@@ -134,6 +151,9 @@ export const useStore = create<AppState>()((set, get) => ({
       recent: [path, ...s.recent.filter((p) => p !== path)].slice(0, 20),
     }));
   },
+
+  updateDoc: (id, patch) =>
+    set((s) => ({ docs: s.docs.map((d) => (d.id === id ? { ...d, ...patch } : d)) })),
 
   activate: (id) => set({ activeId: id }),
 

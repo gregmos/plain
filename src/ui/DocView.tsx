@@ -1,13 +1,8 @@
 import type { Doc } from "../app/store";
+import { ReadView } from "../read/ReadView";
+import { EditView } from "../editor/EditView";
 
-/**
- * Wave 1 shows the source as-is in both modes. Read gets the unified
- * pipeline in wave 2, edit gets CodeMirror in wave 3.
- */
+/** Read and edit are two views over the same buffer (spec §5.0). */
 export function DocView({ doc }: { doc: Doc }) {
-  return (
-    <div className="content">
-      <pre className={doc.mode === "read" ? "raw raw-read" : "raw raw-edit"}>{doc.text}</pre>
-    </div>
-  );
+  return doc.mode === "read" ? <ReadView doc={doc} /> : <EditView doc={doc} />;
 }
