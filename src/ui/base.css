@@ -1,0 +1,108 @@
+/* Reset and the few things that are true everywhere. No radii, no shadows. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: var(--fs-ui);
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+::selection {
+  background: var(--selection);
+}
+
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: default;
+  text-align: left;
+}
+
+a {
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--accent);
+}
+
+/* Text-only control: the only button style this app has. */
+.link {
+  color: var(--muted);
+}
+
+.link:hover {
+  color: var(--fg);
+}
+
+/* Accent dot for a modified document; separator glyph between text controls. */
+.dot {
+  color: var(--accent);
+  flex: none;
+}
+
+.sep {
+  color: var(--muted);
+}
+
+/* Section heading used in the rail and in list screens. */
+.section-title {
+  font-size: var(--fs-section);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Caret used by the editor and the quick-search field (later waves). */
+@keyframes plain-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.caret {
+  display: inline-block;
+  width: 1.5px;
+  height: 15px;
+  background: var(--accent);
+  animation: plain-blink var(--caret-blink) steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caret {
+    animation: none;
+  }
+}

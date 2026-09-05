@@ -1,0 +1,251 @@
+/* Window shell: rail | (mode bar / banner / content / status bar). */
+
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* mode bar */
+
+.modebar {
+  height: var(--modebar-h);
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  font-size: var(--fs-small);
+}
+
+.modebar-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  padding-left: 16px;
+}
+
+.rail-peek {
+  color: var(--muted);
+  flex: none;
+}
+
+.rail-peek:hover {
+  color: var(--fg);
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  color: var(--muted);
+  overflow: hidden;
+}
+
+.crumb {
+  color: var(--muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crumb-root {
+  color: var(--fg);
+  font-weight: 600;
+  flex: none;
+}
+
+.crumb-leaf {
+  color: var(--fg);
+}
+
+.crumb-sep {
+  color: var(--muted);
+  flex: none;
+}
+
+.modes {
+  display: flex;
+  gap: 2px;
+}
+
+.mode {
+  padding: 4px 10px;
+  color: var(--muted);
+  border-bottom: 1px solid transparent;
+}
+
+.mode:hover {
+  color: var(--fg);
+}
+
+.mode.is-active {
+  color: var(--fg);
+  border-bottom-color: var(--fg);
+}
+
+/* banner */
+
+.banner {
+  height: var(--banner-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px;
+  background: var(--surface);
+  font-size: var(--fs-small);
+  color: var(--fg);
+}
+
+.banner-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* content */
+
+.content {
+  flex: 1;
+  overflow: auto;
+  padding: 36px 0 0;
+}
+
+.raw {
+  margin: 0 auto;
+  font-family: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+}
+
+.raw-read {
+  max-width: var(--content-width);
+  font-size: var(--content-font-size);
+  line-height: 1.75;
+}
+
+.raw-edit {
+  max-width: var(--edit-width);
+  font-size: var(--fs-edit);
+  line-height: 1.75;
+}
+
+/* empty state */
+
+.empty {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 34px;
+  padding: 0 20px 60px;
+}
+
+.empty-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--content-font-size);
+}
+
+.empty-recent {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+}
+
+.empty-recent .section-title {
+  padding-bottom: 8px;
+}
+
+.recent-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 7px 0;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.recent-item:hover {
+  color: var(--fg);
+}
+
+.recent-dir {
+  font-size: var(--fs-small);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+}
+
+/* status bar */
+
+.statusbar {
+  height: var(--statusbar-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 20px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-status);
+  color: var(--muted);
+}
+
+.status-left {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-right {
+  display: flex;
+  gap: 16px;
+  flex: none;
+  white-space: nowrap;
+}
+
+/* Near the 480px minimum the right group gives up the word count first;
+   document state and the theme toggle always stay. */
+@media (max-width: 760px) {
+  .statusbar {
+    padding: 0 12px;
+  }
+
+  .status-right {
+    gap: 10px;
+  }
+
+  .status-words {
+    display: none;
+  }
+}
+
+.theme-toggle {
+  font-size: inherit;
+}

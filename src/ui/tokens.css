@@ -1,0 +1,90 @@
+/* Design tokens taken from the mockups (research/00), with the --muted
+   contrast fix from the spec §3. Light is the default; the "system" theme
+   leaves data-theme off entirely, so CSS alone gets the first paint right. */
+
+:root {
+  --bg: #f7f6f3;
+  --fg: #1c1b19;
+  --muted: #6b6760; /* spec §3: readable at 10-12px */
+  --muted-soft: #8a877f; /* non-text: list markers, checkbox frames */
+  --faint: #c9c5bb; /* decoration only: line numbers, placeholders */
+  --border: #e6e3dc;
+  --surface: #eeebe4;
+  --surface-2: #e6e3dc;
+  --quote: #5c5a54;
+  --accent: #7c3aed;
+  --selection: rgba(124, 58, 237, 0.18);
+  --modal-bg: #fbfaf8;
+  --modal-border: #e6e3dc;
+
+  color-scheme: light;
+
+  /* geometry */
+  --rail-w: 232px;
+  --modebar-h: 44px;
+  --banner-h: 36px;
+  --statusbar-h: 30px;
+  --rail-pad-x: 20px;
+
+  /* Content metrics; settings.json overrides these on :root at startup (§10). */
+  --content-font-size: 13.5px;
+  --content-width: 560px;
+  --edit-width: 640px;
+
+  /* type */
+  --font: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --fs-ui: 13px;
+  --fs-rail: 12px;
+  --fs-section: 10px;
+  --fs-small: 11px;
+  --fs-status: 10.5px;
+  /* Edit keeps the mockup's half-pixel lead under the read column. */
+  --fs-edit: calc(var(--content-font-size) - 0.5px);
+
+  /* motion */
+  --caret-blink: 1.1s;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141413;
+    --fg: #e8e6e1;
+    --muted: #8a877f;
+    --muted-soft: #7a776f;
+    --faint: #3a3936;
+    --border: #262523;
+    --surface: #1f1e1c;
+    --surface-2: #262523;
+    --quote: #a9a69f;
+    --accent: #a78bfa;
+    --selection: rgba(167, 139, 250, 0.28);
+    --modal-bg: #1c1b19;
+    --modal-border: #2e2d2a;
+
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #141413;
+  --fg: #e8e6e1;
+  --muted: #8a877f;
+  --muted-soft: #7a776f;
+  --faint: #3a3936;
+  --border: #262523;
+  --surface: #1f1e1c;
+  --surface-2: #262523;
+  --quote: #a9a69f;
+  --accent: #a78bfa;
+  --selection: rgba(167, 139, 250, 0.28);
+  --modal-bg: #1c1b19;
+  --modal-border: #2e2d2a;
+
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --caret-blink: 0s;
+  }
+}
