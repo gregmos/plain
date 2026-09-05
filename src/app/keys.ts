@@ -10,6 +10,9 @@ import {
   toggleAlwaysOnTop,
   toggleFullscreen,
 } from "./commands";
+import { toggleLineNumbers } from "../editor/setup";
+import { emitRerender } from "../read/events";
+import { goBack, goForward } from "../read/history";
 import { useStore } from "./store";
 
 /**
@@ -32,8 +35,12 @@ function bindings(): Record<string, () => void> {
     "Ctrl+O": () => void openFile(),
     "Ctrl+Alt+O": () => void openLibrary(),
     "Ctrl+W": () => closeActive(),
+    "Ctrl+Shift+9": () => toggleLineNumbers(),
     "Ctrl+Tab": () => store().cycleDoc(1),
     "Ctrl+Shift+Tab": () => store().cycleDoc(-1),
+    "Alt+Left": () => goBack(),
+    "Alt+Right": () => goForward(),
+    F5: () => emitRerender(),
   };
 }
 

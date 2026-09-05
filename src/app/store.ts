@@ -6,6 +6,9 @@ import { DEFAULTS, type Settings, type Theme } from "./settings";
 import { applyAppearance, applyTheme, resolveTheme } from "./theme";
 import { basename, pathKey } from "./paths";
 
+/** Over this, highlighting is off and read renders on demand (spec §8). */
+export const LARGE_TEXT = 2 * 1024 * 1024;
+
 export type Mode = "read" | "edit";
 export type RailView = "files" | "outline";
 
@@ -31,6 +34,8 @@ export interface Doc {
   headings: Heading[];
   /** 1-based caret position from the editor (wave 3); null in read. */
   caret: { line: number; col: number } | null;
+  /** Bigger than LARGE_TEXT: no highlighting, `large file` in the status bar. */
+  large: boolean;
 }
 
 export interface BannerAction {
@@ -144,6 +149,7 @@ export const useStore = create<AppState>()((set, get) => ({
       readOnly: false,
       headings: [],
       caret: null,
+      large: text.length > LARGE_TEXT,
     };
     set((s) => ({
       docs: [...s.docs, doc],

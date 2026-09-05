@@ -98,3 +98,14 @@ export async function toggleAlwaysOnTop(): Promise<void> {
   store.setAlwaysOnTop(next);
   store.setMessage(next ? "always on top" : "always on top off");
 }
+
+/**
+ * Same as `openPaths`, but the document that was active stays active — this
+ * is what `Ctrl+click` on a link in read does (spec §5.1).
+ */
+export async function openPathsInBackground(paths: string[]): Promise<boolean> {
+  const before = useStore.getState().activeId;
+  const opened = await openPaths(paths);
+  if (before) useStore.getState().activate(before);
+  return opened;
+}

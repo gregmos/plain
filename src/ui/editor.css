@@ -1,0 +1,129 @@
+/* Edit view: the CodeMirror host, the find strip and the goto-line dialog.
+   Everything inside .cm-editor itself is styled by editor/theme.ts. */
+
+.edit {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Without the gutter the text keeps the same place, as in mockup 1c. */
+.edit-no-gutter .cm-content {
+  max-width: var(--edit-width);
+  padding-left: 64px;
+}
+
+/* find / replace */
+
+.find {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 20px;
+  font-size: var(--fs-small);
+  color: var(--muted);
+}
+
+.find-glyph {
+  color: var(--muted);
+}
+
+.find-field {
+  width: 180px;
+  flex: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--fg);
+  font: inherit;
+  caret-color: var(--accent);
+}
+
+.find-field::placeholder {
+  color: var(--faint);
+}
+
+.find-toggle {
+  color: var(--muted);
+  padding: 0 2px;
+}
+
+.find-toggle:hover {
+  color: var(--fg);
+}
+
+.find-toggle.is-on {
+  color: var(--fg);
+}
+
+.find-count {
+  min-width: 54px;
+  color: var(--muted);
+}
+
+.find-replace {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.find-replace[hidden] {
+  display: none;
+}
+
+.find-hint {
+  margin-left: auto;
+  color: var(--faint);
+}
+
+/* goto line (Ctrl+G) — CodeMirror's own dialog, in our clothes */
+
+.cm-panels .cm-dialog {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  font-size: var(--fs-small);
+  color: var(--muted);
+}
+
+.cm-panels .cm-dialog form {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cm-panels .cm-dialog label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: inherit;
+}
+
+.cm-panels .cm-dialog input {
+  width: 80px;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--fg);
+  font: inherit;
+  caret-color: var(--accent);
+}
+
+.cm-panels .cm-dialog button {
+  color: var(--muted);
+  font: inherit;
+  background: none;
+  border: 0;
+}
+
+.cm-panels .cm-dialog button:hover {
+  color: var(--fg);
+}
+
+.cm-panels .cm-dialog .cm-dialog-close {
+  position: static;
+  margin-left: 12px;
+}

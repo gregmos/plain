@@ -13,8 +13,13 @@
     "dialog:allow-save",
     "dialog:allow-message",
     "opener:allow-open-url",
-    "opener:allow-open-path",
+    "opener:allow-default-urls",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "**" }]
+    },
     "fs:allow-exists",
+    "fs:allow-stat",
     "fs:allow-read-text-file",
     "fs:allow-write-text-file",
     "fs:allow-read-dir",

@@ -61,6 +61,27 @@ fn take_pending_paths(pending: State<'_, PendingPaths>) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Hands a folder to the asset protocol so its images can be shown, and to
+/// the file-system scope so links inside it can be opened (spec §9).
+/// Called by the frontend for the folder of the open file, for the library,
+/// and for whatever an `outside folder · allow` placeholder points at.
+#[tauri::command]
+fn allow_asset_dir(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let dir = Path::new(&path);
+    if !dir.is_dir() {
+        return Err(format!("not a folder: {path}"));
+    }
+    app.asset_protocol_scope()
+        .allow_directory(dir, true)
+        .map_err(|error| error.to_string())?;
+    if let Some(scope) = app.try_fs_scope() {
+        scope
+            .allow_directory(dir, true)
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
 /// The webview never leaves our own origin (spec §14); links open in the
 /// system browser instead.
 fn navigation_guard<R: Runtime>() -> TauriPlugin<R> {
@@ -105,7 +126,7 @@ pub fn run() {
             queue_paths(app.handle(), path_args(std::env::args(), &cwd));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![take_pending_paths])
+        .invoke_handler(tauri::generate_handler![take_pending_paths, allow_asset_dir])
         .run(tauri::generate_context!())
         .expect("error while running Plain");
 }

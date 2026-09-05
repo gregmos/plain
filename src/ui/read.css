@@ -1,0 +1,528 @@
+/* The reading column (spec §3, §5.1; mockups 1a/1b). Everything here lives
+   under .read-html except the frame and the meta line. */
+
+:root {
+  /* OQ-1: H2 is muted in the mockup. Flip this to var(--fg) after living
+     with real text for a while — nothing else needs to change. */
+  --h2-color: var(--muted);
+  --code-font-size: 12px;
+}
+
+.content.read {
+  scroll-behavior: auto;
+}
+
+.read-column {
+  /* The text column itself is --content-width; the padding is the gutter the
+     heading anchors live in. */
+  max-width: calc(var(--content-width) + 40px);
+  margin: 0 auto;
+  padding: 0 20px 120px;
+  font-size: var(--content-font-size);
+  line-height: 1.75;
+}
+
+.read-meta {
+  font-size: var(--fs-small);
+  color: var(--muted);
+  margin-bottom: 22px;
+}
+
+.read-large {
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.read-large p {
+  margin: 0;
+}
+
+/* headings ---------------------------------------------------------------- */
+
+.read-html h1,
+.read-html h2,
+.read-html h3,
+.read-html h4,
+.read-html h5,
+.read-html h6 {
+  position: relative;
+  scroll-margin-top: 12px;
+}
+
+.read-html h1 {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin: 0 0 26px;
+}
+
+.read-html h2 {
+  font-size: var(--content-font-size);
+  font-weight: 600;
+  color: var(--h2-color);
+  margin: 30px 0 14px;
+}
+
+.read-html h3,
+.read-html h4,
+.read-html h5,
+.read-html h6 {
+  font-size: var(--content-font-size);
+  font-weight: 600;
+  margin: 26px 0 12px;
+}
+
+.read-html h4,
+.read-html h5,
+.read-html h6 {
+  color: var(--muted);
+}
+
+/* The anchor sits in the left gutter and never moves the text. */
+.h-anchor {
+  position: absolute;
+  left: -20px;
+  width: 20px;
+  padding-right: 7px;
+  text-align: right;
+  color: transparent;
+  font-weight: 400;
+  cursor: pointer;
+  user-select: none;
+}
+
+.read-html h1:hover .h-anchor,
+.read-html h2:hover .h-anchor,
+.read-html h3:hover .h-anchor,
+.read-html h4:hover .h-anchor,
+.read-html h5:hover .h-anchor,
+.read-html h6:hover .h-anchor {
+  color: var(--muted-soft);
+}
+
+.h-anchor:hover {
+  color: var(--fg) !important;
+}
+
+/* text -------------------------------------------------------------------- */
+
+.read-html p {
+  margin: 0 0 20px;
+  overflow-wrap: break-word;
+}
+
+.read-html > *:last-child {
+  margin-bottom: 0;
+}
+
+.read-html a {
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--accent);
+  cursor: pointer;
+}
+
+.read-html a.is-missing {
+  color: var(--muted);
+  text-decoration-color: var(--faint);
+  cursor: default;
+}
+
+.read-html strong {
+  font-weight: 600;
+}
+
+.read-html mark {
+  background: var(--selection);
+  color: inherit;
+}
+
+.read-html del {
+  color: var(--muted);
+}
+
+.read-html kbd {
+  border: 1px solid var(--border);
+  padding: 0 4px;
+  font-size: 0.9em;
+}
+
+.read-html hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 30px 0;
+}
+
+.read-html blockquote {
+  margin: 0 0 20px;
+  padding: 0 0 0 18px;
+  border-left: 1px solid var(--fg);
+  color: var(--quote);
+  font-style: italic;
+}
+
+.read-html blockquote > *:last-child {
+  margin-bottom: 0;
+}
+
+/* lists ------------------------------------------------------------------- */
+
+.read-html ul,
+.read-html ol {
+  margin: 0 0 20px;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.read-html li > ul,
+.read-html li > ol {
+  margin: 6px 0 0;
+}
+
+.read-html li::marker {
+  color: var(--muted-soft);
+}
+
+.read-html ul.contains-task-list,
+.read-html ol.contains-task-list {
+  padding-left: 0;
+  list-style: none;
+}
+
+.read-html li.task-list-item {
+  padding-left: 22px;
+  position: relative;
+}
+
+.read-html li.task-list-item input[type="checkbox"] {
+  position: absolute;
+  left: 0;
+  top: 0.45em;
+  margin: 0;
+  width: 10px;
+  height: 10px;
+  appearance: none;
+  border: 1px solid var(--muted-soft);
+  background: none;
+}
+
+.read-html li.task-list-item input[type="checkbox"]:checked {
+  background: var(--muted-soft);
+}
+
+/* tables ------------------------------------------------------------------ */
+
+.read-html table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0 0 20px;
+  max-width: 100%;
+  font-size: 12.5px;
+}
+
+.read-html th,
+.read-html td {
+  border-bottom: 1px solid var(--border);
+  padding: 6px 16px 6px 0;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.read-html th {
+  font-weight: 600;
+  border-bottom-color: var(--muted-soft);
+}
+
+/* code -------------------------------------------------------------------- */
+
+.read-html code {
+  font-family: inherit;
+  font-size: var(--code-font-size);
+  background: var(--surface);
+  padding: 1px 4px;
+}
+
+.read-html pre {
+  margin: 0;
+  padding: 14px 16px;
+  background: var(--surface);
+  font-size: var(--code-font-size);
+  line-height: 1.6;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.read-html pre code {
+  padding: 0;
+  background: none;
+  font-size: inherit;
+}
+
+.codeblock {
+  position: relative;
+  margin: 0 0 20px;
+}
+
+.code-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 18px;
+  font-size: var(--fs-section);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.code-copy {
+  font-size: var(--fs-section);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.codeblock:hover .code-copy,
+.code-copy:focus-visible {
+  opacity: 1;
+}
+
+.code-copy:hover {
+  color: var(--fg);
+}
+
+/* Shiki writes both themes into every token; the theme picks one of them. */
+.shiki-code span {
+  color: var(--shiki-light);
+}
+
+:root[data-theme="dark"] .shiki-code span {
+  color: var(--shiki-dark);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .shiki-code span {
+    color: var(--shiki-dark);
+  }
+}
+
+/* mermaid ----------------------------------------------------------------- */
+
+.mermaid-svg {
+  padding: 8px 0;
+  overflow-x: auto;
+}
+
+.mermaid-svg svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-error {
+  font-size: var(--fs-small);
+  color: var(--muted);
+  padding-top: 6px;
+}
+
+/* callouts ---------------------------------------------------------------- */
+
+.callout {
+  margin: 0 0 20px;
+  padding: 0 0 0 18px;
+  border-left: 1px solid var(--muted-soft);
+}
+
+.callout-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.callout-type {
+  font-size: var(--fs-section);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  flex: none;
+}
+
+.callout-heading {
+  font-weight: 600;
+}
+
+.callout > *:last-child {
+  margin-bottom: 0;
+}
+
+/* images ------------------------------------------------------------------ */
+
+.read-html img {
+  max-width: 100%;
+  height: auto;
+  cursor: pointer;
+  display: block;
+  margin: 0 0 4px;
+}
+
+/* Beats the rule above, which would otherwise show the broken-image alt of a
+   picture that is waiting behind a placeholder. */
+.read-html img[hidden] {
+  display: none;
+}
+
+.img-holder {
+  display: inline-block;
+  padding: 5px 10px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+.img-holder:hover {
+  color: var(--fg);
+}
+
+/* details, footnotes ------------------------------------------------------ */
+
+.read-html details {
+  margin: 0 0 20px;
+}
+
+.read-html summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.read-html summary:hover {
+  color: var(--fg);
+}
+
+.read-html details[open] summary {
+  margin-bottom: 12px;
+}
+
+.read-html .footnotes {
+  margin-top: 34px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.read-html .footnotes-label {
+  font-size: var(--fs-section);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.read-html .footnotes p {
+  margin: 0 0 8px;
+}
+
+.read-html sup a,
+.read-html .footnotes a {
+  color: var(--muted);
+}
+
+/* katex ------------------------------------------------------------------- */
+
+.read-html .katex-display {
+  display: block;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 0 0 20px;
+  text-align: center;
+}
+
+/* find bar ---------------------------------------------------------------- */
+
+.findbar {
+  height: var(--banner-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 20px;
+  background: var(--surface);
+  font-size: var(--fs-small);
+}
+
+.find-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-family: var(--font);
+  caret-color: var(--accent);
+  outline: none;
+}
+
+.find-input::placeholder {
+  color: var(--muted);
+}
+
+.find-count {
+  color: var(--muted);
+  flex: none;
+  white-space: nowrap;
+}
+
+.find-toggle {
+  color: var(--muted);
+  flex: none;
+  cursor: pointer;
+}
+
+.find-toggle:hover {
+  color: var(--fg);
+}
+
+.find-toggle.is-active {
+  color: var(--fg);
+  border-bottom: 1px solid var(--fg);
+}
+
+::highlight(plain-find) {
+  background-color: var(--selection);
+}
+
+::highlight(plain-find-active) {
+  background-color: var(--accent);
+  color: var(--bg);
+}
+
+/* outline ----------------------------------------------------------------- */
+
+.outline-item {
+  padding: 5px var(--rail-pad-x);
+  color: var(--muted);
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outline-item:hover {
+  color: var(--fg);
+}
+
+.outline-item.is-active {
+  color: var(--fg);
+  background: var(--surface);
+}

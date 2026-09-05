@@ -1,11 +1,13 @@
 import { openLibrary } from "../app/commands";
 import { basename } from "../app/paths";
-import { useStore } from "../app/store";
+import { activeDoc, useStore } from "../app/store";
+import { Outline } from "./Outline";
 import "./rail.css";
 
 export function Rail() {
   const docs = useStore((s) => s.docs);
   const activeId = useStore((s) => s.activeId);
+  const doc = useStore(activeDoc);
   const railView = useStore((s) => s.railView);
   const libraryPath = useStore((s) => s.libraryPath);
   const activate = useStore((s) => s.activate);
@@ -51,7 +53,7 @@ export function Rail() {
             </button>
           )
         ) : (
-          <div className="rail-empty">no headings</div>
+          <Outline doc={doc} />
         )}
       </section>
 
