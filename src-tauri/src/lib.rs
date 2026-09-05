@@ -347,6 +347,7 @@ mod tests {
         );
     }
 
+    #[cfg(windows)] // C:\-shaped paths
     #[test]
     fn resolves_relatives_against_the_given_cwd() {
         let dir = tempfile::tempdir().unwrap();

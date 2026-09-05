@@ -133,6 +133,7 @@ mod tests {
     use super::{ignored, under};
     use std::path::Path;
 
+    #[cfg(windows)] // C:\-shaped paths
     #[test]
     fn a_neighbour_folder_is_not_inside_the_library() {
         let root = Path::new(r"C:\notes");
@@ -144,6 +145,7 @@ mod tests {
         assert!(!under(Path::new(r"D:\notes"), root));
     }
 
+    #[cfg(windows)] // C:\-shaped paths
     #[test]
     fn skips_the_folders_nobody_wants_events_from() {
         assert!(ignored(Path::new(r"C:\notes\.git\index")));
