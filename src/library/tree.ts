@@ -154,3 +154,12 @@ export function installTree(): () => void {
     window.removeEventListener(TREE_CHANGED, later);
   };
 }
+
+/**
+ * Every file in the open library, as absolute paths. A plain read of what the
+ * tree already holds — no reading of the disk, no side effects. Read uses it
+ * to resolve `[[name]]` anywhere in the library (spec §11, Obsidian's rule).
+ */
+export function libraryFiles(): string[] {
+  return files(useStore.getState().tree).map((node) => node.path);
+}

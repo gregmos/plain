@@ -6,6 +6,7 @@
 
 import { exists } from "@tauri-apps/plugin-fs";
 import { inTauri } from "../app/env";
+import { libraryFiles } from "../library/tree";
 import { allowAssetDir, assetUrl, isAllowedPath } from "./assets";
 import { highlight } from "./highlight";
 import { decode, folderOf, isAbsolutePath, joinPath, resolveWikiLink } from "./links";
@@ -181,10 +182,11 @@ async function wikilinks(
   dir: string | null,
   alive: () => boolean,
 ): Promise<void> {
+  const index = libraryFiles();
   for (const link of root.querySelectorAll<HTMLElement>("a.wikilink")) {
     if (link.dataset["checked"]) continue;
     link.dataset["checked"] = "1";
-    const target = resolveWikiLink(link.dataset["wiki"] ?? "", null, dir);
+    const target = resolveWikiLink(link.dataset["wiki"] ?? "", null, dir, index);
     if (target.kind !== "file") {
       link.classList.add("is-missing");
       continue;

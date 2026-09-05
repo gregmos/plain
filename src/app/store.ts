@@ -188,6 +188,8 @@ interface AppState {
 
   /** The settings screen takes over the content area too (spec §10). */
   settingsOpen: boolean;
+  /** `F1` / `help -> shortcuts`: the key list, in the same place. */
+  shortcutsOpen: boolean;
   /** WebView2 zoom factor the view menu drives; 1 is 100% (spec §4). */
   zoom: number;
 
@@ -195,6 +197,7 @@ interface AppState {
   /** A change made on the settings screen: applied now, written to disk. */
   changeSettings: (settings: Settings) => void;
   setSettingsOpen: (open: boolean) => void;
+  setShortcutsOpen: (open: boolean) => void;
   setZoom: (zoom: number) => void;
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
@@ -270,6 +273,7 @@ export const useStore = create<AppState>()((set, get) => ({
   quickSearch: null,
   folderSearch: false,
   settingsOpen: false,
+  shortcutsOpen: false,
   zoom: 1,
 
   applySettings: (settings) => {
@@ -291,6 +295,7 @@ export const useStore = create<AppState>()((set, get) => ({
   },
 
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+  setShortcutsOpen: (shortcutsOpen) => set({ shortcutsOpen }),
   setZoom: (zoom) => set({ zoom }),
 
   // The theme is a setting like any other, so picking one writes the file

@@ -322,9 +322,8 @@ fn wide(path: &Path) -> Vec<u16> {
 }
 
 /// Writes the bytes into a temp file next to the target and flushes them to
-/// the platter (`sync_all` is FlushFileBuffers). Done *before* the last hash
-/// check so that the gap between checking the file and replacing it is as
-/// short as it can be (spec §8).
+/// the platter (`sync_all` is FlushFileBuffers). Creates the folder, so it is
+/// only ever called once the write is known to be allowed.
 fn stage(dir: &Path, bytes: &[u8]) -> FsResult<PathBuf> {
     fs::create_dir_all(dir)?;
     let mut temp = tempfile::NamedTempFile::new_in(dir)?;
@@ -426,26 +425,28 @@ pub fn write_checked(request: &WriteRequest) -> FsResult<String> {
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .ok_or_else(|| FsError::io("no parent folder"))?;
+    // The file is gone and nobody asked for it back: nothing may be created,
+    // not even the folder it used to live in. Decided before staging, because
+    // staging is what would put that folder back (spec §8).
+    let existed = path.exists();
+    if !existed && request.base_hash.is_some() && !request.allow_missing {
+        return Err(FsError::missing(&path));
+    }
+
+    // Everything past here is a write the caller is allowed to make, so the
+    // temp file is prepared now: it makes the gap between checking the file's
+    // hash and replacing it as short as it can be (spec §8).
     let temp = stage(dir, &bytes)?;
 
-    let existed = path.exists();
-    let verdict = if existed {
-        match request.base_hash.as_deref() {
-            Some(base) => fs::read(&path)
-                .map_err(FsError::from)
-                .and_then(|current| {
-                    if blake3::hash(&current).to_hex().to_string() == base {
-                        Ok(())
-                    } else {
-                        Err(FsError::conflict())
-                    }
-                }),
-            None => Ok(()),
-        }
-    } else if request.base_hash.is_some() && !request.allow_missing {
-        Err(FsError::missing(&path))
-    } else {
-        Ok(())
+    let verdict = match (existed, request.base_hash.as_deref()) {
+        (true, Some(base)) => fs::read(&path).map_err(FsError::from).and_then(|current| {
+            if blake3::hash(&current).to_hex().to_string() == base {
+                Ok(())
+            } else {
+                Err(FsError::conflict())
+            }
+        }),
+        _ => Ok(()),
     };
 
     if let Err(error) = verdict {
@@ -558,6 +559,28 @@ mod tests {
         ask.allow_missing = true;
         write_checked(&ask).unwrap();
         assert_eq!(fs::read(&file).unwrap(), b"back\n");
+    }
+
+    /// The folder went with the file when it was deleted from outside. A save
+    /// that is refused must leave the disk exactly as it found it — no file,
+    /// and no empty folder standing in the tree either (spec §8).
+    #[test]
+    fn a_refused_save_creates_nothing_at_all() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("notes");
+        let file = folder.join("gone.md");
+
+        let mut ask = request(&file, "mine\n");
+        ask.base_hash = Some(blake3::hash(b"whatever").to_hex().to_string());
+        assert_eq!(write_checked(&ask).unwrap_err().kind, "missing");
+        assert!(!folder.exists(), "a refused save put the folder back");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
+
+        // Saying yes to it is what makes the folder again: `recreated` (§8).
+        ask.allow_missing = true;
+        write_checked(&ask).unwrap();
+        assert!(folder.is_dir());
+        assert_eq!(fs::read(&file).unwrap(), b"mine\n");
     }
 
     #[test]

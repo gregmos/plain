@@ -22,6 +22,7 @@ const SWALLOW = [
   "Ctrl+O",
   "Ctrl+H",
   "Ctrl+K",
+  "F1",
 ];
 
 /** chord -> action, straight out of the registry. */

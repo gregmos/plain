@@ -73,14 +73,52 @@ export function resolveHref(href: string, dir: string | null): LinkTarget {
   return fromPath(value, dir);
 }
 
+/** How many leading path segments two paths share. */
+function sharedDepth(a: string, b: string): number {
+  const left = a.toLowerCase().split("/");
+  const right = b.toLowerCase().split("/");
+  let depth = 0;
+  while (depth < left.length && depth < right.length && left[depth] === right[depth]) depth += 1;
+  return depth;
+}
+
+/**
+ * A wikilink that names a note rather than a path: `[[тз]]` finds `тз.md`
+ * wherever it lives in the library, the way Obsidian resolves one. A target
+ * with folders in it (`[[projects/plan]]`) matches on that whole tail.
+ * Ties go to the file closest to the document doing the linking.
+ */
+function byName(index: readonly string[], wanted: string, dir: string | null): string | null {
+  const needle = normalizePath(wanted).toLowerCase();
+  const tail = `/${needle}`;
+  let best: string | null = null;
+  let bestDepth = -1;
+
+  for (const candidate of index) {
+    const path = normalizePath(candidate);
+    const low = path.toLowerCase();
+    if (low !== needle && !low.endsWith(tail)) continue;
+    const depth = dir ? sharedDepth(path, dir) : 0;
+    if (depth > bestDepth) {
+      best = path;
+      bestDepth = depth;
+    }
+  }
+  return best;
+}
+
 /**
  * `[[target#Heading]]` — the target is a file name without an extension most
- * of the time, and the heading turns into the same slug rehype-slug produced.
+ * of the time, and the heading turns into the same slug the HTML carries.
+ *
+ * `index` is the library's file list, when a library is open: a target that
+ * is not a real file next to the document is looked up by name across it.
  */
 export function resolveWikiLink(
   target: string,
   hash: string | null,
   dir: string | null,
+  index?: readonly string[],
 ): LinkTarget {
   const raw = decode(target.trim());
   if (raw === "") return { kind: "none" };
@@ -90,8 +128,21 @@ export function resolveWikiLink(
   if (isAbsolutePath(withExtension)) {
     return { kind: "file", path: normalizePath(withExtension), hash: anchor };
   }
-  if (!dir) return { kind: "none" };
-  return { kind: "file", path: joinPath(dir, withExtension), hash: anchor };
+
+  const relative = dir ? joinPath(dir, withExtension) : null;
+  if (index && index.length > 0) {
+    // The index knows what exists, so it also says when the neighbour is not
+    // there and the name has to be looked for somewhere else.
+    const here = relative?.toLowerCase();
+    const known = here !== undefined && index.some((p) => normalizePath(p).toLowerCase() === here);
+    if (!known) {
+      const found = byName(index, withExtension, dir);
+      if (found) return { kind: "file", path: found, hash: anchor };
+    }
+  }
+
+  if (!relative) return { kind: "none" };
+  return { kind: "file", path: relative, hash: anchor };
 }
 
 /** Folder part of a path, with forward slashes. */

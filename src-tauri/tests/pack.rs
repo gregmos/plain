@@ -412,3 +412,42 @@ fn every_library_note_survives_a_no_op_save() {
     }
     assert_eq!(checked, manifest["libraryNoteCount"].as_u64().unwrap() as usize);
 }
+
+/// A folder deleted from under an open file. §8 lets `Ctrl+S` recreate the
+/// *file* when the buffer has edits, and refuses when it does not.
+///
+/// A refusal has to be a no-op on the disk: the folder must not reappear
+/// either. Whether the write is allowed is settled before anything is staged,
+/// because staging is what creates the folder.
+#[test]
+fn a_refused_save_leaves_the_deleted_folder_deleted() {
+    let dir = tempfile::tempdir().unwrap();
+    let folder = dir.path().join("notes");
+    std::fs::create_dir(&folder).unwrap();
+    let file = folder.join("a.md");
+    std::fs::write(&file, "one\n").unwrap();
+    let info = serde_json::to_value(read_info(&file, None).unwrap()).unwrap();
+
+    let write = |allow_missing: bool| WriteRequest {
+        path: file.to_string_lossy().into_owned(),
+        text: "one\n".into(),
+        encoding: "utf-8".into(),
+        bom: false,
+        eol: "lf".into(),
+        base_hash: Some(str_of(&info, "hash")),
+        allow_missing,
+    };
+
+    std::fs::remove_dir_all(&folder).unwrap();
+    let refused = write_checked(&write(false)).unwrap_err();
+    assert!(format!("{refused:?}").contains("missing"), "{refused:?}");
+    assert!(!file.exists(), "a refused save must not write the file");
+    assert!(!folder.exists(), "a refused save must not put the folder back");
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0, "nor anything else");
+
+    // With `allow_missing`, which is what a buffer with edits asks for, the
+    // file comes back and the folder with it — the `recreated` case of §8.
+    write_checked(&write(true)).unwrap();
+    assert!(folder.is_dir());
+    assert_eq!(std::fs::read(&file).unwrap(), b"one\n");
+}

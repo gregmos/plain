@@ -8,7 +8,7 @@
 // KaTeX, no HTML.
 
 import GithubSlugger from "github-slugger";
-import { unified, type Plugin } from "unified";
+import { unified } from "unified";
 import { visit } from "unist-util-visit";
 import type { Root } from "mdast";
 import type { Heading } from "../app/store";
@@ -33,9 +33,12 @@ export function nodeText(node: unknown): string {
   return typeof it.value === "string" ? it.value : "";
 }
 
-/** Walks headings in document order; optionally stamps the id onto the node. */
-function collect(tree: Root, stampIds: boolean): Heading[] {
-  const slugger = new GithubSlugger();
+/**
+ * Walks headings in document order. The slugger comes from outside, because
+ * a document has exactly one: headings written as raw HTML are slugged later,
+ * against the same instance, or two headings end up sharing an id.
+ */
+function collect(tree: Root, slugger: GithubSlugger, stampIds: boolean): Heading[] {
   const out: Heading[] = [];
 
   visit(tree, "heading", (node) => {
@@ -59,10 +62,12 @@ function collect(tree: Root, stampIds: boolean): Heading[] {
 /**
  * The read pipeline's half: ids go on the nodes here rather than in
  * rehype-slug, so the HTML carries exactly what `headingsOf` reports.
+ * Stamping is idempotent — the same text always produces the same ids — so
+ * it is safe on the tree `parseDocument` hands round.
  */
-export const remarkHeadings: Plugin<[Heading[]], Root> = (out) => (tree) => {
-  out.push(...collect(tree, true));
-};
+export function stampHeadings(tree: Root, slugger: GithubSlugger): Heading[] {
+  return collect(tree, slugger, true);
+}
 
 // Built once, from the same plugin list the full pipeline uses.
 const processor = unified().use(markdownPreset).freeze();
@@ -85,5 +90,5 @@ export function parseDocument(text: string): Root {
 
 /** Same headings, slugs and lines as `render()`, without building any HTML. */
 export function headingsOf(text: string): Heading[] {
-  return collect(parseDocument(text), false);
+  return collect(parseDocument(text), new GithubSlugger(), false);
 }

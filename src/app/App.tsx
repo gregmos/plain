@@ -11,6 +11,7 @@ import { QuickSearch } from "../ui/QuickSearch";
 import { Rail } from "../ui/Rail";
 import { RecoveryScreen } from "../ui/Recovery";
 import { SettingsScreen } from "../ui/Settings";
+import { ShortcutsScreen } from "../ui/Shortcuts";
 import { StatusBar } from "../ui/StatusBar";
 import "../ui/app.css";
 import { installCloseGuard } from "./close";
@@ -29,6 +30,7 @@ export function App() {
   const banner = useStore((s) => s.banner);
   const recovery = useStore((s) => s.recovery);
   const settingsOpen = useStore((s) => s.settingsOpen);
+  const shortcutsOpen = useStore((s) => s.shortcutsOpen);
   const folderSearch = useStore((s) => s.folderSearch);
   const searching = useStore((s) => s.quickSearch !== null);
   const doc = useStore(activeDoc);
@@ -65,6 +67,8 @@ export function App() {
             <RecoveryScreen entries={recovery} />
           ) : settingsOpen ? (
             <SettingsScreen />
+          ) : shortcutsOpen ? (
+            <ShortcutsScreen />
           ) : folderSearch ? (
             <FolderSearch />
           ) : doc ? (

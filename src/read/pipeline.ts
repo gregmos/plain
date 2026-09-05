@@ -11,8 +11,8 @@
 import katex from "katex";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
-import rehypeSlug from "rehype-slug";
 import rehypeStringify from "rehype-stringify";
+import GithubSlugger from "github-slugger";
 import remarkRehype from "remark-rehype";
 import { unified, type Plugin } from "unified";
 import { visit, SKIP } from "unist-util-visit";
@@ -21,8 +21,7 @@ import type { Element, ElementContent, Root as HastRoot, Properties } from "hast
 import type { Root as MdastRoot } from "mdast";
 import type { Options as SanitizeSchema } from "rehype-sanitize";
 import type { Heading } from "../app/store";
-import { remarkHeadings } from "./headings";
-import { markdownPreset } from "./markdown";
+import { parseDocument, stampHeadings } from "./headings";
 import { countWordsOf } from "./words";
 
 export interface RenderResult {
@@ -108,28 +107,18 @@ const schema: SanitizeSchema = {
 
 /* ---------------------------------------------------------------- plugins */
 
-/** Counts on the tree the pipeline already built — one parse, not two. */
-const remarkWords: Plugin<[{ value: number }], MdastRoot> = (box) => (tree) => {
-  box.value = countWordsOf(tree);
-};
-
-interface FrontmatterBox {
-  value: Record<string, unknown> | null;
-}
-
-const remarkFrontmatterValue: Plugin<[FrontmatterBox], MdastRoot> = (box) => (tree) => {
+function frontmatterOf(tree: MdastRoot): Record<string, unknown> | null {
   const node = tree.children.find((child) => child.type === "yaml");
-  if (!node || node.type !== "yaml") return;
+  if (!node || node.type !== "yaml") return null;
   try {
     const parsed: unknown = parseYaml(node.value);
-    box.value =
-      parsed && typeof parsed === "object" && !Array.isArray(parsed)
-        ? (parsed as Record<string, unknown>)
-        : null;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
   } catch {
-    box.value = null;
+    return null;
   }
-};
+}
 
 /** Parks every image source in `data-src`; the DOM pass decides what loads. */
 const rehypeDeferImages: Plugin<[], HastRoot> = () => (tree) => {
@@ -212,37 +201,72 @@ const rehypeCodeFrame: Plugin<[], HastRoot> = () => (tree) => {
 
 /* ----------------------------------------------------------------- render */
 
-export function render(text: string): RenderResult {
-  const headings: Heading[] = [];
-  const frontmatter: FrontmatterBox = { value: null };
-  const words = { value: 0 };
+/**
+ * Headings that markdown produced already carry an id (`stampHeadings`); this
+ * covers the ones written as raw HTML, using the *same* slugger, so a
+ * `<h2>Duplicate</h2>` after a `## Duplicate` gets `duplicate-1` rather than
+ * a second `duplicate`.
+ */
+const rehypeHeadingIds: Plugin<[{ slugger: GithubSlugger | null }], HastRoot> =
+  (box) => (tree) => {
+    visit(tree, "element", (node) => {
+      if (!/^h[1-6]$/.test(node.tagName)) return;
+      const properties = (node.properties ??= {});
+      if (typeof properties["id"] === "string" && properties["id"] !== "") return;
+      properties["id"] = box.slugger?.slug(textOf(node)) ?? "";
+    });
+  };
 
-  const file = unified()
-    .use(markdownPreset)
-    .use(remarkHeadings, headings)
-    .use(remarkWords, words)
-    .use(remarkFrontmatterValue, frontmatter)
-    .use(remarkRehype, {
-      allowDangerousHtml: true,
-      footnoteLabel: "footnotes",
-      footnoteLabelTagName: "div",
-      footnoteLabelProperties: { className: ["footnotes-label"] },
-    })
-    .use(rehypeRaw)
-    .use(rehypeDeferImages)
-    .use(rehypeSanitize, schema)
-    // Markdown headings already carry their id; this only covers headings
-    // written as raw HTML, which the outline does not know about anyway.
-    .use(rehypeSlug)
-    .use(rehypeKatex)
-    .use(rehypeCodeFrame)
-    .use(rehypeStringify, { allowDangerousHtml: true })
-    .processSync(text);
+// `render` is synchronous and single-threaded, so one box is enough to hand
+// the document's slugger to a processor that is built once.
+const slugs: { slugger: GithubSlugger | null } = { slugger: null };
+
+/** mdast -> HTML. Built once; `render` runs it over an already parsed tree. */
+const html = unified()
+  .use(remarkRehype, {
+    allowDangerousHtml: true,
+    footnoteLabel: "footnotes",
+    footnoteLabelTagName: "div",
+    footnoteLabelProperties: { className: ["footnotes-label"] },
+  })
+  .use(rehypeRaw)
+  .use(rehypeDeferImages)
+  .use(rehypeSanitize, schema)
+  .use(rehypeHeadingIds, slugs)
+  .use(rehypeKatex)
+  .use(rehypeCodeFrame)
+  .use(rehypeStringify, { allowDangerousHtml: true })
+  .freeze();
+
+// The most expensive thing this app does, and React will ask for it twice:
+// strict mode invokes a memo a second time, and a memo is a hint, not a
+// promise. The result is immutable to callers, so one entry can be shared.
+let lastText: string | null = null;
+let lastResult: RenderResult | null = null;
+
+export function render(text: string): RenderResult {
+  if (lastText === text && lastResult) return lastResult;
+  const result = renderInner(text);
+  lastText = text;
+  lastResult = result;
+  return result;
+}
+
+function renderInner(text: string): RenderResult {
+  // The Markdown half is `parseDocument`, shared with the outline and the
+  // word count: one micromark pass per document, which is by far the most
+  // expensive thing here. This side only turns that tree into HTML.
+  const tree = parseDocument(text);
+  const slugger = new GithubSlugger();
+  const headings = stampHeadings(tree, slugger);
+  slugs.slugger = slugger;
+  const hast = html.runSync(tree as never, text);
+  slugs.slugger = null;
 
   return {
-    html: String(file),
+    html: html.stringify(hast),
     headings,
-    words: words.value,
-    frontmatter: frontmatter.value,
+    words: countWordsOf(tree),
+    frontmatter: frontmatterOf(tree),
   };
 }

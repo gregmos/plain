@@ -1,9 +1,25 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { encodingLabel } from "../app/eol";
 import { reopenAs } from "../app/save";
 import { countWords } from "../read/words";
 import { activeDoc, useStore, type Doc } from "../app/store";
 import "./dialogs.css";
+
+interface IdleWindow {
+  requestIdleCallback?: (fn: () => void, options?: { timeout: number }) => number;
+  cancelIdleCallback?: (handle: number) => void;
+}
+
+/** Runs `fn` when the browser has a moment; returns its canceller. */
+function idle(fn: () => void): () => void {
+  const host = window as unknown as IdleWindow;
+  if (host.requestIdleCallback && host.cancelIdleCallback) {
+    const handle = host.requestIdleCallback(fn, { timeout: 2000 });
+    return () => host.cancelIdleCallback?.(handle);
+  }
+  const handle = window.setTimeout(fn, 50);
+  return () => window.clearTimeout(handle);
+}
 
 /** Spec §4, in the order the spec lists them. */
 function state(doc: Doc): string {
@@ -13,6 +29,9 @@ function state(doc: Doc): string {
   if (doc.large) return "large file";
   return "saved";
 }
+
+/** Above this, edit shows no word count; read still does (see the effect). */
+const COUNT_LIMIT = 256 * 1024;
 
 const REOPEN = ["utf-8", "cp1251", "utf-16"];
 /** What the status bar calls an encoding vs what Rust wants back. */
@@ -46,10 +65,35 @@ export function StatusBar() {
   // Wave 3 changes the text on every keystroke, so keep this off that path.
   const text = doc?.text ?? "";
   const large = doc?.large ?? false;
-  // A document past the render gate is past the counting gate too: the count
-  // parses the whole file, and edit hands us new text on every idle flush
-  // (review #14). `large file` already stands in for it on the right.
-  const words = useMemo(() => (large ? null : countWords(text)), [text, large]);
+  // Counting parses the whole document — around a second for a megabyte —
+  // so it never happens while rendering: the window paints first and the
+  // number arrives when the browser is idle. A document past the render gate
+  // is past the counting gate entirely (review #14); `large file` stands in
+  // for it on the right.
+  const [words, setWords] = useState<number | null>(null);
+
+  useEffect(() => {
+    // In read the parse is already paid for — the rendered document needed
+    // it — so the count is a walk of the tree, tens of milliseconds. In edit
+    // nothing else has parsed, and edit hands over new text on every idle
+    // flush, so above this size the number is dropped rather than parsing a
+    // megabyte between keystrokes (measured: 1 mb ≈ 1 s of parsing, of which
+    // the counting itself is ~30 ms).
+    const parsed = doc?.mode === "read";
+    if (large || text === "" || (!parsed && text.length > COUNT_LIMIT)) {
+      setWords(null);
+      return;
+    }
+    let live = true;
+    const count = () => {
+      if (live) setWords(countWords(text));
+    };
+    const cancel = idle(count);
+    return () => {
+      live = false;
+      cancel();
+    };
+  }, [text, large, doc?.mode]);
 
   return (
     <div className="statusbar">

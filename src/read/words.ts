@@ -66,9 +66,19 @@ export function countWordsOf(tree: Root): number {
   return segments(proseOf(tree).join("\n"));
 }
 
+// Segmenting a megabyte of prose is not cheap, and React asks for the same
+// number more than once per document (strict mode invokes a memo twice, and
+// a re-render may drop the memo entirely). One entry is enough.
+let lastText: string | null = null;
+let lastCount = 0;
+
 /** Words in a document's source. Shares one parse with the outline. */
 export function countWords(text: string): number {
-  return countWordsOf(parseDocument(text));
+  if (lastText === text) return lastCount;
+  const count = countWordsOf(parseDocument(text));
+  lastText = text;
+  lastCount = count;
+  return count;
 }
 
 /** Reading time in whole minutes, at the 200 wpm of spec §5.1. */

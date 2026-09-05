@@ -4,6 +4,7 @@ import { openPaths, openPathsInBackground } from "../app/commands";
 import { inTauri } from "../app/env";
 import { readingPosition, rememberReading } from "../app/session";
 import { useStore, type Doc } from "../app/store";
+import { libraryFiles } from "../library/tree";
 import { allowAssetDir } from "./assets";
 import { enhance, revealImage } from "./dom";
 import { emitScrollToLine, FIND, GOTO_HEADING, REPLACE, RERENDER } from "./events";
@@ -198,7 +199,7 @@ export function ReadView({ doc }: { doc: Doc }) {
     const content = body.current;
     if (content) content.innerHTML = html;
     setDomRevision((value) => value + 1);
-  }, [html, docId, dir]);
+  }, [html, docId, dir, nonce]);
 
   useEffect(() => {
     const content = body.current;
@@ -208,7 +209,7 @@ export function ReadView({ doc }: { doc: Doc }) {
     // Whatever searches this document searches it after the pass, not before.
     setDomRevision((value) => value + 1);
     return stop;
-  }, [html, docId, dir, theme, scopeReady, trackHeading]);
+  }, [html, docId, dir, nonce, theme, scopeReady, trackHeading]);
 
   const scrollToId = useCallback(
     (id: string) => {
@@ -264,7 +265,7 @@ export function ReadView({ doc }: { doc: Doc }) {
     return () => {
       const state = useStore.getState();
       const still = state.docs.find((item) => item.id === docId);
-      if (state.activeId === docId && still?.mode === "edit") {
+      if (state.activeId === docId && still && still.mode !== "read") {
         emitScrollToLine(topLine.current);
       }
     };
@@ -292,7 +293,7 @@ export function ReadView({ doc }: { doc: Doc }) {
     (link: HTMLAnchorElement): LinkTarget => {
       const wiki = link.dataset["wiki"];
       if (wiki !== undefined) {
-        return resolveWikiLink(wiki, link.dataset["wikiHash"] ?? null, dir);
+        return resolveWikiLink(wiki, link.dataset["wikiHash"] ?? null, dir, libraryFiles());
       }
       return resolveHref(link.getAttribute("href") ?? "", dir);
     },

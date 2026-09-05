@@ -87,6 +87,73 @@ describe("resolveWikiLink", () => {
     });
   });
 
+  // The owner's rule, and Obsidian's: a bare name finds the note wherever it
+  // is, once a library is open.
+  describe("by name across the library", () => {
+    const index = [
+      "G:/Заметки/тз.md",
+      "G:/Заметки/архив/тз.md",
+      "G:/Заметки/проекты/план.md",
+      "G:/Заметки/проекты/сосед.md",
+    ];
+
+    it("prefers the file next to the document", () => {
+      expect(resolveWikiLink("сосед", null, DIR, index)).toEqual({
+        kind: "file",
+        path: "G:/Заметки/проекты/сосед.md",
+        hash: null,
+      });
+    });
+
+    it("finds a note that lives somewhere else", () => {
+      expect(resolveWikiLink("тз", null, DIR, index)).toEqual({
+        kind: "file",
+        path: "G:/Заметки/тз.md",
+        hash: null,
+      });
+    });
+
+    it("breaks a tie towards the linking document", () => {
+      expect(resolveWikiLink("тз", null, "G:/Заметки/архив", index)).toEqual({
+        kind: "file",
+        path: "G:/Заметки/архив/тз.md",
+        hash: null,
+      });
+    });
+
+    it("matches a target that carries folders", () => {
+      expect(resolveWikiLink("проекты/план", null, "G:/Заметки/архив", index)).toEqual({
+        kind: "file",
+        path: "G:/Заметки/проекты/план.md",
+        hash: null,
+      });
+    });
+
+    it("keeps the heading anchor", () => {
+      expect(resolveWikiLink("тз", "Три правила", DIR, index)).toEqual({
+        kind: "file",
+        path: "G:/Заметки/тз.md",
+        hash: "три-правила",
+      });
+    });
+
+    it("still points next door when nothing matches", () => {
+      expect(resolveWikiLink("новая", null, DIR, index)).toEqual({
+        kind: "file",
+        path: "G:/Заметки/проекты/новая.md",
+        hash: null,
+      });
+    });
+
+    it("behaves as before without a library", () => {
+      expect(resolveWikiLink("тз", null, DIR)).toEqual({
+        kind: "file",
+        path: "G:/Заметки/проекты/тз.md",
+        hash: null,
+      });
+    });
+  });
+
   it("slugs the heading the way rehype-slug does", () => {
     expect(resolveWikiLink("note", "Some Heading", DIR)).toEqual({
       kind: "file",

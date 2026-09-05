@@ -114,3 +114,44 @@
   border-bottom-color: var(--accent);
   outline: none;
 }
+
+/* shortcuts (spec §12) — the same library-style screen as settings */
+
+.keys-group {
+  padding: 22px 0 6px;
+}
+
+.keys-group:first-of-type {
+  padding-top: 0;
+}
+
+.keys-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: baseline;
+  padding: 9px 0;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+}
+
+.keys-what {
+  color: var(--fg);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.keys-chord {
+  flex: none;
+  font-size: var(--fs-small);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.keys-note {
+  padding-top: 20px;
+  font-size: var(--fs-small);
+  color: var(--muted);
+}

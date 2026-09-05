@@ -8,8 +8,21 @@
 
 import { describe, expect, it } from "vitest";
 import { headingsOf } from "./headings";
+import { resolveHref, resolveWikiLink } from "./links";
 import { render } from "./pipeline";
 import { countWords } from "./words";
+
+interface PackLink {
+  kind: "wikilink" | "relative";
+  raw: string;
+  href?: string;
+  target: string;
+  hash?: string | null;
+  /** Resolvable as a path from the folder of the file the link is in. */
+  resolvesRelative: boolean;
+  /** Resolvable by name anywhere in the library — Obsidian's rule. */
+  resolvesByName?: boolean;
+}
 
 interface PackEntry {
   rel: string;
@@ -23,6 +36,7 @@ interface PackEntry {
   finalNewline: boolean;
   headings?: number;
   needles?: { text: string; line: number }[];
+  links?: PackLink[];
 }
 
 interface FixtureManifest {
@@ -94,15 +108,24 @@ const tail = (key: string, from: string): string => key.slice(key.indexOf(from) 
 function checkDocument(name: string, text: string, expected?: number): void {
   const out = render(text);
   const html = out.html.toLowerCase();
+  // `data-src` is deferred and inert: nothing fetches it, and `dom.ts` is
+  // what decides whether it may ever become a real `src` (spec §9). Every
+  // other byte of this string is live HTML and is held to the §14 rules.
+  const live = html.replace(/\sdata-src="[^"]*"/g, "");
 
   expect(out.html, `${name} produced no html`).toBeTypeOf("string");
   expect(html, name).not.toContain("<script");
-  expect(html, name).not.toContain("onclick");
-  expect(html, name).not.toContain("onerror");
-  expect(html, name).not.toContain("srcset");
-  expect(html, name).not.toContain("javascript:");
   expect(html, name).not.toContain("<iframe");
   expect(html, name).not.toContain("<style");
+  expect(html, name).not.toContain("<form");
+  expect(html, name).not.toContain("<textarea");
+  // A second way to fetch an image would walk straight past `data-src`.
+  expect(html, name).not.toContain("srcset");
+  // No inline event handler survives, whatever it is called.
+  expect(live, name).not.toMatch(/<[^>]+\son[a-z]+\s*=/);
+  expect(live, name).not.toContain("javascript:");
+  expect(live, name).not.toContain("vbscript:");
+  expect(live, name).not.toContain("data:text/html");
   // Images never carry a live `src`: read stays off the network (§1.3).
   expect(out.html, name).not.toMatch(/<img[^>]*\ssrc=/i);
 
@@ -191,6 +214,27 @@ describe("pack fixtures", () => {
     const emoji = render(named("emoji.md"));
     expect(emoji.headings[1]?.id).not.toBe("");
   });
+
+  it("defers every image source instead of dropping it", () => {
+    const key = Object.keys(fixtureText).find((path) => path.endsWith("/edge-cases.md"));
+    const html = render(fixtureText[key as string] as string).html;
+    // The sanitizer's protocol check never sees these: `rehypeDeferImages`
+    // moves `src` into `data-src` first, so what keeps a `javascript:` or an
+    // SVG data URL from ever loading is `SAFE_DATA_IMAGE` in `dom.ts`.
+    // Recorded here so the next person knows where that promise lives.
+    expect(html).toContain('data-src="javascript:alert(1)"');
+    expect(html).toContain('data-src="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="');
+    expect(html).not.toMatch(/<img[^>]*\ssrc=/i);
+  });
+
+  // One slugger per document, markdown headings and raw-HTML ones alike, so
+  // `<h2>Duplicate</h2>` after `## Duplicate` cannot take the same id.
+  it("gives every heading in the html its own id", () => {
+    const key = Object.keys(fixtureText).find((path) => path.endsWith("/edge-cases.md"));
+    const html = render(fixtureText[key as string] as string).html;
+    const ids = [...html.matchAll(/<h[1-6] id="([^"]*)"/g)].map((match) => match[1]);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
 });
 
 /* ------------------------------------------------------------- generated */
@@ -213,6 +257,56 @@ describe.skipIf(!hasLibrary)("pack library (generated)", () => {
     const entry = byRel.get(rel);
     checkDocument(rel, text, entry?.headings);
     expect(countWords(text), `${rel}: word count`).toBeGreaterThan(0);
+  });
+
+  /**
+   * Path resolution on the real library, which is what §16 asks for: `%20`,
+   * Cyrillic, spaces, `&` and `..` all in live paths.
+   *
+   * Note which of the two columns is checked. Plain resolves a wikilink as a
+   * **path from the folder of the file it is in** — `[[тз]]` written in
+   * `index.md` means `index.md`'s folder, not "the note called тз wherever it
+   * lives". The manifest records both readings; the assertion pins the one
+   * the code implements, and the last check proves the pack really does
+   * contain links where the two disagree (see the report).
+   */
+  it("resolves every recorded link the way the code resolves it", () => {
+    const index = notes.map((note) => `L/${note.rel.slice("library/".length)}`);
+    const paths = new Set(index);
+    let byName = 0;
+    let checked = 0;
+
+    for (const { rel } of notes) {
+      const entry = byRel.get(rel);
+      const inside = rel.slice("library/".length);
+      const dir = inside.includes("/") ? `L/${inside.slice(0, inside.lastIndexOf("/"))}` : "L";
+
+      for (const link of entry?.links ?? []) {
+        const target =
+          link.kind === "wikilink"
+            ? resolveWikiLink(link.target, link.hash ?? null, dir, index)
+            : resolveHref(link.href ?? "", dir);
+        expect(target.kind, `${rel}: ${link.raw}`).toBe("file");
+        const path = target.kind === "file" ? target.path : "";
+        // A wikilink resolves relative to the document, or — Obsidian's rule,
+        // and the owner's decision — by name anywhere in the library.
+        const reachable =
+          link.kind === "wikilink"
+            ? link.resolvesRelative || link.resolvesByName === true
+            : link.resolvesRelative;
+        expect(paths.has(path), `${rel}: ${link.raw} -> ${path}`).toBe(reachable);
+        if (link.kind === "wikilink" && link.resolvesByName === true && !link.resolvesRelative) {
+          byName += 1;
+        }
+        checked += 1;
+      }
+    }
+
+    expect(checked, "the library has links to check").toBeGreaterThan(40);
+    expect(
+      byName,
+      "the pack has to contain wikilinks that only the library index can resolve",
+    ).toBeGreaterThan(0);
   });
 
   it("resolves every needle to the line the manifest claims", () => {
