@@ -1,0 +1,800 @@
+{
+  "seed": 20260905,
+  "files": [
+    {
+      "rel": "library/index.md",
+      "bytes": 849,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "иголка-индекс-001",
+          "line": 26
+        }
+      ],
+      "headings": 4,
+      "links": [
+        {
+          "kind": "relative",
+          "raw": "[входящие](inbox.md)",
+          "href": "inbox.md",
+          "target": "inbox.md",
+          "resolvesRelative": true
+        },
+        {
+          "kind": "relative",
+          "raw": "[проекты](проекты/обзор.md)",
+          "href": "проекты/обзор.md",
+          "target": "проекты/обзор.md",
+          "resolvesRelative": true
+        },
+        {
+          "kind": "relative",
+          "raw": "[работа](work/overview.md)",
+          "href": "work/overview.md",
+          "target": "work/overview.md",
+          "resolvesRelative": true
+        },
+        {
+          "kind": "relative",
+          "raw": "[рецепты](recipes/борщ.md)",
+          "href": "recipes/борщ.md",
+          "target": "recipes/борщ.md",
+          "resolvesRelative": true
+        },
+        {
+          "kind": "relative",
+          "raw": "[учёба](study/конспект%20по%20rust.md)",
+          "href": "study/конспект%20по%20rust.md",
+          "target": "study/конспект по rust.md",
+          "resolvesRelative": true
+        },
+        {
+          "kind": "wikilink",
+          "raw": "[[тз]]",
+          "target": "тз",
+          "hash": null,
+          "resolvesRelative": false,
+          "resolvesByName": true
+        },
+        {
+          "kind": "wikilink",
+          "raw": "[[рендер|как рисуется read]]",
+          "target": "рендер",
+          "hash": null,
+          "resolvesRelative": false,
+          "resolvesByName": true
+        },
+        {
+          "kind": "wikilink",
+          "raw": "[[сохранность#Атомарная запись]]",
+          "target": "сохранность",
+          "hash": "Атомарная запись",
+          "resolvesRelative": false,
+          "resolvesByName": true
+        },
+        {
+          "kind": "wikilink",
+          "raw": "[[такой-заметки-нет]]",
+          "target": "такой-заметки-нет",
+          "hash": null,
+          "resolvesRelative": false,
+          "resolvesByName": false
+        },
+        {
+          "kind": "wikilink",
+          "raw": "[[missing note|тоже мимо]]",
+          "target": "missing note",
+          "hash": null,
+          "resolvesRelative": false,
+          "resolvesByName": false
+        }
+      ],
+      "name": "index.md",
+      "source": "library/index.md"
+    },
+    {
+      "rel": "library/inbox/todo.md",
+      "bytes": 688,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "иголка-todo-004",
+          "line": 25
+        }
+      ],
+      "headings": 3,
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "[[тз#Сохранность]]",
+          "target": "тз",
+          "hash": "Сохранность",
+          "resolvesRelative": false,
+          "resolvesByName": true
+        }
+      ],
+      "name": "todo.md",
+      "source": "library/inbox/todo.md"
+    },
+    {
+      "rel": "library/inbox/ссылки и заметки.md",
+      "bytes": 1217,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "иголка-ссылки-006",
+          "line": 29
+        }
+      ],
+      "headings": 4,
+      "links": [
+        {
+          "kind": "relative",
+          "raw": "[вверх и вбок](../проекты/plain/тз.md)",
+          "href": "../проекты/plain/тз.md",
+          "target": "проекты/plain/тз.md",
+          "resolvesRelative": true
+        },
+        {
+          "kind": "relative",
+          "raw": "[с пробелами и кириллицей](../проекты/сад%20на%20балконе/полив.md)",
+          "href": "../проекты/сад%20на%20балконе/полив.md",
+          "target": "проекты/сад на балконе/полив.md",
+          "resolvesRelative": true
+        },
+        {
+          "kind": "relative",
+          "raw": "[без кодирования пробела](../work/specs/data model.md)",
+          "href": "../work/specs/data model.md",
+          "target": "work/specs/data model.md",
+          "resolvesRelative": true
+        },
+        {
+          "kind": "wikilink",
+          "raw": "[[борщ]]",
+          "target": "борщ",
+          "hash": null,
+          "resolvesRelative": false,
+          "resolvesByName": true
+        },
+        {
+          "kind": "wikilink",
+          "raw": "[[полив|когда поливать]]",
+          "target": "полив",
+          "hash": null,
+          "resolvesRelative": false,
+          "resolvesByName": true
+        },
+        {
+          "kind": "wikilink",
+          "raw": "[[формулы#Дисплейные формулы]]",
+          "target": "формулы",
+          "hash": "Дисплейные формулы",
+          "resolvesRelative": false,
+          "resolvesByName": true
+        },
+        {
+          "kind": "wikilink",
+          "raw": "[[нет такого файла]]",
+          "target": "нет такого файла",
+          "hash": null,
+          "resolvesRelative": false,
+          "resolvesByName": false
+        },
+        {
+          "kind": "wikilink",
+          "raw": "[[тоже нет|но с алиасом]]",
+          "target": "тоже нет",
+          "hash": null,
+          "resolvesRelative": false,
+          "resolvesByName": false
+        },
+        {
+          "kind": "wikilink",
+          "raw": "[[и с заголовком#Которого нет]]",
+          "target": "и с заголовком",
+          "hash": "Которого нет",
+          "resolvesRelative": false,
+          "resolvesByName": false
+        }
+      ],
+      "name": "links.md",
+      "source": "library/inbox/ссылки и заметки.md"
+    },
+    {
+      "rel": "library/inbox/2026-08-28 дневник.md",
+      "bytes": 1364,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "иголка-дневник-1",
+          "line": 25
+        }
+      ],
+      "headings": 3,
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "[[index]]",
+          "target": "index",
+          "hash": null,
+          "resolvesRelative": false,
+          "resolvesByName": true
+        },
+        {
+          "kind": "wikilink",
+          "raw": "[[todo|список дел]]",
+          "target": "todo",
+          "hash": null,
+          "resolvesRelative": true,
+          "resolvesByName": true
+        },
+        {
+          "kind": "relative",
+          "raw": "[ТЗ проекта](../проекты/plain/тз.md)",
+          "href": "../проекты/plain/тз.md",
+          "target": "проекты/plain/тз.md",
+          "resolvesRelative": true
+        }
+      ],
+      "name": "diary.md",
+      "source": "library/inbox/2026-08-28 дневник.md"
+    },
+    {
+      "rel": "library/проекты/plain/рендер.md",
+      "bytes": 2886,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "иголка-рендер-010",
+          "line": 92
+        }
+      ],
+      "headings": 5,
+      "links": [],
+      "name": "render.md",
+      "source": "library/проекты/plain/рендер.md"
+    },
+    {
+      "rel": "library/проекты/plain/формулы.md",
+      "bytes": 803,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "иголка-формулы-014",
+          "line": 38
+        }
+      ],
+      "headings": 5,
+      "links": [],
+      "name": "math.md",
+      "source": "library/проекты/plain/формулы.md"
+    },
+    {
+      "rel": "library/проекты/plain/mermaid и диаграммы.md",
+      "bytes": 699,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "иголка-mermaid-013",
+          "line": 38
+        }
+      ],
+      "headings": 4,
+      "links": [],
+      "name": "mermaid.md",
+      "source": "library/проекты/plain/mermaid и диаграммы.md"
+    },
+    {
+      "rel": "library/проекты/plain/сохранность.md",
+      "bytes": 1400,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "иголка-сохранность-011",
+          "line": 29
+        }
+      ],
+      "headings": 4,
+      "links": [],
+      "name": "tables.md",
+      "source": "library/проекты/plain/сохранность.md"
+    },
+    {
+      "rel": "library/work/meetings/2026-08-26 retro.md",
+      "bytes": 566,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "needle-meeting-3",
+          "line": 17
+        }
+      ],
+      "headings": 3,
+      "links": [
+        {
+          "kind": "relative",
+          "raw": "[api notes](../specs/api%20notes.md)",
+          "href": "../specs/api%20notes.md",
+          "target": "work/specs/api notes.md",
+          "resolvesRelative": true
+        }
+      ],
+      "name": "retro.md",
+      "source": "library/work/meetings/2026-08-26 retro.md"
+    },
+    {
+      "rel": "library/work/specs/edge cases.md",
+      "bytes": 2798,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "needle-edge-023",
+          "line": 91
+        }
+      ],
+      "headings": 13,
+      "links": [],
+      "name": "edge-cases.md",
+      "source": "library/work/specs/edge cases.md"
+    },
+    {
+      "rel": "library/study/конспект по rust.md",
+      "bytes": 1055,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "иголка-rust-024",
+          "line": 28
+        }
+      ],
+      "headings": 4,
+      "links": [],
+      "name": "rust.md",
+      "source": "library/study/конспект по rust.md"
+    },
+    {
+      "rel": "library/recipes/борщ.md",
+      "bytes": 837,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "иголка-рецепт-4",
+          "line": 28
+        }
+      ],
+      "headings": 3,
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "[[сырники]]",
+          "target": "сырники",
+          "hash": null,
+          "resolvesRelative": true,
+          "resolvesByName": true
+        }
+      ],
+      "name": "recipe.md",
+      "source": "library/recipes/борщ.md"
+    },
+    {
+      "rel": "pathological/emoji-zwj.md",
+      "bytes": 503,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [],
+      "headings": 2,
+      "note": "grapheme clusters vs UTF-16 units",
+      "name": "emoji.md",
+      "source": "pathological/emoji-zwj.md"
+    },
+    {
+      "rel": "pathological/dollars.md",
+      "bytes": 530,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [],
+      "headings": 1,
+      "note": "the currency guard of §11",
+      "name": "dollars.md",
+      "source": "pathological/dollars.md"
+    },
+    {
+      "rel": "pathological/unclosed-fences.md",
+      "bytes": 229,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [],
+      "headings": 1,
+      "note": "everything after the first fence is code",
+      "name": "unclosed-fences.md",
+      "source": "pathological/unclosed-fences.md"
+    },
+    {
+      "rel": "pathological/wikilink-edges.md",
+      "bytes": 433,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [],
+      "headings": 1,
+      "note": "the wikilink extension's edges",
+      "name": "wikilink-edges.md",
+      "source": "pathological/wikilink-edges.md"
+    }
+  ],
+  "encodings": [
+    {
+      "rel": "encodings/utf8-lf.md",
+      "bytes": 342,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "utf8-lf.md"
+    },
+    {
+      "rel": "encodings/utf8-crlf.md",
+      "bytes": 353,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "crlf",
+      "dominantEol": "crlf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "utf8-crlf.md"
+    },
+    {
+      "rel": "encodings/utf8-cr.md",
+      "bytes": 342,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "cr",
+      "dominantEol": "cr",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "utf8-cr.md"
+    },
+    {
+      "rel": "encodings/utf8-bom-lf.md",
+      "bytes": 345,
+      "encoding": "utf-8",
+      "bom": true,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "utf8-bom-lf.md"
+    },
+    {
+      "rel": "encodings/utf8-bom-crlf.md",
+      "bytes": 356,
+      "encoding": "utf-8",
+      "bom": true,
+      "eol": "crlf",
+      "dominantEol": "crlf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "utf8-bom-crlf.md"
+    },
+    {
+      "rel": "encodings/utf16le-bom-crlf.md",
+      "bytes": 466,
+      "encoding": "utf-16le",
+      "bom": true,
+      "eol": "crlf",
+      "dominantEol": "crlf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "utf16le-bom-crlf.md"
+    },
+    {
+      "rel": "encodings/utf16le-bom-lf.md",
+      "bytes": 444,
+      "encoding": "utf-16le",
+      "bom": true,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "utf16le-bom-lf.md"
+    },
+    {
+      "rel": "encodings/utf16be-bom-crlf.md",
+      "bytes": 466,
+      "encoding": "utf-16be",
+      "bom": true,
+      "eol": "crlf",
+      "dominantEol": "crlf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "utf16be-bom-crlf.md"
+    },
+    {
+      "rel": "encodings/cp1251-crlf.md",
+      "bytes": 232,
+      "encoding": "windows-1251",
+      "bom": false,
+      "eol": "crlf",
+      "dominantEol": "crlf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "cp1251-crlf.md"
+    },
+    {
+      "rel": "encodings/cp1251-lf.md",
+      "bytes": 221,
+      "encoding": "windows-1251",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "cp1251-lf.md"
+    },
+    {
+      "rel": "encodings/mixed-crlf-dominant.md",
+      "bytes": 72,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "mixed",
+      "dominantEol": "crlf",
+      "finalNewline": true,
+      "needles": [],
+      "note": "crlf wins",
+      "name": "mixed-crlf-dominant.md"
+    },
+    {
+      "rel": "encodings/mixed-lf-dominant.md",
+      "bytes": 71,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "mixed",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [],
+      "note": "lf wins",
+      "name": "mixed-lf-dominant.md"
+    },
+    {
+      "rel": "encodings/mixed-cr-dominant.md",
+      "bytes": 58,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "mixed",
+      "dominantEol": "cr",
+      "finalNewline": true,
+      "needles": [],
+      "note": "cr wins",
+      "name": "mixed-cr-dominant.md"
+    },
+    {
+      "rel": "encodings/cr-inside-line.md",
+      "bytes": 106,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "mixed",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [],
+      "note": "a lone CR inside a line makes the file mixed",
+      "name": "cr-inside-line.md"
+    },
+    {
+      "rel": "encodings/no-final-newline.md",
+      "bytes": 93,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": false,
+      "needles": [],
+      "name": "no-final-newline.md"
+    },
+    {
+      "rel": "encodings/one-line-no-newline.md",
+      "bytes": 72,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "none",
+      "dominantEol": "crlf",
+      "finalNewline": false,
+      "needles": [],
+      "name": "one-line-no-newline.md"
+    },
+    {
+      "rel": "encodings/empty.md",
+      "bytes": 0,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "none",
+      "dominantEol": "crlf",
+      "finalNewline": false,
+      "needles": [],
+      "name": "empty.md"
+    },
+    {
+      "rel": "encodings/only-newline.md",
+      "bytes": 1,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [],
+      "name": "only-newline.md"
+    },
+    {
+      "rel": "encodings/trailing-spaces.md",
+      "bytes": 117,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "crlf",
+      "dominantEol": "crlf",
+      "finalNewline": true,
+      "needles": [],
+      "note": "trailing spaces and a trailing tab are load-bearing bytes",
+      "name": "trailing-spaces.md"
+    },
+    {
+      "rel": "encodings/tabs.md",
+      "bytes": 121,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [],
+      "name": "tabs.md"
+    },
+    {
+      "rel": "encodings/nul-byte.md",
+      "bytes": 90,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [],
+      "decodeErrors": false,
+      "note": "NUL is valid UTF-8",
+      "name": "nul-byte.md"
+    },
+    {
+      "rel": "encodings/broken-utf16.md",
+      "bytes": 50,
+      "encoding": "utf-16le",
+      "bom": true,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [],
+      "decodeErrors": true,
+      "note": "unpaired surrogate: decoding produces U+FFFD, so a save would change bytes",
+      "name": "broken-utf16.md"
+    },
+    {
+      "rel": "encodings/invalid-utf8.md",
+      "bytes": 20,
+      "encoding": "detected",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [],
+      "note": "chardetng guesses a legacy encoding; the point is that nothing panics",
+      "name": "invalid-utf8.md"
+    }
+  ]
+}

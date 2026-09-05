@@ -1,0 +1,2 @@
+# These files are bytes, not text: git must not touch their line endings.
+* -text

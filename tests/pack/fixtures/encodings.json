@@ -1,0 +1,340 @@
+{
+  "files": [
+    {
+      "rel": "encodings/utf8-lf.md",
+      "bytes": 342,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "utf8-lf.md",
+      "base64": "IyDQn9GA0L7QstC10YDQutCwINC60L7QtNC40YDQvtCy0L7QugoK0J/QtdGA0LLQsNGPINGB0YLRgNC+0LrQsCDQvdCwINGA0YPRgdGB0LrQvtC8OiDRgtGR0L/Qu9GL0Lkg0YjRgNC40YTRgiwg0ZHQu9C60LAsIOKEljUsIMKr0LrQsNCy0YvRh9C60LjCuy4KQSBzZWNvbmQgbGluZSBpbiBFbmdsaXNoLCBwbGFpbiBhbmQgc2hvcnQuCgojIyDQodC/0LjRgdC+0LoKCi0g0L/QtdGA0LLRi9C5INC/0YPQvdC60YIKLSDQstGC0L7RgNC+0Lkg0L/Rg9C90LrRggoK0J/QvtGB0LvQtdC00L3QuNC5INCw0LHQt9Cw0YYg0YEg0LjQs9C+0LvQutC+0LkgZW5jb2RpbmctbmVlZGxlINC4INGC0L7Rh9C60L7QuS4K"
+    },
+    {
+      "rel": "encodings/utf8-crlf.md",
+      "bytes": 353,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "crlf",
+      "dominantEol": "crlf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "utf8-crlf.md",
+      "base64": "IyDQn9GA0L7QstC10YDQutCwINC60L7QtNC40YDQvtCy0L7Qug0KDQrQn9C10YDQstCw0Y8g0YHRgtGA0L7QutCwINC90LAg0YDRg9GB0YHQutC+0Lw6INGC0ZHQv9C70YvQuSDRiNGA0LjRhNGCLCDRkdC70LrQsCwg4oSWNSwgwqvQutCw0LLRi9GH0LrQuMK7Lg0KQSBzZWNvbmQgbGluZSBpbiBFbmdsaXNoLCBwbGFpbiBhbmQgc2hvcnQuDQoNCiMjINCh0L/QuNGB0L7Qug0KDQotINC/0LXRgNCy0YvQuSDQv9GD0L3QutGCDQotINCy0YLQvtGA0L7QuSDQv9GD0L3QutGCDQoNCtCf0L7RgdC70LXQtNC90LjQuSDQsNCx0LfQsNGGINGBINC40LPQvtC70LrQvtC5IGVuY29kaW5nLW5lZWRsZSDQuCDRgtC+0YfQutC+0LkuDQo="
+    },
+    {
+      "rel": "encodings/utf8-cr.md",
+      "bytes": 342,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "cr",
+      "dominantEol": "cr",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "utf8-cr.md",
+      "base64": "IyDQn9GA0L7QstC10YDQutCwINC60L7QtNC40YDQvtCy0L7Qug0N0J/QtdGA0LLQsNGPINGB0YLRgNC+0LrQsCDQvdCwINGA0YPRgdGB0LrQvtC8OiDRgtGR0L/Qu9GL0Lkg0YjRgNC40YTRgiwg0ZHQu9C60LAsIOKEljUsIMKr0LrQsNCy0YvRh9C60LjCuy4NQSBzZWNvbmQgbGluZSBpbiBFbmdsaXNoLCBwbGFpbiBhbmQgc2hvcnQuDQ0jIyDQodC/0LjRgdC+0LoNDS0g0L/QtdGA0LLRi9C5INC/0YPQvdC60YINLSDQstGC0L7RgNC+0Lkg0L/Rg9C90LrRgg0N0J/QvtGB0LvQtdC00L3QuNC5INCw0LHQt9Cw0YYg0YEg0LjQs9C+0LvQutC+0LkgZW5jb2RpbmctbmVlZGxlINC4INGC0L7Rh9C60L7QuS4N"
+    },
+    {
+      "rel": "encodings/utf8-bom-lf.md",
+      "bytes": 345,
+      "encoding": "utf-8",
+      "bom": true,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "utf8-bom-lf.md",
+      "base64": "77u/IyDQn9GA0L7QstC10YDQutCwINC60L7QtNC40YDQvtCy0L7QugoK0J/QtdGA0LLQsNGPINGB0YLRgNC+0LrQsCDQvdCwINGA0YPRgdGB0LrQvtC8OiDRgtGR0L/Qu9GL0Lkg0YjRgNC40YTRgiwg0ZHQu9C60LAsIOKEljUsIMKr0LrQsNCy0YvRh9C60LjCuy4KQSBzZWNvbmQgbGluZSBpbiBFbmdsaXNoLCBwbGFpbiBhbmQgc2hvcnQuCgojIyDQodC/0LjRgdC+0LoKCi0g0L/QtdGA0LLRi9C5INC/0YPQvdC60YIKLSDQstGC0L7RgNC+0Lkg0L/Rg9C90LrRggoK0J/QvtGB0LvQtdC00L3QuNC5INCw0LHQt9Cw0YYg0YEg0LjQs9C+0LvQutC+0LkgZW5jb2RpbmctbmVlZGxlINC4INGC0L7Rh9C60L7QuS4K"
+    },
+    {
+      "rel": "encodings/utf8-bom-crlf.md",
+      "bytes": 356,
+      "encoding": "utf-8",
+      "bom": true,
+      "eol": "crlf",
+      "dominantEol": "crlf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "utf8-bom-crlf.md",
+      "base64": "77u/IyDQn9GA0L7QstC10YDQutCwINC60L7QtNC40YDQvtCy0L7Qug0KDQrQn9C10YDQstCw0Y8g0YHRgtGA0L7QutCwINC90LAg0YDRg9GB0YHQutC+0Lw6INGC0ZHQv9C70YvQuSDRiNGA0LjRhNGCLCDRkdC70LrQsCwg4oSWNSwgwqvQutCw0LLRi9GH0LrQuMK7Lg0KQSBzZWNvbmQgbGluZSBpbiBFbmdsaXNoLCBwbGFpbiBhbmQgc2hvcnQuDQoNCiMjINCh0L/QuNGB0L7Qug0KDQotINC/0LXRgNCy0YvQuSDQv9GD0L3QutGCDQotINCy0YLQvtGA0L7QuSDQv9GD0L3QutGCDQoNCtCf0L7RgdC70LXQtNC90LjQuSDQsNCx0LfQsNGGINGBINC40LPQvtC70LrQvtC5IGVuY29kaW5nLW5lZWRsZSDQuCDRgtC+0YfQutC+0LkuDQo="
+    },
+    {
+      "rel": "encodings/utf16le-bom-crlf.md",
+      "bytes": 466,
+      "encoding": "utf-16le",
+      "bom": true,
+      "eol": "crlf",
+      "dominantEol": "crlf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "utf16le-bom-crlf.md",
+      "base64": "//4jACAAHwRABD4EMgQ1BEAEOgQwBCAAOgQ+BDQEOARABD4EMgQ+BDoEDQAKAA0ACgAfBDUEQAQyBDAETwQgAEEEQgRABD4EOgQwBCAAPQQwBCAAQARDBEEEQQQ6BD4EPAQ6ACAAQgRRBD8EOwRLBDkEIABIBEAEOAREBEIELAAgAFEEOwQ6BDAELAAgABYhNQAsACAAqwA6BDAEMgRLBEcEOgQ4BLsALgANAAoAQQAgAHMAZQBjAG8AbgBkACAAbABpAG4AZQAgAGkAbgAgAEUAbgBnAGwAaQBzAGgALAAgAHAAbABhAGkAbgAgAGEAbgBkACAAcwBoAG8AcgB0AC4ADQAKAA0ACgAjACMAIAAhBD8EOARBBD4EOgQNAAoADQAKAC0AIAA/BDUEQAQyBEsEOQQgAD8EQwQ9BDoEQgQNAAoALQAgADIEQgQ+BEAEPgQ5BCAAPwRDBD0EOgRCBA0ACgANAAoAHwQ+BEEEOwQ1BDQEPQQ4BDkEIAAwBDEENwQwBEYEIABBBCAAOAQzBD4EOwQ6BD4EOQQgAGUAbgBjAG8AZABpAG4AZwAtAG4AZQBlAGQAbABlACAAOAQgAEIEPgRHBDoEPgQ5BC4ADQAKAA=="
+    },
+    {
+      "rel": "encodings/utf16le-bom-lf.md",
+      "bytes": 444,
+      "encoding": "utf-16le",
+      "bom": true,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "utf16le-bom-lf.md",
+      "base64": "//4jACAAHwRABD4EMgQ1BEAEOgQwBCAAOgQ+BDQEOARABD4EMgQ+BDoECgAKAB8ENQRABDIEMARPBCAAQQRCBEAEPgQ6BDAEIAA9BDAEIABABEMEQQRBBDoEPgQ8BDoAIABCBFEEPwQ7BEsEOQQgAEgEQAQ4BEQEQgQsACAAUQQ7BDoEMAQsACAAFiE1ACwAIACrADoEMAQyBEsERwQ6BDgEuwAuAAoAQQAgAHMAZQBjAG8AbgBkACAAbABpAG4AZQAgAGkAbgAgAEUAbgBnAGwAaQBzAGgALAAgAHAAbABhAGkAbgAgAGEAbgBkACAAcwBoAG8AcgB0AC4ACgAKACMAIwAgACEEPwQ4BEEEPgQ6BAoACgAtACAAPwQ1BEAEMgRLBDkEIAA/BEMEPQQ6BEIECgAtACAAMgRCBD4EQAQ+BDkEIAA/BEMEPQQ6BEIECgAKAB8EPgRBBDsENQQ0BD0EOAQ5BCAAMAQxBDcEMARGBCAAQQQgADgEMwQ+BDsEOgQ+BDkEIABlAG4AYwBvAGQAaQBuAGcALQBuAGUAZQBkAGwAZQAgADgEIABCBD4ERwQ6BD4EOQQuAAoA"
+    },
+    {
+      "rel": "encodings/utf16be-bom-crlf.md",
+      "bytes": 466,
+      "encoding": "utf-16be",
+      "bom": true,
+      "eol": "crlf",
+      "dominantEol": "crlf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "utf16be-bom-crlf.md",
+      "base64": "/v8AIwAgBB8EQAQ+BDIENQRABDoEMAAgBDoEPgQ0BDgEQAQ+BDIEPgQ6AA0ACgANAAoEHwQ1BEAEMgQwBE8AIARBBEIEQAQ+BDoEMAAgBD0EMAAgBEAEQwRBBEEEOgQ+BDwAOgAgBEIEUQQ/BDsESwQ5ACAESARABDgERARCACwAIARRBDsEOgQwACwAICEWADUALAAgAKsEOgQwBDIESwRHBDoEOAC7AC4ADQAKAEEAIABzAGUAYwBvAG4AZAAgAGwAaQBuAGUAIABpAG4AIABFAG4AZwBsAGkAcwBoACwAIABwAGwAYQBpAG4AIABhAG4AZAAgAHMAaABvAHIAdAAuAA0ACgANAAoAIwAjACAEIQQ/BDgEQQQ+BDoADQAKAA0ACgAtACAEPwQ1BEAEMgRLBDkAIAQ/BEMEPQQ6BEIADQAKAC0AIAQyBEIEPgRABD4EOQAgBD8EQwQ9BDoEQgANAAoADQAKBB8EPgRBBDsENQQ0BD0EOAQ5ACAEMAQxBDcEMARGACAEQQAgBDgEMwQ+BDsEOgQ+BDkAIABlAG4AYwBvAGQAaQBuAGcALQBuAGUAZQBkAGwAZQAgBDgAIARCBD4ERwQ6BD4EOQAuAA0ACg=="
+    },
+    {
+      "rel": "encodings/cp1251-crlf.md",
+      "bytes": 232,
+      "encoding": "windows-1251",
+      "bom": false,
+      "eol": "crlf",
+      "dominantEol": "crlf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "cp1251-crlf.md",
+      "base64": "IyDP8O7i5fDq4CDq7uTo8O7i7uoNCg0Kz+Xw4uD/IPHy8O7q4CDt4CDw8/Hx6u7sOiDyuO/r++kg+PDo9PIsILjr6uAsILk1LCCr6uDi+/fq6LsuDQpBIHNlY29uZCBsaW5lIGluIEVuZ2xpc2gsIHBsYWluIGFuZCBzaG9ydC4NCg0KIyMg0e/o8e7qDQoNCi0g7+Xw4vvpIO/z7eryDQotIOLy7vDu6SDv8+3q8g0KDQrP7vHr5eTt6Okg4OHn4PYg8SDo4+7r6u7pIGVuY29kaW5nLW5lZWRsZSDoIPLu9+ru6S4NCg=="
+    },
+    {
+      "rel": "encodings/cp1251-lf.md",
+      "bytes": 221,
+      "encoding": "windows-1251",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [
+        {
+          "text": "encoding-needle",
+          "line": 11
+        }
+      ],
+      "name": "cp1251-lf.md",
+      "base64": "IyDP8O7i5fDq4CDq7uTo8O7i7uoKCs/l8OLg/yDx8vDu6uAg7eAg8PPx8eru7Dog8rjv6/vpIPjw6PTyLCC46+rgLCC5NSwgq+rg4vv36ui7LgpBIHNlY29uZCBsaW5lIGluIEVuZ2xpc2gsIHBsYWluIGFuZCBzaG9ydC4KCiMjINHv6PHu6goKLSDv5fDi++kg7/Pt6vIKLSDi8u7w7ukg7/Pt6vIKCs/u8evl5O3o6SDg4efg9iDxIOjj7uvq7ukgZW5jb2RpbmctbmVlZGxlIOgg8u736u7pLgo="
+    },
+    {
+      "rel": "encodings/mixed-crlf-dominant.md",
+      "bytes": 72,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "mixed",
+      "dominantEol": "crlf",
+      "finalNewline": true,
+      "needles": [],
+      "note": "crlf wins",
+      "name": "mixed-crlf-dominant.md",
+      "base64": "0L/QtdGA0LLQsNGPDQrQstGC0L7RgNCw0Y8K0YLRgNC10YLRjNGPDQrRh9C10YLQstGR0YDRgtCw0Y8NCtC/0Y/RgtCw0Y8K"
+    },
+    {
+      "rel": "encodings/mixed-lf-dominant.md",
+      "bytes": 71,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "mixed",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [],
+      "note": "lf wins",
+      "name": "mixed-lf-dominant.md",
+      "base64": "0L/QtdGA0LLQsNGPCtCy0YLQvtGA0LDRjw0K0YLRgNC10YLRjNGPCtGH0LXRgtCy0ZHRgNGC0LDRjwrQv9GP0YLQsNGPDQo="
+    },
+    {
+      "rel": "encodings/mixed-cr-dominant.md",
+      "bytes": 58,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "mixed",
+      "dominantEol": "cr",
+      "finalNewline": true,
+      "needles": [],
+      "note": "cr wins",
+      "name": "mixed-cr-dominant.md",
+      "base64": "0L/QtdGA0LLQsNGPDdCy0YLQvtGA0LDRjwrRgtGA0LXRgtGM0Y8N0YfQtdGC0LLRkdGA0YLQsNGPDQ=="
+    },
+    {
+      "rel": "encodings/cr-inside-line.md",
+      "bytes": 106,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "mixed",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [],
+      "note": "a lone CR inside a line makes the file mixed",
+      "name": "cr-inside-line.md",
+      "base64": "0LfQsNCz0L7Qu9C+0LLQvtC6CgrRgdGC0YDQvtC60LAg0YEN0LLQvtC30LLRgNCw0YLQvtC8INC60LDRgNC10YLQutC4INCy0L3Rg9GC0YDQuArQuCDQtdGJ0ZEg0YHRgtGA0L7QutCwCg=="
+    },
+    {
+      "rel": "encodings/no-final-newline.md",
+      "bytes": 93,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": false,
+      "needles": [],
+      "name": "no-final-newline.md",
+      "base64": "IyDQkdC10Lcg0YTQuNC90LDQu9GM0L3QvtCz0L4g0L/QtdGA0LXQstC+0LTQsCDRgdGC0YDQvtC60LgKCtCf0L7RgdC70LXQtNC90Y/RjyDRgdGC0YDQvtC60LAu"
+    },
+    {
+      "rel": "encodings/one-line-no-newline.md",
+      "bytes": 72,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "none",
+      "dominantEol": "crlf",
+      "finalNewline": false,
+      "needles": [],
+      "name": "one-line-no-newline.md",
+      "base64": "0L7QtNC90LAg0YHRgtGA0L7QutCwINCx0LXQtyDQv9C10YDQtdCy0L7QtNCwINGB0YLRgNC+0LrQuCDQsiDQutC+0L3RhtC1"
+    },
+    {
+      "rel": "encodings/empty.md",
+      "bytes": 0,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "none",
+      "dominantEol": "crlf",
+      "finalNewline": false,
+      "needles": [],
+      "name": "empty.md",
+      "base64": ""
+    },
+    {
+      "rel": "encodings/only-newline.md",
+      "bytes": 1,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [],
+      "name": "only-newline.md",
+      "base64": "Cg=="
+    },
+    {
+      "rel": "encodings/trailing-spaces.md",
+      "bytes": 117,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "crlf",
+      "dominantEol": "crlf",
+      "finalNewline": true,
+      "needles": [],
+      "note": "trailing spaces and a trailing tab are load-bearing bytes",
+      "name": "trailing-spaces.md",
+      "base64": "IyBUcmFpbGluZw0KDQrQodGC0YDQvtC60LAg0YEg0LTQstGD0LzRjyDQv9GA0L7QsdC10LvQsNC80LggIA0K0YHQu9C10LTRg9GO0YnQsNGPINGB0YLRgNC+0LrQsCAgIA0K0Lgg0YLRgNC10YLRjNGPCQ0K"
+    },
+    {
+      "rel": "encodings/tabs.md",
+      "bytes": 121,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [],
+      "name": "tabs.md",
+      "base64": "IyBUYWJzCgotCdC/0YPQvdC60YIg0YfQtdGA0LXQtyDRgtCw0LEKCS0g0LLQu9C+0LbQtdC90L3Ri9C5INGH0LXRgNC10Lcg0YLQsNCxCgpmbiBtYWluKCkgewoJcHJpbnRsbiEoInRhYiBpbmRlbnRlZCIpOwp9Cg=="
+    },
+    {
+      "rel": "encodings/nul-byte.md",
+      "bytes": 90,
+      "encoding": "utf-8",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [],
+      "decodeErrors": false,
+      "note": "NUL is valid UTF-8",
+      "name": "nul-byte.md",
+      "base64": "IyBOVUwKCtC00L4A0L/QvtGB0LvQtSDigJQg0L3Rg9C70LXQstC+0Lkg0LHQsNC50YIg0LLQvdGD0YLRgNC4INCy0LDQu9C40LTQvdC+0LPQviBVVEYtOC4K"
+    },
+    {
+      "rel": "encodings/broken-utf16.md",
+      "bytes": 50,
+      "encoding": "utf-16le",
+      "bom": true,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [],
+      "decodeErrors": true,
+      "note": "unpaired surrogate: decoding produces U+FFFD, so a save would change bytes",
+      "name": "broken-utf16.md",
+      "base64": "//4jACAAQgByAG8AawBlAG4ACgAKAEIENQQ6BEEEQgQgAADYIABFBDIEPgRBBEIECgA="
+    },
+    {
+      "rel": "encodings/invalid-utf8.md",
+      "bytes": 20,
+      "encoding": "detected",
+      "bom": false,
+      "eol": "lf",
+      "dominantEol": "lf",
+      "finalNewline": true,
+      "needles": [],
+      "note": "chardetng guesses a legacy encoding; the point is that nothing panics",
+      "name": "invalid-utf8.md",
+      "base64": "IyBJbnZhbGlkCgrDKKCh8CiMKAo="
+    }
+  ]
+}
