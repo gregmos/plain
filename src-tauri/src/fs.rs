@@ -878,6 +878,7 @@ mod tests {
 
     /// The dangerous half of a failed ReplaceFileW: the original is already
     /// gone and the staged file holds the only copy of the text.
+    #[cfg(windows)]
     #[test]
     fn a_failed_replace_puts_the_staged_text_back() {
         let dir = tempfile::tempdir().unwrap();
@@ -890,6 +891,7 @@ mod tests {
         assert!(!temp.exists());
     }
 
+    #[cfg(windows)]
     #[test]
     fn a_failed_replace_that_left_the_original_drops_the_staged_file() {
         let dir = tempfile::tempdir().unwrap();
