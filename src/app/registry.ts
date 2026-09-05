@@ -339,18 +339,21 @@ export const commands: Command[] = [
  * is a per-keystroke thing and history is not. Both would also collide —
  * the editor keymap and the app layer would each fire once.
  */
-const macOverrides: Record<string, string> = {
+export const macOverrides: Record<string, string> = {
   "nav.back": "Ctrl+Alt+Left",
   "nav.forward": "Ctrl+Alt+Right",
   "view.fullscreen": "Control+Cmd+F",
 };
 
-if (isMac()) {
-  for (const command of commands) {
+/** Exported so the table can be tested without re-importing this module. */
+export function applyMacChords(list: Command[]): void {
+  for (const command of list) {
     const override = macOverrides[command.id];
     if (override) command.chord = override;
   }
 }
+
+if (isMac()) applyMacChords(commands);
 
 const byId = new Map(commands.map((command) => [command.id, command]));
 

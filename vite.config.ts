@@ -16,4 +16,9 @@ export default defineConfig({
     target: "chrome120",
     sourcemap: false,
   },
+  test: {
+    // The suite must answer the same on every host: the setup file pins the
+    // platform to Windows, and the macOS cases opt in (spec §13a).
+    setupFiles: ["./vitest.setup.ts"],
+  },
 });

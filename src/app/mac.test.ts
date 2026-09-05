@@ -1,12 +1,15 @@
 // macOS behaviour without a Mac (spec §13a): the platform is forced and the
 // same code paths are exercised. Everything here is a pure function.
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { chordText, matchesChord, parseChord } from "./chords";
 import { isMac, primaryModifierLabel, setMacForTests } from "./platform";
+import { applyMacChords, command, macOverrides } from "./registry";
 import { defaultEol } from "./settings";
 
-afterEach(() => setMacForTests(null));
+// Back to the suite-wide default, not to detection: the next test must not
+// depend on which machine is running it.
+afterEach(() => setMacForTests(false));
 
 function press(over: Partial<Record<string, unknown>> & { code: string }) {
   return {
@@ -91,34 +94,33 @@ describe("defaults that follow the platform", () => {
 });
 
 describe("macOverrides", () => {
-  // The table is applied when the registry module is evaluated, so the
-  // platform has to be forced before it is imported.
-  async function registryOn(mac: boolean) {
-    vi.resetModules();
-    const platform = await import("./platform");
-    platform.setMacForTests(mac);
-    return import("./registry");
-  }
-
-  afterEach(() => vi.resetModules());
-
-  it("moves history off the arrow keys macOS uses for words", async () => {
-    const { command } = await registryOn(true);
-    expect(command("nav.back")?.chord).toBe("Ctrl+Alt+Left");
-    expect(command("nav.forward")?.chord).toBe("Ctrl+Alt+Right");
+  it("moves history off the arrow keys macOS uses for words", () => {
+    expect(macOverrides["nav.back"]).toBe("Ctrl+Alt+Left");
+    expect(macOverrides["nav.forward"]).toBe("Ctrl+Alt+Right");
+    setMacForTests(true);
+    expect(chordText(macOverrides["nav.back"] as string)).toBe("⌥⌘←");
   });
 
-  it("gives fullscreen the system chord, with the real control key", async () => {
-    const { command } = await registryOn(true);
-    expect(command("view.fullscreen")?.chord).toBe("Control+Cmd+F");
+  it("gives fullscreen the system chord, with the real control key", () => {
+    expect(macOverrides["view.fullscreen"]).toBe("Control+Cmd+F");
+    setMacForTests(true);
+    expect(chordText(macOverrides["view.fullscreen"] as string)).toBe("⌃⌘F");
   });
 
-  it("leaves every other chord exactly as Windows has it", async () => {
-    const mac = await registryOn(true);
-    const saveOnMac = mac.command("file.save")?.chord;
-    const win = await registryOn(false);
-    expect(saveOnMac).toBe(win.command("file.save")?.chord);
-    expect(win.command("nav.back")?.chord).toBe("Alt+Left");
-    expect(win.command("view.fullscreen")?.chord).toBe("F11");
+  it("rewrites exactly the commands in the table and no others", () => {
+    const list = [
+      { id: "nav.back", title: "back", chord: "Alt+Left", run: () => {} },
+      { id: "file.save", title: "save", chord: "Ctrl+S", run: () => {} },
+    ];
+    applyMacChords(list);
+    expect(list[0]?.chord).toBe("Ctrl+Alt+Left");
+    expect(list[1]?.chord).toBe("Ctrl+S");
+  });
+
+  it("leaves the registry on Windows chords when this is not a Mac", () => {
+    // The suite runs as Windows (vitest.setup.ts), so the load-time
+    // application must not have fired.
+    expect(command("nav.back")?.chord).toBe("Alt+Left");
+    expect(command("view.fullscreen")?.chord).toBe("F11");
   });
 });

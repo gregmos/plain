@@ -25,7 +25,9 @@ describe("parseSettings", () => {
     expect(settings.edit.indentUnit).toBe("tab");
     expect(settings.library.extensions).toEqual([".md", ".txt"]);
     // Untouched sections still come from the defaults.
+    // The suite runs pinned to Windows (vitest.setup.ts), so this is crlf.
     expect(settings.files.newFileEol).toBe(DEFAULTS.files.newFileEol);
+    expect(DEFAULTS.files.newFileEol).toBe("crlf");
   });
 
   it("replaces a bad value without discarding the rest of the file", () => {
