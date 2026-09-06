@@ -104,22 +104,30 @@ jobs:
         env:
           # Ad-hoc (`-`) only when there is no certificate: unsigned and
           # un-notarised, so Gatekeeper asks once instead of refusing outright.
-          # With a certificate, tauri signs the app and the dmg and notarises
-          # both through the APPLE_API_* variables set above.
+          # With a certificate, tauri signs the app, notarises and staples it
+          # through the APPLE_API_* variables set above, then signs the dmg.
+          # `app` is listed so the .app survives for the checks below (with
+          # `dmg` alone tauri deletes it after packing).
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY || '-' }}
-        run: npx tauri build --target universal-apple-darwin --bundles dmg
+        run: npx tauri build --target universal-apple-darwin --bundles app dmg
 
-      # Do not ship a dmg whose app Gatekeeper would still refuse: the
-      # signature must verify, the notarisation ticket must be stapled, and
-      # the system policy assessment must pass.
-      - name: Verify the signature and notarisation
+      # The dmg itself gets its own ticket and staple, so Gatekeeper is happy
+      # with the download even offline. Then refuse to ship anything Gatekeeper
+      # would refuse: signatures verify, tickets are stapled, the policy
+      # assessment passes for both the app and the dmg.
+      - name: Notarise the dmg and verify everything
         if: env.SIGNED == 'true'
         run: |
           set -eu
           app="$(ls -d src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app | head -1)"
+          dmg="$(ls src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg | head -1)"
+          xcrun notarytool submit "$dmg" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait
+          xcrun stapler staple "$dmg"
           codesign --verify --deep --strict --verbose=2 "$app"
           xcrun stapler validate "$app"
           spctl --assess --type execute --verbose=2 "$app"
+          xcrun stapler validate "$dmg"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
 
       - uses: actions/upload-artifact@v4
         with:
