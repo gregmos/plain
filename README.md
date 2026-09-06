@@ -57,11 +57,11 @@ Plain keeps no indexes, caches, or hidden service files in your folders. The onl
 
 Download the `.dmg` from the releases page, open it, and drag Plain into Applications.
 
-The app is not signed or notarised, so the first launch needs one extra step: right-click it in Applications and choose **Open**, then confirm. Once done, it opens normally from then on. If macOS refuses outright, `xattr -cr /Applications/Plain.app` in Terminal clears the quarantine flag and the right-click trick works again.
+The app is signed ad hoc, without a Developer ID or notarisation, so macOS will refuse the first launch. On macOS 15 (Sequoia) and later, open it once, let the refusal appear, then go to **System Settings → Privacy & Security** and click **Open Anyway** next to Plain. On macOS 13 and 14, right-click the app in Applications and choose **Open** instead. Terminal alternative for either: `xattr -dr com.apple.quarantine /Applications/Plain.app`. After that it opens normally.
 
-Shortcuts use `⌘` where this page says `Ctrl`: `⌘S` saves, `⌘O` opens, `⌘/` switches between reading and editing, `⌘,` opens settings, `⌘⇧P` is the command palette. A few differ where macOS already owns the combination — `⌘[` and `⌘]` go back and forward, `⌃⌘F` is fullscreen. The full list is in the app under `help → shortcuts`.
+Shortcuts use `⌘` where this page says `Ctrl`: `⌘S` saves, `⌘O` opens, `⌘/` switches between reading and editing, `⌘,` opens settings, `⇧⌘P` is the command palette. A few differ where macOS already owns the combination: `⌥⌘←` / `⌥⌘→` go back and forward, `⌃⌘F` is fullscreen, `⌃Tab` cycles open files, `⌥⌘F` is find and replace, and `⌘=` / `⌘-` / `⌘0` zoom. The full list is in the app under `help → shortcuts`.
 
-Double-clicking a `.md` file in Finder opens it in Plain once you have chosen Plain in **Get Info → Open with**; the bundle offers itself for `.md` and `.markdown` from the first launch.
+Double-clicking a `.md` file in Finder opens it in Plain once you have chosen Plain in **Get Info → Open with**; the bundle offers itself for `.md` and `.markdown` from the first launch. Data lives in `~/Library/Application Support/Plain`; the portable `data\` folder is a Windows-only feature.
 
 ## How it treats your files
 
