@@ -33,11 +33,7 @@ If you move the folder later, just run the exe from its new location.
 
 1. Download `Plain_0.2.0_universal.dmg`, open it, and drag Plain into Applications. One build runs on both Apple Silicon and Intel.
 2. The app is signed ad hoc, without a Developer ID or notarisation, so macOS refuses the first launch. On macOS 15 (Sequoia) and later: open it once, let the refusal appear, then go to **System Settings → Privacy & Security** and click **Open Anyway** next to Plain. On macOS 13 and 14: right-click the app in Applications and choose **Open**. Terminal alternative for either: `xattr -dr com.apple.quarantine /Applications/Plain.app`. After that it opens normally.
-3. To open `.md` files from Finder with a double-click: select any `.md` file, **Get Info → Open with → Plain → Change All**. The bundle offers itself for `.md` and `.markdown` from the first launch.
-
-On a Mac, shortcuts use `⌘` where this page says `Ctrl`: `⌘S` saves, `⌘O` opens, `⌘/` switches between reading and editing, `⌘,` opens settings, `⇧⌘P` is the command palette. A few differ where macOS already owns the combination: `⌥⌘←` / `⌥⌘→` go back and forward, `⌃⌘F` is fullscreen, `⌃Tab` cycles open files, `⌥⌘F` is find and replace, and `⌘=` / `⌘-` / `⌘0` zoom. `⌘Q` asks about unsaved changes before quitting. The full list is in the app under `help → shortcuts`.
-
-The macOS build is produced by GitHub Actions and has not yet been used on a real Mac by the author; if something looks wrong there, an issue with a screenshot is the fastest way to get it fixed.
+3. To open `.md` files from Finder with a double-click: select any `.md` file, **Get Info → Open with → Plain → Change All**. Plain is listed there from its first launch.
 
 ## Using it
 
@@ -46,11 +42,11 @@ The macOS build is produced by GitHub Actions and has not yet been used on a rea
 - **Edit.** `Ctrl+/` switches between reading and editing. Format with the usual shortcuts (`Ctrl+B`, `Ctrl+I`, `Ctrl+Shift+K`…) or with the small panel that appears above selected text.
 - **Save.** `Ctrl+S`. Until you save, a `•` shows in the title, and a recovery draft is already stored in a safe place: if the program or the computer shuts down, Plain offers to restore your text on the next launch.
 - **Settings.** `Ctrl+,` opens theme, font size, column width, line numbers, and a few more. Changes apply immediately.
-- **Everything else** lives in the `file · edit · view · help` menu and in the command palette, `Ctrl+Shift+P`. The full list of keyboard shortcuts is under `help → shortcuts`, or press `F1`.
+- **Everything else** lives in the `file · edit · view · help` menu and in the command palette, `Ctrl+Shift+P`.
 
 ## Keyboard shortcuts
 
-The complete list is inside the app: `help → shortcuts` or `F1`. Shortcuts work in any keyboard layout, so `Ctrl+B` is bold even when the layout is Cyrillic.
+The complete list is inside the app: `help → shortcuts` or `F1`. On a Mac, `⌘` takes the place of `Ctrl`; the few combinations macOS reserves are remapped and listed there too. Shortcuts work in any keyboard layout, so `Ctrl+B` is bold even when the layout is Cyrillic.
 
 ## Where your data lives
 
@@ -85,6 +81,6 @@ npm run pack          # release build, produces dist-win\Plain-0.2.0-win-x64.zip
 
 Checks: `npm run build`, `npx vitest run`, and `cargo test` inside `src-tauri`. The manual checklist used before a release is in `CHECKLIST.md`.
 
-The released macOS build comes from CI (`.github/workflows/macos.yml`, on a `v*` tag or by hand): it runs the same three checks on `macos-latest` and attaches a universal `.dmg` to the release. The author has no Mac, so it cannot be cross-checked from Windows: one of Tauri's macOS dependencies compiles a C shim and needs an Apple toolchain.
+The released macOS build comes from CI (`.github/workflows/macos.yml`, on a `v*` tag or by hand): the same three checks on `macos-latest`, then a universal `.dmg` attached to the release.
 
 Stack: Tauri 2, React, CodeMirror 6, unified (remark and rehype), Shiki, KaTeX, Mermaid. Rust handles the file system, folder watching, and search.
