@@ -78,7 +78,6 @@ npm run tauri dev     # development build with live reload
 npm run pack          # release build, produces dist-win\Plain-0.2.1-win-x64.zip
 ```
 
-
 Checks: `npm run build`, `npx vitest run`, and `cargo test` inside `src-tauri`. The manual checklist used before a release is in `CHECKLIST.md`.
 
 The released macOS build comes from CI (`.github/workflows/macos.yml`, on a `v*` tag or by hand): the same three checks on `macos-latest`, then a universal `.dmg` attached to the release.
