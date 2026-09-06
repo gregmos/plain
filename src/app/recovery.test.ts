@@ -53,6 +53,7 @@ function fileInfo(over: Partial<Record<string, unknown>> = {}) {
     size: 8,
     readOnly: false,
     decodeErrors: false,
+    hardLinks: 1,
     ...over,
   };
 }
@@ -69,6 +70,7 @@ function draft(over: Partial<Record<string, unknown>> = {}) {
     eol: "lf",
     finalNewline: true,
     decodeErrors: false,
+    hardLinks: 1,
     caret: null,
     savedAt: Date.now(),
     ...over,

@@ -77,6 +77,92 @@ pub fn data_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> PathBuf {
     pick_data_dir(beside_exe().as_deref(), &app_data)
 }
 
+/* -------------------------------------------- the macOS application menu */
+
+/// The id our own Quit carries, so the handler can tell it from the
+/// predefined items around it.
+#[cfg(target_os = "macos")]
+const QUIT_ID: &str = "plain-quit";
+
+/// The event the front end answers by running the ordinary close-everything
+/// scenario, dialog and all.
+#[cfg(target_os = "macos")]
+const QUIT_REQUESTED: &str = "plain:quit-requested";
+
+/// macOS puts an application menu in the bar whether we ask for one or not,
+/// and the default it builds owns `⌘Q` through native `terminate:` — which
+/// closes the app without the unsaved-changes question §8 promises. So the
+/// menu is ours: predefined items where they behave, and our own Quit
+/// (review #1).
+///
+/// `Close Window` is deliberately absent: `⌘W` closes the open *document*,
+/// which is the front end's business (review #5).
+#[cfg(target_os = "macos")]
+fn build_app_menu<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<tauri::menu::Menu<R>> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+
+    let quit = MenuItem::with_id(app, QUIT_ID, "Quit Plain", true, Some("CmdOrCtrl+Q"))?;
+    let application = Submenu::with_items(
+        app,
+        "Plain",
+        true,
+        &[
+            &PredefinedMenuItem::about(app, None, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::services(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, None)?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::show_all(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &quit,
+        ],
+    )?;
+
+    // WKWebView needs these to route ⌘C/⌘V at all; our own edit menu in the
+    // window cannot stand in for them.
+    let edit = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
+
+    let window = Submenu::with_items(
+        app,
+        "Window",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::maximize(app, None)?,
+        ],
+    )?;
+
+    Menu::with_items(app, &[&application, &edit, &window])
+}
+
+/// Called by the front end once every document has been dealt with.
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
+/// WKWebView's UI delegate does not answer JavaScript `window.print()`, so on
+/// macOS the call returns quietly and no dialog appears. The native one does
+/// show it (review #9).
+#[tauri::command]
+fn print_page(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.print().map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 fn data_path(app: tauri::AppHandle) -> String {
     data_dir(&app).to_string_lossy().into_owned()
@@ -231,6 +317,18 @@ pub fn run() {
             if let Some(scope) = app.handle().try_fs_scope() {
                 let _ = scope.allow_directory(data_dir(app.handle()), true);
             }
+            // Ours, not the default one: `⌘Q` has to go through the same
+            // question every other way of closing does (review #1).
+            #[cfg(target_os = "macos")]
+            {
+                let menu = build_app_menu(app.handle())?;
+                menu.set_as_app_menu()?;
+                app.handle().on_menu_event(|handle, event| {
+                    if event.id() == QUIT_ID {
+                        let _ = handle.emit(QUIT_REQUESTED, ());
+                    }
+                });
+            }
             // Snapshots older than thirty days go at startup (spec §2a); the
             // front end never has to think about it.
             let handle = app.handle().clone();
@@ -245,6 +343,8 @@ pub fn run() {
             assoc::unregister_file_association,
             assoc::file_association_registered,
             data_path,
+            exit_app,
+            print_page,
             fs::read_file,
             fs::canonical_path,
             fs::write_file_atomic,
@@ -268,6 +368,15 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Plain")
         .run(|_app, _event| {
+            // The Dock's Quit, and anything else that asks the app to go:
+            // held back and handed to the same scenario as `⌘Q` (review #1).
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = &_event {
+                if code.is_none() {
+                    api.prevent_exit();
+                    let _ = _app.emit(QUIT_REQUESTED, ());
+                }
+            }
             // Finder does not pass a path in argv: it sends the app an Apple
             // Event, which Tauri turns into this (spec §13a). Same queue the
             // command line uses, same nudge to the front end.

@@ -13,6 +13,7 @@ import { countWords } from "../read/words";
 import { serialize } from "./eol";
 import { inTauri } from "./env";
 import { docFields, fsError, hashFile, readFile, writeTextAtomic } from "./fs";
+import { isMac } from "./platform";
 import { basename, dirname, pathKey } from "./paths";
 import { reloadFromDisk } from "./save";
 import { serializeSettings, settingsPath } from "./settings";
@@ -52,6 +53,11 @@ export async function openPaths(paths: string[]): Promise<boolean> {
       // Bytes the encoding could not read are showing as `�`; saying so
       // now is what makes the question at save time make sense (spec §8).
       if (fields.decodeErrors) useStore.getState().setNote("decoded with errors");
+      // A save replaces one name with a new inode; the other names keep the
+      // text that is there now (review #13).
+      else if (info.hardLinks > 1) {
+        useStore.getState().setMessage("hard-linked — other names keep the old text");
+      }
       opened = true;
     } catch (error) {
       const failure = fsError(error);
@@ -582,16 +588,29 @@ export async function exportPdf(): Promise<void> {
     await afterRender();
   }
 
+  // `afterprint` is the tidy way back, but WKWebView's native print sheet
+  // does not always fire it, so a timer backs it up (review #9).
+  let restored = false;
   const restore = () => {
+    if (restored) return;
+    restored = true;
     window.removeEventListener("afterprint", restore);
     if (was !== "read") useStore.getState().setMode(was);
   };
   window.addEventListener("afterprint", restore);
+  const backstop = setTimeout(restore, 60_000);
 
   try {
-    window.print();
+    if (isMac()) {
+      // WKWebView answers `window.print()` with nothing at all — no dialog,
+      // no error — so macOS asks the webview itself (review #9).
+      await invoke("print_page");
+    } else {
+      window.print();
+    }
   } catch {
     store.setMessage("couldn't open the print dialog");
+    clearTimeout(backstop);
     restore();
   }
 }

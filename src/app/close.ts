@@ -2,6 +2,8 @@
 // one explicit answer, and the answer has to still be true when the buffer
 // is actually thrown away (spec §8).
 
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { dropBuffer, flushActiveEditor, isDirty } from "../editor";
 import { draftsSettled, dropDraft } from "./drafts";
@@ -119,29 +121,53 @@ export function closeActive(): void {
   if (activeId) closeDocs([activeId]);
 }
 
+/**
+ * Everything that ends the app goes through here: the window's X, `Alt+F4`,
+ * and on macOS `⌘Q` and the Dock's Quit — Rust holds those back and asks for
+ * this instead, because native `terminate:` would take the unsaved text with
+ * it (review #1).
+ */
+function leave(finish: () => Promise<void>, leaving: { yes: boolean }): void {
+  if (leaving.yes) return;
+  const ids = useStore.getState().docs.map((d) => d.id);
+  let session = toSession();
+  closeDocs(ids, {
+    // Taken after the saves — a Save As at the door belongs in the next
+    // session — and before the documents go, since closing them is what
+    // empties the open list (spec §6, §8).
+    ready: () => {
+      flushActiveEditor();
+      session = toSession();
+    },
+    done: () => {
+      leaving.yes = true;
+      void Promise.all([writeSession(session), flushSettings()]).then(finish);
+    },
+  });
+}
+
 /** The window's X and Alt+F4 go through the same one question. */
 export function installCloseGuard(): () => void {
   if (!inTauri) return () => undefined;
-  let leaving = false;
+  const leaving = { yes: false };
   const window = getCurrentWindow();
+
   const unlisten = window.onCloseRequested((event) => {
-    if (leaving) return;
+    if (leaving.yes) return;
     event.preventDefault();
-    const ids = useStore.getState().docs.map((d) => d.id);
-    let session = toSession();
-    closeDocs(ids, {
-      // Taken after the saves — a Save As at the door belongs in the next
-      // session — and before the documents go, since closing them is what
-      // empties the open list (spec §6, §8).
-      ready: () => {
-        flushActiveEditor();
-        session = toSession();
-      },
-      done: () => {
-        leaving = true;
-        void Promise.all([writeSession(session), flushSettings()]).then(() => window.destroy());
-      },
-    });
+    leave(async () => window.destroy(), leaving);
   });
-  return () => void unlisten.then((off) => off());
+
+  // `⌘Q`, the Dock's Quit and anything else macOS routes to `terminate:`.
+  // Rust prevented the exit and asked; the app goes when we say so.
+  const unlistenQuit = listen("plain:quit-requested", () => {
+    leave(async () => {
+      await invoke("exit_app").catch(() => undefined);
+    }, leaving);
+  });
+
+  return () => {
+    void unlisten.then((off) => off());
+    void unlistenQuit.then((off) => off());
+  };
 }

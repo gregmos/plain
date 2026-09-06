@@ -34,6 +34,11 @@ ignore = "0.4.23"
 regex = "1.11.1"
 rayon = "1.11.0"
 
+# Finder tags and the quarantine flag live in extended attributes; a save
+# that dropped them would quietly change what the file is (review #3).
+[target.'cfg(unix)'.dependencies]
+xattr = "1"
+
 # ReplaceFileW and the HKCU file association are Windows and nothing else;
 # on macOS the atomic write is `rename` and the association is in the bundle
 # (spec §13a).

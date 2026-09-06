@@ -5,8 +5,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Command } from "cmdk";
 import { openInEdit, openLibraryPath, openPaths } from "../app/commands";
-import { chordText } from "../app/chords";
+import { chordText, matchesChord } from "../app/chords";
 import { basename, dirname } from "../app/paths";
+import { isMac } from "../app/platform";
 import { availableCommands, type Command as AppCommand } from "../app/registry";
 import { useStore } from "../app/store";
 import { pieces, rank } from "../library/fuzzy";
@@ -14,6 +15,13 @@ import { files } from "../library/tree";
 import "./library.css";
 
 const RECENT = 8;
+
+/**
+ * `ctrl ↵` on Windows, `⌘↩` on macOS. The key keeps the glyph the mockup
+ * uses — its neighbour in the footer is `↵ open` — so only the modifier is
+ * asked of `chordText`, which spells names out on Windows.
+ */
+const OPEN_IN_EDIT = isMac() ? chordText("Ctrl+Enter") : "ctrl ↵";
 
 interface Entry {
   key: string;
@@ -59,7 +67,7 @@ export function QuickSearch() {
   const [query, setQuery] = useState("");
   const modal = useRef<HTMLDivElement>(null);
   // cmdk calls `onSelect` without the event, so the modifier is read here.
-  const withCtrl = useRef(false);
+  const withPrimary = useRef(false);
 
   useEffect(() => {
     setQuery(open?.seed ?? "");
@@ -153,7 +161,18 @@ export function QuickSearch() {
           close();
           return;
         }
-        if (event.key === "Enter") withCtrl.current = event.ctrlKey;
+        if (event.key === "Enter") {
+          // `Ctrl` in a chord is the platform's primary modifier, which is
+          // ⌘ on macOS — chords.ts is the one place that knows. The code is
+          // forced because the numpad key reports `NumpadEnter`.
+          withPrimary.current = matchesChord("Ctrl+Enter", {
+            code: "Enter",
+            ctrlKey: event.ctrlKey,
+            shiftKey: event.shiftKey,
+            altKey: event.altKey,
+            metaKey: event.metaKey,
+          });
+        }
       }}
     >
       <div className="qs-field">
@@ -182,8 +201,8 @@ export function QuickSearch() {
                   value={entry.key}
                   className="qs-item"
                   onSelect={() => {
-                    const inEdit = withCtrl.current;
-                    withCtrl.current = false;
+                    const inEdit = withPrimary.current;
+                    withPrimary.current = false;
                     entry.run(inEdit);
                   }}
                 >
@@ -205,7 +224,7 @@ export function QuickSearch() {
       <div className="qs-footer">
         <span>↑↓ move</span>
         <span>↵ open</span>
-        <span>ctrl ↵ open in edit</span>
+        <span>{OPEN_IN_EDIT} open in edit</span>
       </div>
     </Command>
   );

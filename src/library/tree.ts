@@ -4,6 +4,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { inTauri } from "../app/env";
+import { pathKey } from "../app/paths";
 import { useStore, type TreeNode } from "../app/store";
 import { TREE_CHANGED } from "../app/watcher";
 
@@ -47,10 +48,11 @@ export function files(nodes: TreeNode[]): TreeNode[] {
 
 /** Finds a node by its absolute path; used to keep the selection alive. */
 export function nodeAt(nodes: TreeNode[], path: string): TreeNode | null {
-  const key = path.toLowerCase();
+  // Case folding is a Windows rule, not a universal one (review #2).
+  const key = pathKey(path);
   const walk = (list: TreeNode[]): TreeNode | null => {
     for (const node of list) {
-      if (node.path.toLowerCase() === key) return node;
+      if (pathKey(node.path) === key) return node;
       const found = node.dir ? walk(node.children) : null;
       if (found) return found;
     }

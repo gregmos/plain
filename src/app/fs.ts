@@ -22,6 +22,8 @@ export interface FileInfo {
   readOnly: boolean;
   /** Bytes the encoding could not decode became replacement characters. */
   decodeErrors: boolean;
+  /** More than one name points at these bytes (unix; review #13). */
+  hardLinks: number;
 }
 
 export interface WriteRequest {

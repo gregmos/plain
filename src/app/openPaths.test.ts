@@ -29,6 +29,7 @@ vi.mock("./fs", async (importOriginal) => {
         size: text.length,
         readOnly: false,
         decodeErrors: false,
+    hardLinks: 1,
       };
     },
   };

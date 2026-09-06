@@ -4,8 +4,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { chordText, matchesChord, parseChord } from "./chords";
 import { isMac, primaryModifierLabel, setMacForTests } from "./platform";
+import { pathKey, samePath } from "./paths";
 import { applyMacChords, command, macOverrides } from "./registry";
-import { defaultEol } from "./settings";
+import { defaultEol, defaultSettings, parseSettings } from "./settings";
 
 // Back to the suite-wide default, not to detection: the next test must not
 // depend on which machine is running it.
@@ -122,5 +123,95 @@ describe("macOverrides", () => {
     // application must not have fired.
     expect(command("nav.back")?.chord).toBe("Alt+Left");
     expect(command("view.fullscreen")?.chord).toBe("F11");
+  });
+});
+
+describe("path identity follows the platform (review #2)", () => {
+  it("treats two cases as two files on macOS", () => {
+    setMacForTests(true);
+    expect(pathKey("/notes/A.md")).not.toBe(pathKey("/notes/a.md"));
+    expect(samePath("/notes/A.md", "/notes/a.md")).toBe(false);
+  });
+
+  it("treats them as one file on Windows, either separator", () => {
+    setMacForTests(false);
+    expect(samePath("C:\\notes\\A.md", "C:/notes/a.md")).toBe(true);
+  });
+
+  it("keeps a backslash in a macOS file name instead of folding it", () => {
+    setMacForTests(true);
+    // `a\b.md` is one legal name there, not a folder and a file.
+    expect(pathKey("/notes/a\\b.md")).toBe("/notes/a\\b.md");
+    expect(samePath("/notes/a\\b.md", "/notes/a/b.md")).toBe(false);
+  });
+
+  it("still drops a trailing slash on both", () => {
+    setMacForTests(true);
+    expect(pathKey("/notes/")).toBe("/notes");
+    expect(pathKey("/")).toBe("/");
+    setMacForTests(false);
+    expect(pathKey("C:/notes/")).toBe("c:/notes");
+  });
+});
+
+describe("chords the native menu or the system would steal", () => {
+  it("moves replace off ⌘H, which is Hide", () => {
+    expect(macOverrides["nav.replace"]).toBe("Ctrl+Alt+F");
+    setMacForTests(true);
+    expect(chordText("Ctrl+Alt+F")).toBe("⌥⌘F");
+  });
+
+  it("drops the focus alias, because replace now owns that chord", () => {
+    const list = [
+      { id: "view.focus", title: "focus", chord: "F8", chords: ["Ctrl+Alt+F"], run: () => {} },
+    ];
+    applyMacChords(list);
+    expect(list[0]?.chord).toBe("F8");
+    expect(list[0]?.chords).toBeUndefined();
+  });
+
+  it("uses the literal control key for document switching", () => {
+    expect(macOverrides["nav.nextDoc"]).toBe("Control+Tab");
+    expect(macOverrides["nav.previousDoc"]).toBe("Control+Shift+Tab");
+    setMacForTests(true);
+    // ⌃⇥, not ⌘⇥ — the latter is the application switcher.
+    expect(parseChord("Control+Tab")).toMatchObject({ ctrl: true, meta: false, code: "Tab" });
+  });
+
+  it("gives zoom real keys on macOS, where the webview has none", () => {
+    const list = [
+      { id: "view.zoomIn", title: "zoom in", hint: "Ctrl+=", run: () => {} },
+      { id: "view.zoomOut", title: "zoom out", hint: "Ctrl+-", run: () => {} },
+      { id: "view.zoomReset", title: "reset zoom", hint: "Ctrl+0", run: () => {} },
+    ];
+    applyMacChords(list);
+    expect(list.map((c) => (c as { chord?: string }).chord)).toEqual([
+      "Ctrl+=",
+      "Ctrl+-",
+      "Ctrl+0",
+    ]);
+    // On Windows they stay hints, so `bindings()` leaves them to WebView2.
+    expect(command("view.zoomIn")?.chord).toBeUndefined();
+    expect(command("view.zoomIn")?.hint).toBe("Ctrl+=");
+  });
+});
+
+describe("the line ending a new file gets (review #8)", () => {
+  it("comes from the platform when there is no settings.json", () => {
+    setMacForTests(true);
+    expect(defaultSettings().files.newFileEol).toBe("lf");
+    // The empty-file and missing-file paths hand out the same thing.
+    expect(parseSettings("").settings.files.newFileEol).toBe("lf");
+    expect(parseSettings("{").settings.files.newFileEol).toBe("lf");
+    setMacForTests(false);
+    expect(defaultSettings().files.newFileEol).toBe("crlf");
+    expect(parseSettings("").settings.files.newFileEol).toBe("crlf");
+  });
+
+  it("keeps an explicit choice, whatever the platform", () => {
+    setMacForTests(true);
+    expect(parseSettings('{"files":{"newFileEol":"crlf"}}').settings.files.newFileEol).toBe("crlf");
+    setMacForTests(false);
+    expect(parseSettings('{"files":{"newFileEol":"lf"}}').settings.files.newFileEol).toBe("lf");
   });
 });

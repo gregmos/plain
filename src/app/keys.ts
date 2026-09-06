@@ -5,6 +5,7 @@
 
 import { tinykeys } from "tinykeys";
 import { chordToPattern, matchesChord } from "./chords";
+import { isMac } from "./platform";
 import { commands } from "./registry";
 
 /**
@@ -25,6 +26,14 @@ const SWALLOW = [
   "F1",
 ];
 
+/**
+ * ⌘H belongs to Hide on macOS and replace has moved off it (review #5), so
+ * there is nothing of ours to protect there any more.
+ */
+function swallowed(): string[] {
+  return isMac() ? SWALLOW.filter((chord) => chord !== "Ctrl+H") : SWALLOW;
+}
+
 /** chord -> action, straight out of the registry. */
 export function bindings(): Record<string, () => void> {
   const map: Record<string, () => void> = {};
@@ -38,7 +47,7 @@ export function bindings(): Record<string, () => void> {
 
 export function installKeys(): () => void {
   const swallow = (event: KeyboardEvent) => {
-    if (SWALLOW.some((chord) => matchesChord(chord, event))) event.preventDefault();
+    if (swallowed().some((chord) => matchesChord(chord, event))) event.preventDefault();
   };
   window.addEventListener("keydown", swallow, { capture: true });
 

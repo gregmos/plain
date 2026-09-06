@@ -4,6 +4,7 @@
 // it keeps joining, comparing and `convertFileSrc` free of separator noise.
 
 import { slug } from "github-slugger";
+import { pathKey } from "../app/paths";
 
 export type LinkTarget =
   | { kind: "external"; url: string }
@@ -45,10 +46,15 @@ export function normalizePath(path: string): string {
   return path.replace(/\\/g, "/").replace(/\/+$/, "");
 }
 
-/** Case-insensitive "is this file inside that folder" (Windows). */
+/**
+ * "Is this file inside that folder", by the rules of the platform: case is
+ * folded on Windows and not on macOS (review #2). Link *resolution* below
+ * stays case-insensitive on both — that is the semantics of a wikilink, not
+ * a claim about the file system.
+ */
 export function isInside(path: string, dir: string): boolean {
-  const a = normalizePath(path).toLowerCase();
-  const b = normalizePath(dir).toLowerCase();
+  const a = pathKey(path);
+  const b = pathKey(dir);
   return a === b || a.startsWith(b + "/");
 }
 

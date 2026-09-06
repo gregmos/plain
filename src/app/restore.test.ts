@@ -53,6 +53,7 @@ function fileInfo(text: string, hash: string): FileInfo {
     size: text.length,
     readOnly: false,
     decodeErrors: false,
+    hardLinks: 1,
   };
 }
 

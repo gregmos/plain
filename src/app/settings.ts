@@ -27,13 +27,22 @@ export function defaultEol(): Eol {
   return isMac() ? "lf" : "crlf";
 }
 
-export const DEFAULTS: Settings = {
-  appearance: { theme: "system", fontSize: 13.5, contentWidth: 560 },
-  read: { codeWrap: false },
-  edit: { lineNumbers: true, indentUnit: 2, spellcheck: true },
-  files: { newFileEol: "crlf", autosave: 0 },
-  library: { extensions: [".md", ".markdown"] },
-};
+/**
+ * A fresh copy of the defaults. A function, not a constant, because one of
+ * them follows the platform and the tests drive both (review #8).
+ */
+export function defaultSettings(): Settings {
+  return {
+    appearance: { theme: "system", fontSize: 13.5, contentWidth: 560 },
+    read: { codeWrap: false },
+    edit: { lineNumbers: true, indentUnit: 2, spellcheck: true },
+    files: { newFileEol: defaultEol(), autosave: 0 },
+    library: { extensions: [".md", ".markdown"] },
+  };
+}
+
+/** The shape, for anything that only needs a value to fall back to. */
+export const DEFAULTS: Settings = defaultSettings();
 
 /** `files.autosave` bounds, from spec §2a. 0 turns it off. */
 export const AUTOSAVE = { min: 0, max: 60, step: 1 };
@@ -87,7 +96,8 @@ export function normalizeSettings(raw: unknown): Settings {
       spellcheck: bool(edit["spellcheck"], DEFAULTS.edit.spellcheck),
     },
     files: {
-      newFileEol: oneOf(files["newFileEol"], ["crlf", "lf"] as const, DEFAULTS.files.newFileEol),
+      // An explicit choice in the file wins; the fallback follows the platform.
+      newFileEol: oneOf(files["newFileEol"], ["crlf", "lf"] as const, defaultEol()),
       // Seconds; whole ones only, and 0 means off (spec §2a).
       autosave: Math.round(
         num(files["autosave"], AUTOSAVE.min, AUTOSAVE.max, DEFAULTS.files.autosave),
@@ -104,28 +114,28 @@ export interface ParsedSettings {
 
 /** Parses the file text. Unparseable JSON -> defaults + invalid flag. */
 export function parseSettings(text: string): ParsedSettings {
-  if (text.trim() === "") return { settings: DEFAULTS, invalid: false };
+  if (text.trim() === "") return { settings: defaultSettings(), invalid: false };
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch {
-    return { settings: DEFAULTS, invalid: true };
+    return { settings: defaultSettings(), invalid: true };
   }
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    return { settings: DEFAULTS, invalid: true };
+    return { settings: defaultSettings(), invalid: true };
   }
   return { settings: normalizeSettings(raw), invalid: false };
 }
 
 /** Reads settings.json from the app data dir. Missing file is not an error. */
 export async function loadSettings(): Promise<ParsedSettings> {
-  if (!inTauri) return { settings: DEFAULTS, invalid: false };
+  if (!inTauri) return { settings: defaultSettings(), invalid: false };
   try {
     const file = await settingsPath();
-    if (!(await exists(file))) return { settings: DEFAULTS, invalid: false };
+    if (!(await exists(file))) return { settings: defaultSettings(), invalid: false };
     return parseSettings(await readTextFile(file));
   } catch {
-    return { settings: DEFAULTS, invalid: true };
+    return { settings: defaultSettings(), invalid: true };
   }
 }
 

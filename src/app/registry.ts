@@ -326,30 +326,51 @@ export const commands: Command[] = [
 ];
 
 /**
- * The only chords macOS spells differently (spec §13a). Everything else is
- * the same string, because `Ctrl` already means ⌘ there (chords.ts).
+ * The chords macOS spells differently (spec §13a, review #5–#7). Everything
+ * else is one string on both platforms, because `Ctrl` already means ⌘ there
+ * (chords.ts).
  *
- * | id                | windows       | macOS   | why                        |
- * |-------------------|---------------|---------|----------------------------|
- * | nav.back          | Alt+Left      | ⌘⌥←     | ⌥←/→ move by word on macOS |
- * | nav.forward       | Alt+Right     | ⌘⌥→     | and ⌘[/⌘] is the editor's  |
- * | view.fullscreen   | F11           | ⌃⌘F     | the system chord           |
+ * | id              | windows        | macOS | why                             |
+ * |-----------------|----------------|-------|---------------------------------|
+ * | nav.back        | Alt+Left       | ⌥⌘←   | ⌥←/→ move by word on macOS      |
+ * | nav.forward     | Alt+Right      | ⌥⌘→   | and ⌘[/⌘] belong to the editor  |
+ * | view.fullscreen | F11            | ⌃⌘F   | the system chord                |
+ * | nav.replace     | Ctrl+H         | ⌥⌘F   | ⌘H is Hide, in the native menu  |
+ * | nav.nextDoc     | Ctrl+Tab       | ⌃⇥    | ⌘⇥ switches applications        |
+ * | nav.previousDoc | Ctrl+Shift+Tab | ⌃⇧⇥   | same                            |
+ * | view.zoomIn     | (hint)         | ⌘=    | WKWebView has no zoom keys of   |
+ * | view.zoomOut    | (hint)         | ⌘-    | its own; WebView2 does, so on   |
+ * | view.zoomReset  | (hint)         | ⌘0    | Windows these stay hints        |
  *
- * ⌘[ / ⌘] stay with the editor'''s indent, the way VS Code has them: indenting
- * is a per-keystroke thing and history is not. Both would also collide —
- * the editor keymap and the app layer would each fire once.
+ * ⌘[ / ⌘] stay with the editor's indent, the way VS Code has them: indenting
+ * is a per-keystroke thing and history is not. Both would also collide — the
+ * editor keymap and the app layer would each fire once.
  */
 export const macOverrides: Record<string, string> = {
   "nav.back": "Ctrl+Alt+Left",
   "nav.forward": "Ctrl+Alt+Right",
   "view.fullscreen": "Control+Cmd+F",
+  "nav.replace": "Ctrl+Alt+F",
+  "nav.nextDoc": "Control+Tab",
+  "nav.previousDoc": "Control+Shift+Tab",
+  "view.zoomIn": "Ctrl+=",
+  "view.zoomOut": "Ctrl+-",
+  "view.zoomReset": "Ctrl+0",
 };
+
+/**
+ * Commands whose extra chords are dropped on macOS. Focus mode answers to
+ * `Ctrl+Alt+F` as well as `F8` on Windows, and that is Replace's chord here;
+ * `F8` alone is enough, and it is not a system key on macOS.
+ */
+export const macDropsAliases = new Set(["view.focus"]);
 
 /** Exported so the table can be tested without re-importing this module. */
 export function applyMacChords(list: Command[]): void {
   for (const command of list) {
     const override = macOverrides[command.id];
     if (override) command.chord = override;
+    if (macDropsAliases.has(command.id)) delete command.chords;
   }
 }
 

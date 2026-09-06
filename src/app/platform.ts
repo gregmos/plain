@@ -25,6 +25,14 @@ export function isMac(): boolean {
 }
 
 /**
+ * The app ships for Windows and macOS only, so this is the complement of
+ * `isMac()` — which also means the test pin controls both (vitest.setup.ts).
+ */
+export function isWindows(): boolean {
+  return !isMac();
+}
+
+/**
  * What the primary modifier is called here. Chords are written with `Ctrl`
  * everywhere (spec §13a); on macOS that key is ⌘.
  */

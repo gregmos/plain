@@ -86,6 +86,9 @@ pub struct FileInfo {
     mtime_ms: f64,
     size: u64,
     read_only: bool,
+    /// Names pointing at these bytes; more than one and a save leaves the
+    /// others behind (review #13).
+    hard_links: u64,
     /// Bytes that the chosen encoding could not decode became replacement
     /// characters. Saving over the original would make that permanent, so
     /// the front end asks first (spec §8).
@@ -237,6 +240,29 @@ pub fn canonical_path(path: String) -> String {
     canonical(Path::new(&path)).to_string_lossy().into_owned()
 }
 
+/// The mode bits say who *may* write; whether this process actually can is
+/// another question — ACLs, ownership and a read-only mount all have a say.
+/// Opening for append answers it without writing a byte (review #12).
+fn read_only(path: &Path, meta: &fs::Metadata) -> bool {
+    if meta.permissions().readonly() {
+        return true;
+    }
+    fs::OpenOptions::new().append(true).open(path).is_err()
+}
+
+/// More than one name points at these bytes. A save replaces one name with a
+/// new inode, so the others keep the old text — worth saying out loud, and
+/// not something an atomic replacement can avoid (review #13).
+#[cfg(unix)]
+fn hard_links(meta: &fs::Metadata) -> u64 {
+    std::os::unix::fs::MetadataExt::nlink(meta)
+}
+
+#[cfg(not(unix))]
+fn hard_links(_meta: &fs::Metadata) -> u64 {
+    1
+}
+
 fn mtime_ms(meta: &fs::Metadata) -> f64 {
     meta.modified()
         .ok()
@@ -264,7 +290,8 @@ pub fn read_info(path: &Path, forced: Option<&str>) -> FsResult<FileInfo> {
         hash: blake3::hash(&bytes).to_hex().to_string(),
         mtime_ms: mtime_ms(&meta),
         size: meta.len(),
-        read_only: meta.permissions().readonly(),
+        read_only: read_only(path, &meta),
+        hard_links: hard_links(&meta),
         text: text.into_owned(),
     })
 }
@@ -372,27 +399,75 @@ fn recover_replacement(target: &Path, temp: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Finder tags, `com.apple.quarantine` and anything else the user or the
+/// system hung on the file. Best effort by nature — a volume may not support
+/// them at all — but losing them silently would change what the file is
+/// (review #3).
+#[cfg(unix)]
+fn carry_xattrs(from: &Path, to: &Path) {
+    let Ok(names) = xattr::list(from) else { return };
+    for name in names {
+        if let Ok(Some(value)) = xattr::get(from, &name) {
+            let _ = xattr::set(to, &name, &value);
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn carry_xattrs(_from: &Path, _to: &Path) {}
+
 /// POSIX `rename` is atomic and replaces whatever is there, so one call
-/// covers both cases. The mode has to be carried over by hand: a temp file is
-/// created 0600 and the file being replaced may be more permissive (§13a).
+/// covers both cases. What it does not carry is the mode: a temp file is
+/// created 0600 and the file being replaced may be anything else. That is
+/// not optional — a save must not widen or narrow who can read a file — so a
+/// mode that cannot be carried stops the replacement (§13a, review #3).
 ///
 /// Compiled on every platform, not only the one that uses it, so a Windows
 /// build still type-checks it and a Windows test can still run it — there is
 /// no Mac here to find out on.
 fn commit_by_rename(target: &Path, temp: &Path, existed: bool) -> FsResult<()> {
     if existed {
-        if let Ok(meta) = fs::metadata(target) {
-            // Best effort: a read-only target would otherwise hand the copy
-            // permissions the original never had.
-            let _ = fs::set_permissions(temp, meta.permissions());
-        }
+        let meta = fs::metadata(target).map_err(|error| {
+            FsError::io(format!("can't read the permissions of the file: {error}"))
+        })?;
+        fs::set_permissions(temp, meta.permissions()).map_err(|error| {
+            FsError::io(format!("can't carry the permissions of the file over: {error}"))
+        })?;
+        carry_xattrs(target, temp);
     }
     fs::rename(temp, target).map_err(FsError::from)
 }
 
+/// The bytes were flushed before this; the directory entry that names them
+/// has not been. Without this a power cut can leave the rename undone even
+/// though the file it points at is whole (review #4). Failing here means the
+/// replacement already happened, so it is a warning and not a failed save.
+#[cfg(unix)]
+fn sync_dir(target: &Path) -> Option<String> {
+    let dir = target.parent()?;
+    match fs::File::open(dir).and_then(|handle| handle.sync_all()) {
+        Ok(()) => None,
+        Err(error) => Some(format!("saved, but the folder was not flushed: {error}")),
+    }
+}
+
+// Windows has no directory handle to flush, and `commit` there is
+// ReplaceFileW rather than a rename, so nothing calls this.
+#[cfg(all(not(unix), not(windows)))]
+fn sync_dir(_target: &Path) -> Option<String> {
+    None
+}
+
 #[cfg(not(windows))]
 pub fn commit(target: &Path, temp: &Path, existed: bool) -> FsResult<()> {
-    commit_by_rename(target, temp, existed)
+    commit_by_rename(target, temp, existed)?;
+    // Past this point the new text is in place; anything that goes wrong is
+    // reported without calling the save a failure, or a retry would conflict
+    // with our own bytes (review #4).
+    if let Some(warning) = sync_dir(target) {
+        eprintln!("plain: {warning}");
+    }
+    Ok(())
 }
 
 /// ReplaceFileW keeps the creation time and the attributes of the original;
@@ -519,7 +594,12 @@ fn write_written(request: &WriteRequest) -> FsResult<(String, Vec<u8>)> {
         return Err(error);
     }
 
-    commit(&path, &temp, existed)?;
+    if let Err(error) = commit(&path, &temp, existed) {
+        // Whatever went wrong, the staged file is not the document and must
+        // not be left lying next to it (review #4).
+        let _ = fs::remove_file(&temp);
+        return Err(error);
+    }
     let hash = blake3::hash(&bytes).to_hex().to_string();
     Ok((hash, bytes))
 }
@@ -1044,6 +1124,78 @@ mod tests {
         assert_eq!(fs::read(&target).unwrap(), b"second
 ");
         assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    /// §13a and review #3: a save must not change who can read the file. A
+    /// staged temp is 0600; the mode of the file being replaced has to win.
+    #[cfg(unix)]
+    #[test]
+    fn a_rename_commit_carries_the_mode_of_the_file_it_replaces() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("note.md");
+        fs::write(&target, b"first
+").unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o640)).unwrap();
+
+        let temp = stage(dir.path(), b"second
+").unwrap();
+        assert_ne!(
+            fs::metadata(&temp).unwrap().permissions().mode() & 0o777,
+            0o640,
+            "the staged file starts with its own mode"
+        );
+
+        commit_by_rename(&target, &temp, true).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"second
+");
+        assert_eq!(
+            fs::metadata(&target).unwrap().permissions().mode() & 0o777,
+            0o640,
+            "the group-readable mode did not survive the save"
+        );
+    }
+
+    /// A mode that cannot be carried stops the replacement rather than
+    /// quietly writing the file with the wrong one (review #3).
+    #[cfg(unix)]
+    #[test]
+    fn a_mode_that_cannot_be_read_stops_the_replacement() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("gone.md");
+        let temp = stage(dir.path(), b"new
+").unwrap();
+
+        // `existed` says there is a file to carry the mode from; there is not.
+        assert!(commit_by_rename(&target, &temp, true).is_err());
+        assert!(!target.exists(), "nothing was put in its place");
+    }
+
+    /// A file only its owner may write reads as read-only; one that opens for
+    /// append does not (review #12).
+    #[cfg(unix)]
+    #[test]
+    fn read_only_follows_what_can_actually_be_opened() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("note.md");
+        fs::write(&file, b"x").unwrap();
+
+        assert!(!read_info(&file, None).unwrap().read_only);
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o444)).unwrap();
+        assert!(read_info(&file, None).unwrap().read_only);
+        // Left writable so the temp dir can clean itself up.
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
+    }
+
+    #[test]
+    fn a_plain_file_has_one_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("note.md");
+        fs::write(&file, b"x").unwrap();
+        assert_eq!(read_info(&file, None).unwrap().hard_links, 1);
     }
 
     #[cfg(windows)]

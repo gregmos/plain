@@ -1,6 +1,8 @@
-// Windows paths, but separators are normalised both ways: dialogs return
-// backslashes, hand-written config may not.
+// Paths as the two platforms mean them. On Windows separators are normalised
+// both ways — dialogs return backslashes, hand-written config may not — and
+// case is folded; on macOS neither is safe to do (spec §13a).
 
+import { isWindows } from "./platform";
 import type { Doc } from "./store";
 
 export function basename(path: string): string {
@@ -21,7 +23,19 @@ export function dirname(path: string): string {
  * raw path from a dialog or a link still keys consistently with itself.
  */
 export function pathKey(path: string): string {
+  // macOS: APFS can be case-sensitive, so `A.md` and `a.md` are two files,
+  // and a backslash is a legal character in a name — folding either would
+  // hand two documents one buffer, one draft and one Save As (spec §13a).
+  if (!isWindows()) {
+    const trimmed = path.replace(/\/+$/, "");
+    return trimmed === "" ? "/" : trimmed;
+  }
   return path.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+}
+
+/** Whether two paths name the same file, by the rules of this platform. */
+export function samePath(a: string, b: string): boolean {
+  return pathKey(a) === pathKey(b);
 }
 
 function isUnder(path: string, root: string): boolean {
