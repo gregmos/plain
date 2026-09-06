@@ -35,6 +35,8 @@ jobs:
     env:
       # `secrets` is not allowed in a step's `if`, so the decision is made here once.
       SIGNED: ${{ secrets.APPLE_CERTIFICATE != '' }}
+    outputs:
+      signed: ${{ env.SIGNED }}
 
     steps:
       - uses: actions/checkout@v4
@@ -127,7 +129,10 @@ jobs:
 
   release:
     needs: build
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    # Only a signed dmg is attached from here. Without the secrets the dmg that
+    # ships comes from `plain-macos.yml` in gregmos/pii-shield-desktop, which
+    # signs with that repository's certificate; an ad-hoc one must not race it.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && needs.build.outputs.signed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
