@@ -484,6 +484,11 @@ fn tags_in(text: &str, pattern: &regex::Regex) -> Vec<String> {
                 continue;
             }
             let tag = found.get(1).expect("group 1").as_str().to_lowercase();
+            // `#12` in "issue #12" is a number, not a tag: a tag needs a letter
+            // somewhere (the same rule Obsidian applies).
+            if !tag.chars().any(char::is_alphabetic) {
+                continue;
+            }
             out.push(tag);
         }
     }
@@ -1107,6 +1112,18 @@ mod tests {
         )
         .unwrap();
         assert_eq!(tag_names(&tags(dir.path(), &md()).unwrap()), vec!["real"]);
+    }
+
+    /// `#12` in "issue #12" is a number; a tag needs a letter somewhere.
+    #[test]
+    fn a_bare_number_is_not_a_tag() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("a.md"),
+            "see issue #12 and #2024_ but #v2 and #2fa and #q3-2026 count\n",
+        )
+        .unwrap();
+        assert_eq!(tag_names(&tags(dir.path(), &md()).unwrap()), vec!["2fa", "q3-2026", "v2"]);
     }
 
     /// Review #13: an indented code block is code; an indented list is not.

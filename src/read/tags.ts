@@ -8,8 +8,12 @@ import { visit, SKIP } from "unist-util-visit";
 import type { Parent, Root, RootContent, Text } from "mdast";
 import { parseDocument } from "./headings";
 
-/** `#tag` at a word boundary; the boundary character is captured too. */
-const TAG = /(^|[\s(])#(\p{L}[\p{L}\d_-]*|[\d_][\p{L}\d_-]*)/gu;
+/**
+ * `#tag` at a word boundary; the boundary character is captured too. The tag
+ * needs a letter somewhere: `#12` in "issue #12" is a number, not a tag (the
+ * same rule Obsidian applies; the Rust side in `search.rs` agrees).
+ */
+const TAG = /(^|[\s(])#(?=[\d_-]*\p{L})([\p{L}\d_][\p{L}\d_-]*)/gu;
 
 /** Subtrees a tag cannot live in. */
 const CLOSED = new Set(["code", "inlineCode", "link", "linkReference", "definition", "heading"]);

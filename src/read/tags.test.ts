@@ -22,7 +22,11 @@ describe("tagsOf", () => {
   });
 
   it("accepts digits, underscores and dashes inside a tag", () => {
-    expect(tagsOf("#read-later #v0_1 #2026\n")).toEqual(["read-later", "v0_1", "2026"]);
+    expect(tagsOf("#read-later #v0_1 #2fa #q3-2026\n")).toEqual(["read-later", "v0_1", "2fa", "q3-2026"]);
+  });
+
+  it("does not take a bare number for a tag", () => {
+    expect(tagsOf("see issue #12, #2026 and #2024_ but #v2\n")).toEqual(["v2"]);
   });
 
   it("stops at punctuation", () => {
