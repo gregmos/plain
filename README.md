@@ -19,11 +19,25 @@ Double-click a `.md` file and you are reading. Make a change, and the file stays
 
 ## Installation
 
+Builds for both systems are on the [releases page](https://github.com/gregmos/plain/releases). Nothing else needs to be installed: no Node, no Rust, no separate WebView2 runtime.
+
+### Windows 11
+
 1. Unpack `Plain-0.2.0-win-x64.zip` into any folder, for example `C:\Program Files\Plain` or `%LOCALAPPDATA%\Programs\Plain`. It contains a single `plain.exe`; there is no installer.
 2. Run `plain.exe`. On first launch, Windows SmartScreen shows a blue "Windows protected your PC" dialog because the program is not code-signed. Click **More info → Run anyway**. Windows remembers the decision for that copy of the file; a new version may ask once more.
 3. To open `.md` files in Plain with a double-click: right-click any `.md` file → **Open with → Choose another app → Plain → Always**. Plain appears in that list after its first launch, but it never makes itself the default on its own.
 
-Nothing else needs to be installed: no Node, no Rust, no separate WebView2 runtime. Everything Plain needs already ships with Windows 11. If you move the folder later, just run the exe from its new location.
+If you move the folder later, just run the exe from its new location.
+
+### macOS 13+
+
+1. Download `Plain_0.2.0_universal.dmg`, open it, and drag Plain into Applications. One build runs on both Apple Silicon and Intel.
+2. The app is signed ad hoc, without a Developer ID or notarisation, so macOS refuses the first launch. On macOS 15 (Sequoia) and later: open it once, let the refusal appear, then go to **System Settings → Privacy & Security** and click **Open Anyway** next to Plain. On macOS 13 and 14: right-click the app in Applications and choose **Open**. Terminal alternative for either: `xattr -dr com.apple.quarantine /Applications/Plain.app`. After that it opens normally.
+3. To open `.md` files from Finder with a double-click: select any `.md` file, **Get Info → Open with → Plain → Change All**. The bundle offers itself for `.md` and `.markdown` from the first launch.
+
+On a Mac, shortcuts use `⌘` where this page says `Ctrl`: `⌘S` saves, `⌘O` opens, `⌘/` switches between reading and editing, `⌘,` opens settings, `⇧⌘P` is the command palette. A few differ where macOS already owns the combination: `⌥⌘←` / `⌥⌘→` go back and forward, `⌃⌘F` is fullscreen, `⌃Tab` cycles open files, `⌥⌘F` is find and replace, and `⌘=` / `⌘-` / `⌘0` zoom. `⌘Q` asks about unsaved changes before quitting. The full list is in the app under `help → shortcuts`.
+
+The macOS build is produced by GitHub Actions and has not yet been used on a real Mac by the author; if something looks wrong there, an issue with a screenshot is the fastest way to get it fixed.
 
 ## Using it
 
@@ -40,7 +54,7 @@ The complete list is inside the app: `help → shortcuts` or `F1`. Shortcuts wor
 
 ## Where your data lives
 
-In `%APPDATA%\Plain` (that is `C:\Users\<you>\AppData\Roaming\Plain`):
+On Windows in `%APPDATA%\Plain` (that is `C:\Users\<you>\AppData\Roaming\Plain`), on macOS in `~/Library/Application Support/Plain`:
 
 | File | Contents |
 |---|---|
@@ -51,17 +65,7 @@ In `%APPDATA%\Plain` (that is `C:\Users\<you>\AppData\Roaming\Plain`):
 
 Put a folder called `data` next to `plain.exe` and all four live in it instead — that is portable mode. On macOS the same four live in `~/Library/Application Support/Plain`; the app is a bundle, so there is no portable mode there.
 
-Plain keeps no indexes, caches, or hidden service files in your folders. The only things it writes there are the documents you save and, if you paste an image, the `assets/` folder next to the document.
-
-## macOS
-
-Download the `.dmg` from the releases page, open it, and drag Plain into Applications.
-
-The app is signed ad hoc, without a Developer ID or notarisation, so macOS will refuse the first launch. On macOS 15 (Sequoia) and later, open it once, let the refusal appear, then go to **System Settings → Privacy & Security** and click **Open Anyway** next to Plain. On macOS 13 and 14, right-click the app in Applications and choose **Open** instead. Terminal alternative for either: `xattr -dr com.apple.quarantine /Applications/Plain.app`. After that it opens normally.
-
-Shortcuts use `⌘` where this page says `Ctrl`: `⌘S` saves, `⌘O` opens, `⌘/` switches between reading and editing, `⌘,` opens settings, `⇧⌘P` is the command palette. A few differ where macOS already owns the combination: `⌥⌘←` / `⌥⌘→` go back and forward, `⌃⌘F` is fullscreen, `⌃Tab` cycles open files, `⌥⌘F` is find and replace, and `⌘=` / `⌘-` / `⌘0` zoom. The full list is in the app under `help → shortcuts`.
-
-Double-clicking a `.md` file in Finder opens it in Plain once you have chosen Plain in **Get Info → Open with**; the bundle offers itself for `.md` and `.markdown` from the first launch. Data lives in `~/Library/Application Support/Plain`; the portable `data\` folder is a Windows-only feature.
+On Windows, a `data\` folder next to `plain.exe` makes Plain keep all of this there instead (portable mode). Plain keeps no indexes, caches, or hidden service files in your folders. The only things it writes there are the documents you save and, if you paste an image, the `assets/` folder next to the document.
 
 ## How it treats your files
 
