@@ -22,24 +22,28 @@ export function ModeBar() {
         )}
         {crumbs && (
           <div className="crumbs">
-            <span className="crumb crumb-root">{crumbs.root}</span>
-            {/* The folders in between are one cell, and it is the one that
-                gives way first: `library / notes/pro… / тз.md`. */}
-            {crumbs.middle.length > 0 && (
-              <>
-                <span className="crumb-sep">/</span>
-                <span className="crumb crumb-middle" title={crumbs.middle.join(" / ")}>
-                  {crumbs.middle.join(" / ")}
-                </span>
-              </>
-            )}
+            {/* Everything in front of the file name is one shrinking group,
+                so the name cannot be the thing that gives way: the folders
+                collapse to `…` first, then the root, and the trailing `/`
+                goes with them rather than being left hanging. */}
+            <span className="crumb-lead">
+              <span className="crumb crumb-root" title={crumbs.root}>
+                {crumbs.root}
+              </span>
+              {crumbs.middle.length > 0 && (
+                <>
+                  <span className="crumb-sep">/</span>
+                  <span className="crumb crumb-middle" title={crumbs.middle.join(" / ")}>
+                    {crumbs.middle.join(" / ")}
+                  </span>
+                </>
+              )}
+              {crumbs.leaf !== null && <span className="crumb-sep">/</span>}
+            </span>
             {crumbs.leaf !== null && (
-              <>
-                <span className="crumb-sep">/</span>
-                <span className="crumb crumb-leaf" title={crumbs.leaf}>
-                  {crumbs.leaf}
-                </span>
-              </>
+              <span className="crumb crumb-leaf" title={crumbs.leaf}>
+                {crumbs.leaf}
+              </span>
             )}
             {doc?.dirty && <span className="dot">•</span>}
           </div>

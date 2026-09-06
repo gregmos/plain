@@ -65,25 +65,42 @@
   text-overflow: ellipsis;
 }
 
-/* The root and the file name keep their width; the folders between them are
-   the ones that give way. The shrink factors are what orders that: at 999
-   the middle absorbs the whole deficit before the leaf gives up a pixel, so
-   a narrow window reads `library / not… / тз.md` and only a very narrow one
-   starts on the file name. No measuring, no JavaScript. */
+/* The file name is the one crumb that must survive a narrow window, so it
+   is not in the shrinking group at all: everything before it — root, folders
+   and the trailing separator — is one box that gives its width up, and the
+   name keeps its own. Inside that box the folders go first (shrink 999)
+   and the root after them (shrink 1). No measuring, no JavaScript. */
+.crumb-lead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 0 999 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .crumb-root {
   color: var(--fg);
   font-weight: 600;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .crumb-middle {
   flex: 0 999 auto;
-  /* Not 0: a box with no width at all would render nothing, and the crumbs
-     would read `library /  / тз.md`. One character and a half is room for
-     the ellipsis, so the collapsed state says `library / … / тз.md`. */
-  min-width: 1.5ch;
+  /* Not 0: a box with no width would render nothing at all and the crumbs
+     would read `library /  / тз.md`. Two characters is the narrowest that
+     still reads as a truncation — `п…` — because `text-overflow` spends the
+     first character on the text and only then draws the ellipsis. */
+  min-width: 2ch;
 }
 
+/* Shrinks a thousand times more slowly than the group in front of it, so in
+   practice the group collapses first and the name keeps its width — and when
+   there is still not enough room after that, the name ends in an ellipsis
+   rather than being cut mid-character. A `max-width` percentage cannot do
+   this job: against a flex container sized by its own content the percentage
+   is cyclic, and the browser drops it. */
 .crumb-leaf {
   color: var(--fg);
   flex: 0 1 auto;

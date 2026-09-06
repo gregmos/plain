@@ -83,7 +83,7 @@ export function Library() {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
-      useStore.getState().setLibraryOpen(false);
+      useStore.getState().closeScreen();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -98,7 +98,7 @@ export function Library() {
   );
 
   const open = (row: Row) => {
-    useStore.getState().setLibraryOpen(false);
+    useStore.getState().closeScreen();
     void openPaths([row.path]);
   };
 
@@ -120,6 +120,9 @@ export function Library() {
           ))}
           <button className="library-new" onClick={() => newDoc()}>
             + new
+          </button>
+          <button className="link" onClick={() => useStore.getState().closeScreen()}>
+            close
           </button>
         </div>
       </div>

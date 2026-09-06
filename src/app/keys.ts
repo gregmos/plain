@@ -51,14 +51,10 @@ export function installKeys(): () => void {
   };
   window.addEventListener("keydown", swallow, { capture: true });
 
-  // WebView2's own menu is suppressed everywhere except the editor, where it
-  // is the only way to reach cut/copy/paste and the spelling suggestions
-  // Windows offers. Read has its own menu, which stops this event itself.
-  const noMenu = (event: MouseEvent) => {
-    const target = event.target as HTMLElement | null;
-    if (target?.closest(".cm-editor")) return;
-    event.preventDefault();
-  };
+  // WebView2's own menu is suppressed everywhere: read and the editor each
+  // have their own, in the app's own type, and both stop this event before
+  // it reaches here.
+  const noMenu = (event: MouseEvent) => event.preventDefault();
   window.addEventListener("contextmenu", noMenu);
 
   const map: Record<string, (event: KeyboardEvent) => void> = {};

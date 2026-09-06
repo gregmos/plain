@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type CSSProperties } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Banner } from "../ui/Banner";
 import { DocView } from "../ui/DocView";
@@ -9,6 +9,7 @@ import { Modal } from "../ui/Modal";
 import { ModeBar } from "../ui/ModeBar";
 import { QuickSearch } from "../ui/QuickSearch";
 import { Rail } from "../ui/Rail";
+import { RailResizer } from "../ui/Resizer";
 import { RecoveryScreen } from "../ui/Recovery";
 import { SettingsScreen } from "../ui/Settings";
 import { ShortcutsScreen } from "../ui/Shortcuts";
@@ -28,7 +29,7 @@ import { installLibraryCounts } from "../library/library";
 import { Library } from "../ui/Library";
 import { installAutosave } from "./save";
 import { installSession } from "./session";
-import { activeDoc, useStore } from "./store";
+import { activeDoc, useStore, type Comparison, type Screen } from "./store";
 import { watchSystemTheme } from "./theme";
 import { installWatcher } from "./watcher";
 
@@ -43,26 +44,49 @@ function escapeIsTaken(): boolean {
   return Boolean(
     store.dialog ||
       store.recovery ||
-      store.settingsOpen ||
-      store.shortcutsOpen ||
-      store.libraryOpen ||
-      store.history ||
-      store.comparison ||
+      // Every screen over the document answers `Esc` by closing.
+      store.screen !== null ||
       store.quickSearch !== null ||
-      store.folderSearch ||
       // The read find bar and CodeMirror's own panels close on `Esc` too.
       document.querySelector(".findbar, .cm-panel"),
   );
 }
 
+/**
+ * Exactly one screen, chosen by the one piece of state that says which. The
+ * data screens fall through to nothing if their data went before they did.
+ */
+function ScreenView({
+  screen,
+  history,
+  comparison,
+}: {
+  screen: Screen;
+  history: string | null;
+  comparison: Comparison | null;
+}) {
+  switch (screen) {
+    case "settings":
+      return <SettingsScreen />;
+    case "shortcuts":
+      return <ShortcutsScreen />;
+    case "folderSearch":
+      return <FolderSearch />;
+    case "library":
+      return <Library />;
+    case "comparison":
+      return comparison ? <DiffScreen comparison={comparison} /> : null;
+    case "history":
+      return history ? <HistoryScreen id={history} /> : null;
+  }
+}
+
 export function App() {
   const railCollapsed = useStore((s) => s.railCollapsed);
+  const railWidth = useStore((s) => s.railWidth);
   const banner = useStore((s) => s.banner);
   const recovery = useStore((s) => s.recovery);
-  const settingsOpen = useStore((s) => s.settingsOpen);
-  const shortcutsOpen = useStore((s) => s.shortcutsOpen);
-  const folderSearch = useStore((s) => s.folderSearch);
-  const libraryOpen = useStore((s) => s.libraryOpen);
+  const screen = useStore((s) => s.screen);
   const history = useStore((s) => s.history);
   const comparison = useStore((s) => s.comparison);
   const searching = useStore((s) => s.quickSearch !== null);
@@ -108,27 +132,27 @@ export function App() {
   }, [doc]);
 
   return (
-    <div className={"app" + (searching ? " is-searching" : "") + (focus ? " is-focus" : "")}>
+    <div
+      className={"app" + (searching ? " is-searching" : "") + (focus ? " is-focus" : "")}
+      // The dragged rail width lives here, so the rail and the strip that
+      // resizes it read the same number (spec §4).
+      style={{ "--rail-w": `${railWidth}px` } as CSSProperties}
+    >
       <MenuBar />
       <div className="app-body">
-        {!railCollapsed && <Rail />}
+        {!railCollapsed && (
+          <>
+            <Rail />
+            <RailResizer />
+          </>
+        )}
         <div className="main">
           <ModeBar />
           {banner && <Banner banner={banner} />}
           {recovery && recovery.length > 0 ? (
             <RecoveryScreen entries={recovery} />
-          ) : settingsOpen ? (
-            <SettingsScreen />
-          ) : shortcutsOpen ? (
-            <ShortcutsScreen />
-          ) : folderSearch ? (
-            <FolderSearch />
-          ) : libraryOpen ? (
-            <Library />
-          ) : comparison ? (
-            <DiffScreen comparison={comparison} />
-          ) : history ? (
-            <HistoryScreen id={history} />
+          ) : screen ? (
+            <ScreenView screen={screen} history={history} comparison={comparison} />
           ) : doc ? (
             <DocView doc={doc} />
           ) : (

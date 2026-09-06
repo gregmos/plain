@@ -13,7 +13,8 @@ import { countWords } from "../read/words";
 import { serialize } from "./eol";
 import { inTauri } from "./env";
 import { docFields, fsError, hashFile, readFile, writeTextAtomic } from "./fs";
-import { isMac } from "./platform";
+import { newFile } from "../library/ops";
+import { copyText, isMac } from "./platform";
 import { basename, dirname, pathKey } from "./paths";
 import { reloadFromDisk } from "./save";
 import { serializeSettings, settingsPath } from "./settings";
@@ -74,8 +75,9 @@ export async function openPaths(paths: string[]): Promise<boolean> {
   // The complaint was about a file that is no longer the one on screen.
   if (opened) {
     useStore.getState().dismissBanner("open-failed");
-    // You asked for a document; the library screen has served its purpose.
-    useStore.getState().setLibraryOpen(false);
+    // You asked for a document; whatever screen was over it has served its
+    // purpose — the rail, quick search and `recent` all come through here.
+    useStore.getState().closeScreen();
   }
   return opened;
 }
@@ -100,7 +102,9 @@ export function newDoc(): void {
   if (store.libraryPath) {
     store.setRailCollapsed(false);
     store.setRailView("files");
-    store.setTreeDraft({ parent: store.libraryPath, kind: "file" });
+    // The file is made and opened at once; the tree only asks for a name
+    // afterwards, over an open document (spec §6).
+    void newFile(store.libraryPath);
     return;
   }
   // Unique across runs as well as within one: a restored draft keeps the id
@@ -251,7 +255,7 @@ export async function copyPath(target?: string): Promise<void> {
   const path = target ?? activeDoc(store)?.path ?? store.treeSelected;
   if (!path) return;
   try {
-    await navigator.clipboard.writeText(path);
+    await copyText(path);
     store.setMessage("path copied");
   } catch {
     store.setMessage("couldn't copy the path");
@@ -266,11 +270,16 @@ export function openQuickSearch(seed = ""): void {
 /** `Ctrl+Shift+F` (spec §7). Needs a library; says so when there is none. */
 export function openFolderSearch(): void {
   const store = useStore.getState();
+  // The chord that opened it closes it again (spec §4).
+  if (store.screen === "folderSearch") {
+    store.closeScreen();
+    return;
+  }
   if (!store.libraryPath) {
     store.setMessage("no library — open a folder first");
     return;
   }
-  store.setFolderSearch(true);
+  store.openScreen("folderSearch");
 }
 
 /**
@@ -501,7 +510,7 @@ export async function copyPlainText(): Promise<void> {
     return;
   }
   try {
-    await navigator.clipboard.writeText(text);
+    await copyText(text);
     store.setMessage(`copied as plain text · ${countWords(text).toLocaleString("en-US")} words`);
   } catch {
     store.setMessage("couldn't copy");
@@ -558,21 +567,10 @@ export async function exportPdf(): Promise<void> {
   const doc = activeDoc(store);
   if (!doc) return;
 
-  // Settings, shortcuts, library, history, compare and folder search all take
-  // over the content area — any of them would be what got printed.
-  const covered =
-    store.settingsOpen ||
-    store.shortcutsOpen ||
-    store.libraryOpen ||
-    store.folderSearch ||
-    store.history !== null ||
-    store.comparison !== null;
-  store.setSettingsOpen(false);
-  store.setShortcutsOpen(false);
-  store.setLibraryOpen(false);
-  store.setFolderSearch(false);
-  store.setHistory(null);
-  store.setComparison(null);
+  // Every screen takes the content area over — any of them would be what
+  // got printed, so whichever is up has to go first.
+  const covered = store.screen !== null;
+  store.closeScreen();
 
   const was = doc.mode;
   if (was !== "read") {

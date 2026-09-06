@@ -295,6 +295,9 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_persisted_scope::init())
         .plugin(tauri_plugin_dialog::init())
+        // Copying goes through the plugin, not navigator.clipboard: the web API
+        // needs transient activation, which a big document outlives (review).
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(navigation_guard())
@@ -363,7 +366,8 @@ pub fn run() {
             search::backlinks,
             history::list_snapshots,
             history::snapshot_text,
-            history::delete_snapshot
+            history::delete_snapshot,
+            history::rename_history
         ])
         .build(tauri::generate_context!())
         .expect("error while building Plain")

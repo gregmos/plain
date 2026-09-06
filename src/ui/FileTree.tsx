@@ -6,8 +6,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { openLibrary, openPaths, revealInExplorer } from "../app/commands";
 import { pathKey } from "../app/paths";
-import { useStore, type TreeNode } from "../app/store";
-import { askDelete, createFile, createFolder, renameEntry, suggestedName } from "../library/ops";
+import { activeDoc, useStore, type TreeNode } from "../app/store";
+import { focusEditor } from "../editor";
+import { askDelete, createFolder, newFile, renameEntry, suggestedName } from "../library/ops";
 import { flatten, type Row } from "../library/tree";
 import "./library.css";
 
@@ -37,6 +38,9 @@ function NameField({
     const field = input.current;
     if (!field) return;
     field.focus();
+    // A row deep in the tree may be below the fold; the field is no use
+    // where it cannot be seen (review #5).
+    field.scrollIntoView({ block: "nearest" });
     // The extension is rarely what you want to retype.
     const dot = initial.lastIndexOf(".");
     field.setSelectionRange(0, dot > 0 ? dot : initial.length);
@@ -120,13 +124,24 @@ export function FileTree() {
 
   const openOf = (path: string) => docs.find((doc) => doc.path && pathKey(doc.path) === pathKey(path));
 
-  const startDraft = (parent: string, kind: "file" | "folder") => {
+  /** Only folders are named before they exist; a file is made first. */
+  const startDraft = (parent: string) => {
     const store = useStore.getState();
     // A folder you are adding to has to be open to show the field.
     const node = rows.find((row) => row.node.path === parent);
     if (node && store.collapsed.includes(node.node.rel)) store.toggleCollapsed(node.node.rel);
     store.setTreeRenaming(null);
-    store.setTreeDraft({ parent, kind });
+    store.setTreeDraft({ parent, kind: "folder" });
+  };
+
+  /**
+   * The rename field borrowed the focus from the open document; once it is
+   * done with it, whether by `Enter` or `Esc`, the text gets it back — but
+   * only when the row really is the document on screen (spec §6).
+   */
+  const backToEditor = (path: string) => {
+    const doc = activeDoc(useStore.getState());
+    if (doc?.path && pathKey(doc.path) === pathKey(path)) focusEditor();
   };
 
   const activate = (node: TreeNode) => {
@@ -181,10 +196,10 @@ export function FileTree() {
 
   const rootMenu = (
     <Menu>
-      <ContextMenu.Item className="menu-item" onSelect={() => startDraft(libraryPath, "file")}>
+      <ContextMenu.Item className="menu-item" onSelect={() => void newFile(libraryPath)}>
         new file
       </ContextMenu.Item>
-      <ContextMenu.Item className="menu-item" onSelect={() => startDraft(libraryPath, "folder")}>
+      <ContextMenu.Item className="menu-item" onSelect={() => startDraft(libraryPath)}>
         new folder
       </ContextMenu.Item>
       <ContextMenu.Item className="menu-item" onSelect={() => void revealInExplorer(libraryPath)}>
@@ -201,7 +216,6 @@ export function FileTree() {
 
           {lines.map((line, at) => {
             if (line.draft) {
-              const kind = draft?.kind ?? "file";
               const parent = draft?.parent ?? libraryPath;
               return (
                 <NameField
@@ -211,7 +225,7 @@ export function FileTree() {
                   onCancel={() => useStore.getState().setTreeDraft(null)}
                   onDone={(name) => {
                     useStore.getState().setTreeDraft(null);
-                    void (kind === "file" ? createFile(parent, name) : createFolder(parent, name));
+                    void createFolder(parent, name);
                   }}
                 />
               );
@@ -224,9 +238,13 @@ export function FileTree() {
                   key={node.path}
                   depth={depth}
                   initial={node.name}
-                  onCancel={() => useStore.getState().setTreeRenaming(null)}
+                  onCancel={() => {
+                    useStore.getState().setTreeRenaming(null);
+                    backToEditor(node.path);
+                  }}
                   onDone={(name) => {
                     useStore.getState().setTreeRenaming(null);
+                    backToEditor(node.path);
                     void renameEntry(node.path, name);
                   }}
                 />
@@ -275,10 +293,13 @@ export function FileTree() {
                 </ContextMenu.Trigger>
                 {node.dir ? (
                   <Menu>
-                    <ContextMenu.Item className="menu-item" onSelect={() => startDraft(node.path, "file")}>
+                    <ContextMenu.Item
+                      className="menu-item"
+                      onSelect={() => void newFile(node.path)}
+                    >
                       new file
                     </ContextMenu.Item>
-                    <ContextMenu.Item className="menu-item" onSelect={() => startDraft(node.path, "folder")}>
+                    <ContextMenu.Item className="menu-item" onSelect={() => startDraft(node.path)}>
                       new folder
                     </ContextMenu.Item>
                     <ContextMenu.Item

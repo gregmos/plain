@@ -80,6 +80,20 @@
   gap: 8px;
 }
 
+/* Title on the left, `close` on the right: the way out of every screen is
+   in the same corner (spec §4). */
+.screen-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.screen-head .link {
+  flex: none;
+  font-size: var(--fs-small);
+}
+
 .screen-title {
   font-size: 22px;
   font-weight: 600;

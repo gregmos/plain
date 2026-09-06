@@ -3,6 +3,8 @@ import { Group, Panel, Separator, type Layout } from "react-resizable-panels";
 import { useStore, type Doc } from "../app/store";
 import { ReadView } from "../read/ReadView";
 import { EditView } from "../editor/EditView";
+import { ColumnEdge } from "./Resizer";
+import "./resizer.css";
 import "./split.css";
 
 /**
@@ -11,9 +13,20 @@ import "./split.css";
  * side by side over the same document (§2a).
  */
 export function DocView({ doc }: { doc: Doc }) {
-  if (doc.mode === "read") return <ReadView doc={doc} />;
+  // Split has two panels of its own and a handle between them; the column
+  // edges belong to the one-column modes (spec §3).
   if (doc.mode === "split") return <SplitView doc={doc} />;
-  return <EditView doc={doc} rich={doc.mode === "rich"} />;
+  return (
+    <div className={"content-frame" + (doc.mode === "read" ? "" : " is-edit")}>
+      {doc.mode === "read" ? (
+        <ReadView doc={doc} />
+      ) : (
+        <EditView doc={doc} rich={doc.mode === "rich"} />
+      )}
+      <ColumnEdge side="left" />
+      <ColumnEdge side="right" />
+    </div>
+  );
 }
 
 const EDITOR_PANEL = "split-editor";

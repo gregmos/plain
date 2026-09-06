@@ -40,7 +40,12 @@ export function DiffScreen({ comparison }: { comparison: Comparison }) {
   return (
     <div className="screen">
       <div className="screen-column screen-wide">
-        <div className="screen-title">compare</div>
+        <div className="screen-head">
+          <div className="screen-title">compare</div>
+          <button className="link" onClick={() => close(null)}>
+            close
+          </button>
+        </div>
         <div className="diff-heads">
           <span className="diff-head diff-head-left">{comparison.leftLabel}</span>
           <span className="sep">·</span>
@@ -65,10 +70,6 @@ export function DiffScreen({ comparison }: { comparison: Comparison }) {
           <span className="sep">·</span>
           <button className="link" onClick={take}>
             {comparison.takeLabel}
-          </button>
-          <span className="sep">·</span>
-          <button className="link" onClick={() => close(null)}>
-            close
           </button>
         </div>
       </div>

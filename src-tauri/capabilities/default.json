@@ -12,6 +12,8 @@
     "core:window:allow-close",
     "core:window:allow-destroy",
     "core:webview:allow-set-webview-zoom",
+    "clipboard-manager:allow-write-text",
+    "clipboard-manager:allow-read-text",
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-message",

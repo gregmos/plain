@@ -3,6 +3,7 @@ import { stat } from "@tauri-apps/plugin-fs";
 import { openPaths, openPathsInBackground } from "../app/commands";
 import { inTauri } from "../app/env";
 import { readingPosition, rememberReading } from "../app/session";
+import { copyText } from "../app/platform";
 import { useStore, type Doc } from "../app/store";
 import { libraryFiles } from "../library/tree";
 import { allowAssetDir } from "./assets";
@@ -87,7 +88,7 @@ function filterByTag(tag: string): void {
 
 async function copy(text: string): Promise<void> {
   try {
-    await navigator.clipboard.writeText(text);
+    await copyText(text);
   } catch {
     /* nothing to do; copying is a convenience */
   }

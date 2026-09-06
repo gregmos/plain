@@ -7,9 +7,10 @@ import { closeDocs } from "../app/close";
 import { openPaths } from "../app/commands";
 import { inTauri } from "../app/env";
 import { fsError, trashPath } from "../app/fs";
+import { migrateDocument } from "../app/history";
 import { basename, dirname, pathKey } from "../app/paths";
 import { useStore, type TreeNode } from "../app/store";
-import { nameError, uniqueName, withExtension } from "./names";
+import { nameError, uniqueName } from "./names";
 import { joinPath, nodeAt, reloadTree } from "./tree";
 
 /** How many names to try before giving up; a folder is not an adversary. */
@@ -74,24 +75,66 @@ async function createUnique(
   return null;
 }
 
-/** `new file`: an empty file that never lands on top of one (spec §6). */
-export async function createFile(parent: string, typed: string): Promise<void> {
+/**
+ * Unfolds the folder a new row went into, and every folder above it. A row
+ * inside a folded branch is not in `flatten`'s answer at all, so the rename
+ * field would be waiting on a row that is not on screen (review #5).
+ */
+export function revealFolder(parent: string): void {
   const store = useStore.getState();
-  const problem = nameError(typed);
-  if (problem) {
-    store.setMessage(problem);
-    return;
-  }
-  const extension = store.settings.library.extensions[0] ?? ".md";
-  const wanted = withExtension(typed.trim(), extension);
-  const path = await createUnique(parent, wanted, "create_file", "create the file");
-  if (!path) return;
+  const root = store.libraryPath;
+  if (!root) return;
 
-  await reloadTree();
-  if (await openPaths([path])) useStore.getState().setMode("edit");
-  useStore.getState().setTreeSelected(path);
+  // Both paths come from the same walk — the root the tree was read from,
+  // and a folder inside it — so comparing them as text is safe here in a way
+  // it is not for a document path the file system has canonicalized.
+  const base = pathKey(root);
+  const own = pathKey(parent);
+  if (own === base || !own.startsWith(`${base}/`)) return;
+
+  const parts = own.slice(base.length + 1).split("/");
+  const chain = new Set<string>();
+  for (let depth = 1; depth <= parts.length; depth += 1) {
+    chain.add(parts.slice(0, depth).join("/"));
+  }
+  const collapsed = store.collapsed.filter((rel) => !chain.has(rel.toLowerCase()));
+  if (collapsed.length !== store.collapsed.length) store.setCollapsed(collapsed);
 }
 
+/**
+ * `new file` (spec §6). The file exists and is open before anything is
+ * typed: `Untitled.md` is made straight away, opened in edit with the caret
+ * in the empty text, and the tree puts its name in the rename field so a
+ * name can be given without the document waiting for one.
+ *
+ * Returns the path, so a caller can tell it happened.
+ */
+export async function newFile(parent: string): Promise<string | null> {
+  const store = useStore.getState();
+  const extension = store.settings.library.extensions[0] ?? ".md";
+  const path = await createUnique(
+    parent,
+    `Untitled${extension}`,
+    "create_file",
+    "create the file",
+  );
+  if (!path) return null;
+
+  await reloadTree();
+  if (!(await openPaths([path]))) return null;
+  useStore.getState().setMode("edit");
+  useStore.getState().setTreeSelected(path);
+  // The row has to be on screen before the field can sit on it.
+  revealFolder(parent);
+
+  // The editor takes focus as it mounts, so the field asks for it in a later
+  // task; asking in the same commit would lose the race to the editor.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  useStore.getState().setTreeRenaming(path);
+  return path;
+}
+
+/** `new folder`: still named before it is made — there is nothing to open. */
 export async function createFolder(parent: string, typed: string): Promise<void> {
   const problem = nameError(typed);
   if (problem) {
@@ -120,6 +163,10 @@ export async function renameEntry(from: string, typed: string): Promise<void> {
   const to = joinPath(dirname(from), name);
   try {
     await invoke("rename_path", { from, to });
+    // The recovery draft and the version history are filed under the path,
+    // so they move with it (review w10 #2). Before the document changes id,
+    // so a draft written straight after lands on the new name.
+    await migrateDocument(from, to);
     const open = useStore.getState().docs.find((d) => d.path && pathKey(d.path) === pathKey(from));
     if (open) {
       const next = pathKey(to);

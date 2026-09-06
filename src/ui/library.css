@@ -109,6 +109,12 @@
   color: var(--fg);
 }
 
+/* Nothing selected, or the file is read-only (spec §2a). */
+.menu-item[data-disabled],
+.menu-item[data-disabled]:hover {
+  color: var(--faint);
+}
+
 /* --------------------------------------------------------- quick search */
 
 /* The application keeps rendering behind the modal, faded out (mockup 1f). */

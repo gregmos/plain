@@ -107,8 +107,9 @@ export const commands: Command[] = [
     id: "file.history",
     title: "version history…",
     run: () => {
-      const id = store().activeId;
-      if (id) useStore.getState().setHistory(id);
+      const s = store();
+      if (s.screen === "history") s.closeScreen();
+      else if (s.activeId) s.setHistory(s.activeId);
     },
     when: hasDoc,
   },
@@ -197,7 +198,7 @@ export const commands: Command[] = [
     id: "view.library",
     title: "library",
     chord: "Ctrl+Alt+L",
-    run: () => store().setLibraryOpen(!store().libraryOpen),
+    run: () => store().toggleScreen("library"),
     when: () => store().libraryPath !== null,
   },
   { id: "view.files", title: "files", run: () => store().setRailView("files") },
@@ -309,7 +310,7 @@ export const commands: Command[] = [
     id: "app.settings",
     title: "settings…",
     chord: "Ctrl+,",
-    run: () => store().setSettingsOpen(true),
+    run: () => store().toggleScreen("settings"),
   },
   {
     id: "app.settingsFile",
@@ -320,7 +321,7 @@ export const commands: Command[] = [
     id: "app.shortcuts",
     title: "shortcuts",
     chord: "F1",
-    run: () => store().setShortcutsOpen(true),
+    run: () => store().toggleScreen("shortcuts"),
   },
   { id: "app.about", title: "about", run: () => void showAbout() },
 ];

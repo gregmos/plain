@@ -106,7 +106,18 @@
 
 .rail-switch {
   display: flex;
+  align-items: baseline;
   gap: 6px;
+}
+
+.rail-collapse {
+  margin-left: auto;
+  flex: none;
+  color: var(--muted);
+}
+
+.rail-collapse:hover {
+  color: var(--fg);
 }
 
 .rail-switch .is-active {

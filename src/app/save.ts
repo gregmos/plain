@@ -291,6 +291,10 @@ async function saveAsNow(id: string): Promise<boolean> {
     }
     return false;
   }
+  // The old name's draft described edits that have just been written
+  // somewhere else, so it goes. Its history stays where it is: the old file
+  // is still on disk and those versions are its own — Save As makes a copy,
+  // not a rename (review w10 #2).
   if (previous.id !== nextId) void dropDraft(previous);
   return true;
 }

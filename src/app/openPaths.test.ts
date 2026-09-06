@@ -81,6 +81,20 @@ describe("openPaths", () => {
   });
 });
 
+describe("a screen and a document", () => {
+  it("steps aside once a file opens (spec §4)", async () => {
+    useStore.getState().openScreen("library");
+    await openPaths([HERE]);
+    expect(useStore.getState().screen).toBeNull();
+  });
+
+  it("stays up when nothing opened", async () => {
+    useStore.getState().openScreen("library");
+    await openPaths([GONE]);
+    expect(useStore.getState().screen).toBe("library");
+  });
+});
+
 describe("forgetRecent", () => {
   it("compares paths the way Windows does", () => {
     useStore.setState({ recent: ["C:\\Notes\\A.md", "C:\\notes\\b.md"] });

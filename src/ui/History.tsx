@@ -87,7 +87,12 @@ export function HistoryScreen({ id }: { id: string }) {
   return (
     <div className="screen">
       <div className="screen-column">
-        <div className="screen-title">version history</div>
+        <div className="screen-head">
+          <div className="screen-title">version history</div>
+          <button className="link" onClick={() => setHistory(null)}>
+            close
+          </button>
+        </div>
         <div className="screen-lead">
           {doc.title} · kept for thirty days, one copy every five minutes of saving. restoring
           only changes the buffer — the file is written when you save.
@@ -153,11 +158,6 @@ export function HistoryScreen({ id }: { id: string }) {
           ))
         )}
 
-        <div className="screen-actions">
-          <button className="link" onClick={() => setHistory(null)}>
-            close
-          </button>
-        </div>
       </div>
     </div>
   );

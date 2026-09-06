@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { TreeNode } from "../app/store";
 
 const rust = vi.hoisted(() => ({
   calls: [] as { cmd: string; args: Record<string, unknown> }[],
@@ -31,75 +32,178 @@ vi.mock("../editor", () => ({
   markSaved: () => undefined,
 }));
 
-vi.mock("../app/commands", () => ({ openPaths: () => Promise.resolve(false) }));
+/** Which paths were opened, in order: the sequence is what is under test. */
+const opened: string[] = [];
+vi.mock("../app/commands", () => ({
+  openPaths: async (paths: string[]) => {
+    opened.push(...paths);
+    return true;
+  },
+}));
 
 const dirtyIds = new Set<string>();
 
-const { createFile } = await import("./ops");
-const { askDelete } = await import("./ops");
+const { askDelete, newFile, renameEntry } = await import("./ops");
 const { makeDoc, useStore } = await import("../app/store");
 
 const ROOT = "C:\\lib";
 
-function tree(names: string[]) {
-  return names.map((name) => ({
-    name,
-    path: `${ROOT}\\${name}`,
-    rel: name,
+/** One row of the tree, addressed the way the store addresses it. */
+function file(rel: string): TreeNode {
+  return {
+    name: rel.slice(rel.lastIndexOf("/") + 1),
+    path: `${ROOT}\\${rel.split("/").join("\\")}`,
+    rel,
     dir: false,
     unreadable: false,
     mtimeMs: 0,
     ctimeMs: 0,
     children: [],
-  }));
+  };
+}
+
+function folder(rel: string, children: TreeNode[]): TreeNode {
+  return { ...file(rel), dir: true, children };
+}
+
+function tree(names: string[]) {
+  return names.map((name) => file(name));
 }
 
 beforeEach(() => {
   rust.calls.length = 0;
   rust.onDisk.clear();
   dirtyIds.clear();
-  useStore.setState({ docs: [], activeId: null, dialog: null, message: null, treeSelected: null });
+  opened.length = 0;
+  useStore.setState({
+    docs: [],
+    activeId: null,
+    dialog: null,
+    message: null,
+    treeSelected: null,
+    treeRenaming: null,
+  });
   useStore.getState().setLibraryPath(ROOT);
   useStore.getState().setTree(tree(["a.md"]));
 });
 
 const created = () => rust.calls.filter((c) => c.cmd === "create_file").map((c) => c.args["path"]);
+const renamed = () => rust.calls.filter((c) => c.cmd === "rename_path");
 
-describe("new file (review #4)", () => {
-  it("takes the name when nothing is using it", async () => {
-    await createFile(ROOT, "ideas");
-    expect(created()).toEqual([`${ROOT}\\ideas.md`]);
+describe("new file (spec §6)", () => {
+  it("makes the file, opens it, and only then asks for a name", async () => {
+    const path = await newFile(ROOT);
+
+    // The order is the whole point: nothing waits for a name to be typed.
+    expect(path).toBe(`${ROOT}\\Untitled.md`);
+    expect(created()).toEqual([`${ROOT}\\Untitled.md`]);
+    expect(opened).toEqual([`${ROOT}\\Untitled.md`]);
+
+    const state = useStore.getState();
+    expect(state.treeSelected).toBe(`${ROOT}\\Untitled.md`);
+    // And the tree is holding the rename field open over it.
+    expect(state.treeRenaming).toBe(`${ROOT}\\Untitled.md`);
   });
 
-  it("steps aside for a file the tree never showed", async () => {
-    // A `.txt` is not in library.extensions, so the tree cannot warn us —
-    // only Rust's refusal can, and it must not have written anything.
-    rust.onDisk.add(`${ROOT}\\notes.txt`);
-    await createFile(ROOT, "notes.txt");
-    expect(created()).toEqual([`${ROOT}\\notes.txt`, `${ROOT}\\notes 2.txt`]);
+  it("makes it in the folder it was asked for", async () => {
+    expect(await newFile(`${ROOT}\\notes`)).toBe(`${ROOT}\\notes\\Untitled.md`);
+  });
+
+  it("steps aside for a name the tree never showed", async () => {
+    // Rust is the only judge of what is on disk: the tree goes stale and it
+    // hides extensions the settings do not list. Nothing may be overwritten.
+    rust.onDisk.add(`${ROOT}\\Untitled.md`);
+    await newFile(ROOT);
+    expect(created()).toEqual([`${ROOT}\\Untitled.md`, `${ROOT}\\Untitled 2.md`]);
+    expect(opened).toEqual([`${ROOT}\\Untitled 2.md`]);
   });
 
   it("keeps stepping until it finds a free name", async () => {
-    rust.onDisk.add(`${ROOT}\\notes.txt`);
-    rust.onDisk.add(`${ROOT}\\notes 2.txt`);
-    rust.onDisk.add(`${ROOT}\\notes 3.txt`);
-    await createFile(ROOT, "notes.txt");
+    rust.onDisk.add(`${ROOT}\\Untitled.md`);
+    rust.onDisk.add(`${ROOT}\\Untitled 2.md`);
+    rust.onDisk.add(`${ROOT}\\Untitled 3.md`);
+    await newFile(ROOT);
     expect(created()).toEqual([
-      `${ROOT}\\notes.txt`,
-      `${ROOT}\\notes 2.txt`,
-      `${ROOT}\\notes 3.txt`,
-      `${ROOT}\\notes 4.txt`,
+      `${ROOT}\\Untitled.md`,
+      `${ROOT}\\Untitled 2.md`,
+      `${ROOT}\\Untitled 3.md`,
+      `${ROOT}\\Untitled 4.md`,
     ]);
   });
 
-  it("gives up on a real failure instead of trying other names", async () => {
-    rust.calls.length = 0;
+  it("opens nothing and asks nothing when the file could not be made", async () => {
     const invoke = await import("@tauri-apps/api/core");
     const spy = vi.spyOn(invoke, "invoke").mockRejectedValue({ kind: "io", message: "disk full" });
-    await createFile(ROOT, "ideas");
+
+    expect(await newFile(ROOT)).toBeNull();
     expect(spy).toHaveBeenCalledTimes(1);
+    expect(opened).toEqual([]);
+    expect(useStore.getState().treeRenaming).toBeNull();
     expect(useStore.getState().message).toContain("disk full");
     spy.mockRestore();
+  });
+});
+
+describe("a new file inside a folded folder (review #5)", () => {
+  // `work/specs` holds a note; both folders start folded shut.
+  const nested = () => [
+    folder("work", [folder("work/specs", [file("work/specs/api.md")])]),
+    file("a.md"),
+  ];
+
+  beforeEach(() => {
+    useStore.getState().setTree(nested());
+    useStore.getState().setCollapsed(["work", "work/specs"]);
+  });
+
+  it("unfolds the folder and everything above it, so the row is on screen", async () => {
+    await newFile(`${ROOT}\\work\\specs`);
+    // Neither branch may stay shut: `flatten` would not return the row at
+    // all, and the rename field would be waiting on something invisible.
+    expect(useStore.getState().collapsed).toEqual([]);
+    expect(useStore.getState().treeRenaming).toBe(`${ROOT}\\work\\specs\\Untitled.md`);
+  });
+
+  it("leaves folders that are not on the way alone", async () => {
+    useStore.getState().setCollapsed(["work", "work/specs", "elsewhere"]);
+    await newFile(`${ROOT}\\work`);
+    expect(useStore.getState().collapsed).toEqual(["work/specs", "elsewhere"]);
+  });
+
+  it("has nothing to unfold for the library root", async () => {
+    await newFile(ROOT);
+    expect(useStore.getState().collapsed).toEqual(["work", "work/specs"]);
+    expect(useStore.getState().treeRenaming).toBe(`${ROOT}\\Untitled.md`);
+  });
+});
+
+describe("naming the file that was just made (spec §6)", () => {
+  /** What the tree does on `Enter`, and what it does on `Esc`. */
+  const enter = async (from: string, typed: string) => {
+    useStore.getState().setTreeRenaming(null);
+    await renameEntry(from, typed);
+  };
+  const escape = () => useStore.getState().setTreeRenaming(null);
+
+  it("renames the file on Enter and closes the field", async () => {
+    const path = (await newFile(ROOT)) as string;
+    rust.calls.length = 0;
+
+    await enter(path, "ideas.md");
+    expect(renamed()).toHaveLength(1);
+    expect(renamed()[0]?.args).toMatchObject({ from: path, to: `${ROOT}\\ideas.md` });
+    expect(useStore.getState().treeRenaming).toBeNull();
+  });
+
+  it("keeps Untitled.md on Esc and renames nothing", async () => {
+    const path = (await newFile(ROOT)) as string;
+    rust.calls.length = 0;
+
+    escape();
+    expect(renamed()).toEqual([]);
+    expect(useStore.getState().treeRenaming).toBeNull();
+    // The document that was opened is still the one that is open.
+    expect(opened).toEqual([path]);
   });
 });
 

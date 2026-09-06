@@ -23,6 +23,7 @@ import {
   readOnlyConf,
 } from "./setup";
 import { flushText, setSyncTarget, syncCaret } from "./sync";
+import { EditorContextMenu } from "../ui/EditorContextMenu";
 import "../ui/editor.css";
 
 const GOTO_LINE = "plain:goto-line";
@@ -47,6 +48,17 @@ export function flushActiveEditor(): void {
  * bar needs this: undo, bold and friends are editor commands, and the menu
  * has no view of its own (spec §4). Nothing mounted — nothing happens.
  */
+/**
+ * Gives the text the focus back and nothing else. `plain:goto-line` would
+ * also move the selection and the scroll, which is wrong when something only
+ * borrowed the focus for a moment — the rename field in the tree (review #7).
+ */
+export function focusEditor(): boolean {
+  if (!live) return false;
+  live.focus();
+  return true;
+}
+
 export function runEditorCommand(command: EditorCommand): boolean {
   if (!live) return false;
   // The menu took the focus away; the command works on the selection anyway,
@@ -350,14 +362,16 @@ export function EditView({
   }, [rich]);
 
   return (
-    <div
-      className={
-        "edit" +
-        (gutter ? "" : " edit-no-gutter") +
-        (rich ? " edit-rich" : "") +
-        (split ? " edit-split" : "")
-      }
-      ref={host}
-    />
+    <EditorContextMenu view={() => view.current}>
+      <div
+        className={
+          "edit" +
+          (gutter ? "" : " edit-no-gutter") +
+          (rich ? " edit-rich" : "") +
+          (split ? " edit-split" : "")
+        }
+        ref={host}
+      />
+    </EditorContextMenu>
   );
 }

@@ -5,6 +5,7 @@ export {
   dropImagesInEditor,
   EditView,
   flushActiveEditor,
+  focusEditor,
   renameBuffer,
   replaceText,
   runEditorCommand,

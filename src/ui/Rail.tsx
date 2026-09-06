@@ -135,6 +135,14 @@ export function Rail() {
           >
             outline
           </button>
+          {/* The mouse's way to what `Ctrl+\` does (spec §4). */}
+          <button
+            className="rail-collapse"
+            title="collapse the rail"
+            onClick={() => useStore.getState().toggleRail()}
+          >
+            ◂
+          </button>
         </div>
       </footer>
     </aside>

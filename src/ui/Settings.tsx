@@ -4,17 +4,16 @@
 
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { openSettingsFile } from "../app/commands";
-import { AUTOSAVE, DEFAULTS, defaultEol, type Settings } from "../app/settings";
+import { AUTOSAVE, CONTENT_WIDTH, DEFAULTS, defaultEol, type Settings } from "../app/settings";
 import { useStore } from "../app/store";
 import { TREE_CHANGED } from "../app/watcher";
-import { spellConf, spellExtension, syncLineNumbers } from "../editor/setup";
-import { runEditorCommand } from "../editor";
+import { syncLineNumbers } from "../editor/setup";
 import "./dialogs.css";
 import "./settings.css";
 
 /** `−`/`+` bounds, from spec §10. */
 const FONT_SIZE = { min: 11, max: 20, step: 0.5 };
-const CONTENT_WIDTH = { min: 440, max: 900, step: 20 };
+
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -104,7 +103,7 @@ const ON_OFF = [
 export function SettingsScreen() {
   const settings = useStore((s) => s.settings);
   const change = useStore((s) => s.changeSettings);
-  const close = () => useStore.getState().setSettingsOpen(false);
+  const close = () => useStore.getState().closeScreen();
 
   // The extensions field is free text while it is being typed; the settings
   // only hear about it once the field is left or Enter is pressed.
@@ -192,7 +191,10 @@ export function SettingsScreen() {
           />
         </Row>
 
-        <Row name="appearance.contentWidth" about="width of the read column; edit adds 80">
+        <Row
+          name="appearance.contentWidth"
+          about="drag the column edges to change it too; edit adds 80"
+        >
           <Stepper
             value={settings.appearance.contentWidth}
             bounds={CONTENT_WIDTH}
@@ -217,22 +219,6 @@ export function SettingsScreen() {
             onPick={(lineNumbers) => {
               patch({ ...settings, edit: { ...settings.edit, lineNumbers } });
               syncLineNumbers();
-            }}
-          />
-        </Row>
-
-        <Row name="edit.spellcheck" about="uses the windows dictionaries">
-          <Choice
-            value={settings.edit.spellcheck}
-            options={ON_OFF}
-            onPick={(spellcheck) => {
-              patch({ ...settings, edit: { ...settings.edit, spellcheck } });
-              // The open buffer gets it now; the rest pick it up when they
-              // are built (editor/setup.ts reads the same setting).
-              runEditorCommand((view) => {
-                view.dispatch({ effects: spellConf.reconfigure(spellExtension(spellcheck)) });
-                return true;
-              });
             }}
           />
         </Row>

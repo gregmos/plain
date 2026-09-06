@@ -2,6 +2,8 @@
 // capabilities that differ between WebView2 and WKWebView (spec §13a).
 // Everything else asks here rather than sniffing on its own.
 
+import { inTauri } from "./env";
+
 let forced: boolean | null = null;
 
 /**
@@ -73,4 +75,39 @@ export function hasHighlights(): boolean {
     (CSS as unknown as { highlights?: unknown }).highlights !== undefined &&
     typeof (globalThis as { Highlight?: unknown }).Highlight === "function"
   );
+}
+
+/**
+ * Puts text on the clipboard. Goes through the Tauri plugin rather than
+ * `navigator.clipboard`, which needs transient activation: on a 1 MB
+ * document the render and the DOM walk take longer than the activation
+ * lasts, and WebView2 then asks the user for permission (review, live run).
+ * Outside Tauri — the dev server in a browser — the web API is all there is.
+ */
+export async function copyText(text: string): Promise<void> {
+  if (inTauri) {
+    const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
+    await writeText(text);
+    return;
+  }
+  await navigator.clipboard.writeText(text);
+}
+
+/**
+ * What is on the clipboard, as text. The same reason as `copyText`: reading
+ * through `navigator.clipboard` makes WebView2 ask the user for permission,
+ * and the app's own paste item must not do that. Empty when there is
+ * nothing to paste, or when the browser refuses — the caller inserts
+ * nothing rather than clearing a selection.
+ */
+export async function pasteText(): Promise<string> {
+  if (inTauri) {
+    const { readText } = await import("@tauri-apps/plugin-clipboard-manager");
+    return (await readText()) ?? "";
+  }
+  try {
+    return await navigator.clipboard.readText();
+  } catch {
+    return "";
+  }
 }

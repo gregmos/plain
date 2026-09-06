@@ -200,6 +200,32 @@ pub fn list_snapshots(app: AppHandle, id: String) -> FsResult<Vec<Snapshot>> {
     Ok(folder(&app, &id).map(|dir| snapshots_in(&dir)).unwrap_or_default())
 }
 
+/// A renamed file keeps its versions: the folder is named after the path, so
+/// renaming the file has to rename the folder too, or the history of the new
+/// name is empty and the old one is orphaned (review w10 #2).
+///
+/// Nothing to move is not a failure — a document that was never saved from
+/// here has no folder.
+#[tauri::command]
+pub fn rename_history(app: AppHandle, old_id: String, new_id: String) -> FsResult<bool> {
+    let (Some(from), Some(to)) = (folder(&app, &old_id), folder(&app, &new_id)) else {
+        return Ok(false);
+    };
+    if from == to || !from.is_dir() {
+        return Ok(false);
+    }
+    // The new name already has versions of its own: keep both rather than
+    // write one over the other.
+    if to.exists() {
+        return Ok(false);
+    }
+    if let Some(parent) = to.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::rename(&from, &to)?;
+    Ok(true)
+}
+
 /// Plain deletion, not the Recycle Bin: a snapshot is already a copy.
 /// Only inside our own history folder, whatever path the front end sends.
 /// `history/../settings.json` has the history folder among its components
@@ -397,6 +423,23 @@ mod tests {
         assert!(!inside(&history, &history.join("..").join("settings.json")));
         // The folder itself is not something to delete.
         assert!(!inside(&history, &history));
+    }
+
+    /// Renaming a file takes its versions with it (review w10 #2).
+    #[test]
+    fn a_renamed_document_keeps_its_versions() {
+        let history = tempfile::tempdir().unwrap();
+        let old = history.path().join("aaaa1111");
+        let new = history.path().join("bbbb2222");
+        write_snapshot(&old, b"a version
+", SystemTime::now()).unwrap();
+
+        // The move itself, as `rename_history` does it once the folders are
+        // resolved: same rename, without an AppHandle to build one from.
+        assert!(old.is_dir());
+        fs::rename(&old, &new).unwrap();
+        assert!(!old.exists(), "the old folder is gone");
+        assert_eq!(snapshots_in(&new).len(), 1, "and its versions came along");
     }
 
     #[test]

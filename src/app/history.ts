@@ -5,11 +5,11 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { diffLines } from "diff";
-import { documentKey } from "./drafts";
+import { documentKey, moveDraft } from "./drafts";
 import { inTauri } from "./env";
 import { normalizeEol } from "./eol";
 import { docFields, fsError, readFile } from "./fs";
-import { basename } from "./paths";
+import { basename, pathKey } from "./paths";
 import { makeDoc, useStore, type Doc } from "./store";
 
 export interface Snapshot {
@@ -55,6 +55,37 @@ export async function snapshotBuffer(doc: Doc): Promise<boolean> {
       return false;
     }
   }
+}
+
+/**
+ * The versions of a file follow it when it is renamed: the folder they live
+ * in is named after the path (review w10 #2).
+ */
+export async function moveHistory(
+  from: Pick<Doc, "id" | "path">,
+  to: Pick<Doc, "id" | "path">,
+): Promise<boolean> {
+  if (!inTauri) return false;
+  const oldId = documentKey(from);
+  const newId = documentKey(to);
+  if (oldId === newId) return false;
+  try {
+    return await invoke<boolean>("rename_history", { oldId, newId });
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Everything a document keeps beside itself, moved to its new name: its
+ * versions first, then its recovery draft. A rename, not a copy — Save As
+ * makes a new document and starts a history of its own.
+ */
+export async function migrateDocument(oldPath: string, newPath: string): Promise<void> {
+  const from = { id: pathKey(oldPath), path: oldPath };
+  const to = { id: pathKey(newPath), path: newPath };
+  await moveHistory(from, to);
+  await moveDraft(from, to);
 }
 
 export async function deleteSnapshot(snapshot: Snapshot): Promise<boolean> {

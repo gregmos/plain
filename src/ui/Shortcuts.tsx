@@ -107,7 +107,7 @@ function rows(): Record<Group, Row[]> {
 }
 
 export function ShortcutsScreen() {
-  const close = () => useStore.getState().setShortcutsOpen(false);
+  const close = () => useStore.getState().closeScreen();
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

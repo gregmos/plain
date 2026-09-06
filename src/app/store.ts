@@ -12,7 +12,63 @@ import { basename, pathKey } from "./paths";
 export const LARGE_TEXT = 2 * 1024 * 1024;
 
 export type Mode = "read" | "edit" | "rich" | "split";
+
+/**
+ * The screens that take the content area over from the document. One at a
+ * time: opening any of them closes whichever was up, so two can never stack
+ * with the second invisible underneath the first (spec §4).
+ */
+export type Screen =
+  | "settings"
+  | "shortcuts"
+  | "library"
+  | "history"
+  | "comparison"
+  | "folderSearch";
+
+/** No screen, and none of the data one of them was showing. */
+const CLOSED = {
+  screen: null,
+  libraryFilterTag: null,
+  history: null,
+  comparison: null,
+} as const;
+
+/**
+ * The one place `docs` and `activeId` change. A screen over the content area
+ * is about the document under it, so asking for a document takes the screen
+ * away — and so does the document behind `history` or `compare` leaving,
+ * even when some other document was the active one (review #6). Every path
+ * goes through here, so no way of opening, closing or switching documents
+ * can be the one that was forgotten.
+ *
+ * `asked` is what the caller wanted: opening, activating and cycling all
+ * mean "show me this document"; closing one does not, so that only takes the
+ * screen away when the screen has nothing left to show.
+ */
+function toDocument(
+  s: AppState,
+  next: { docs?: Doc[]; activeId?: string | null },
+  asked = true,
+): Partial<AppState> {
+  const docs = next.docs ?? s.docs;
+  const activeId = next.activeId === undefined ? s.activeId : next.activeId;
+  const orphaned =
+    (s.history !== null && !docs.some((d) => d.id === s.history)) ||
+    (s.comparison !== null && !docs.some((d) => d.id === s.comparison?.id));
+  const leave = asked || activeId !== s.activeId || orphaned;
+  return leave ? { docs, activeId, ...CLOSED } : { docs, activeId };
+}
+
 export type RailView = "files" | "outline";
+
+/** The rail, in px: dragged between these, `232` is the mockup (spec §4). */
+export const RAIL_WIDTH = { min: 180, max: 420, default: 232 } as const;
+
+export function clampRailWidth(width: number): number {
+  if (!Number.isFinite(width)) return RAIL_WIDTH.default;
+  return Math.round(Math.min(RAIL_WIDTH.max, Math.max(RAIL_WIDTH.min, width)));
+}
 
 export interface Heading {
   level: number;
@@ -203,6 +259,8 @@ interface AppState {
   resolvedTheme: "light" | "dark";
   railCollapsed: boolean;
   railView: RailView;
+  /** Dragged width of the rail, kept for the session (spec §4). */
+  railWidth: number;
   /** Editor's share of the width in split; the session keeps it (§2a). */
   splitRatio: number;
   libraryPath: string | null;
@@ -233,20 +291,18 @@ interface AppState {
   treeRenaming: string | null;
   /** The quick-search modal, or null when it is closed. */
   quickSearch: QuickSearch | null;
-  /** `Ctrl+Shift+F` takes over the content area (spec §7). */
-  folderSearch: boolean;
+  /** Which screen is over the document, or null when the document shows. */
+  screen: Screen | null;
 
   /* ---------------------------------------------- history and diff (v0.2) */
 
-  /** Id of the document whose version history is on screen (spec §2a). */
+  /** Id of the document the history screen lists. Data, not visibility. */
   history: string | null;
-  /** The two texts the diff screen shows, or null when it is closed. */
+  /** The two texts the diff screen shows. Data, not visibility. */
   comparison: Comparison | null;
 
   /* ------------------------------------------------ the library (v0.2) */
 
-  /** `Ctrl+Alt+L`: the library screen instead of the document (spec §2a). */
-  libraryOpen: boolean;
   librarySort: LibrarySort;
   /** Only files carrying this tag are listed; null shows all of them. */
   libraryFilterTag: string | null;
@@ -257,10 +313,6 @@ interface AppState {
 
   /* ------------------------------------------ menu and settings (wave 5b) */
 
-  /** The settings screen takes over the content area too (spec §10). */
-  settingsOpen: boolean;
-  /** `F1` / `help -> shortcuts`: the key list, in the same place. */
-  shortcutsOpen: boolean;
   focus: boolean;
   /** WebView2 zoom factor the view menu drives; 1 is 100% (spec §4). */
   zoom: number;
@@ -270,8 +322,12 @@ interface AppState {
   applySettings: (settings: Settings) => void;
   /** A change made on the settings screen: applied now, written to disk. */
   changeSettings: (settings: Settings) => void;
-  setSettingsOpen: (open: boolean) => void;
-  setShortcutsOpen: (open: boolean) => void;
+  /** Shows one screen over the document, closing whichever was up. */
+  openScreen: (screen: Screen) => void;
+  /** Back to the document. */
+  closeScreen: () => void;
+  /** The command that opened a screen closes it again (spec §4). */
+  toggleScreen: (screen: Screen) => void;
   /** Focus mode hides the chrome (spec §2a); not kept in the session. */
   setFocus: (focus: boolean) => void;
   setZoom: (zoom: number) => void;
@@ -281,6 +337,8 @@ interface AppState {
   toggleRail: () => void;
   setRailCollapsed: (collapsed: boolean) => void;
   setRailView: (view: RailView) => void;
+  /** Out-of-range values are clamped, so a dragged edge cannot lose the rail. */
+  setRailWidth: (width: number) => void;
   setLibraryPath: (path: string | null) => void;
   openDoc: (doc: Doc) => void;
   /** Generic per-document patch — the way read/edit waves update a doc. */
@@ -314,11 +372,11 @@ interface AppState {
   setTreeDraft: (draft: TreeDraft | null) => void;
   setTreeRenaming: (path: string | null) => void;
   setQuickSearch: (quickSearch: QuickSearch | null) => void;
-  setFolderSearch: (open: boolean) => void;
+  /** The history screen for one document; null closes it. */
   setHistory: (id: string | null) => void;
+  /** The diff screen; null closes it, back to history when it came from there. */
   setComparison: (comparison: Comparison | null) => void;
 
-  setLibraryOpen: (open: boolean) => void;
   setLibrarySort: (sort: LibrarySort) => void;
   /** Clicking the tag that is already on takes the filter off again. */
   toggleLibraryFilter: (tag: string | null) => void;
@@ -347,6 +405,7 @@ export const useStore = create<AppState>()((set, get) => ({
   resolvedTheme: resolveTheme(DEFAULTS.appearance.theme),
   railCollapsed: false,
   railView: "files",
+  railWidth: RAIL_WIDTH.default,
   splitRatio: 0.5,
   libraryPath: null,
   recent: [],
@@ -363,16 +422,13 @@ export const useStore = create<AppState>()((set, get) => ({
   treeDraft: null,
   treeRenaming: null,
   quickSearch: null,
-  folderSearch: false,
+  screen: null,
   history: null,
   comparison: null,
-  libraryOpen: false,
   librarySort: "modified",
   libraryFilterTag: null,
   tags: [],
   backlinks: [],
-  settingsOpen: false,
-  shortcutsOpen: false,
   focus: false,
   zoom: 1,
   recentLibraries: [],
@@ -395,8 +451,24 @@ export const useStore = create<AppState>()((set, get) => ({
     saveSettings(settings);
   },
 
-  setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
-  setShortcutsOpen: (shortcutsOpen) => set({ shortcutsOpen }),
+  openScreen: (screen) =>
+    set((s) => ({
+      screen,
+      // A screen's data goes with it, so nothing it left behind can surface
+      // under the next one: the tag filtering the library, the file whose
+      // history was up, the two texts the diff held. The diff keeps the
+      // history it was opened from, which is where closing it returns.
+      libraryFilterTag: screen === "library" ? s.libraryFilterTag : null,
+      history: screen === "history" || screen === "comparison" ? s.history : null,
+      comparison: screen === "comparison" ? s.comparison : null,
+    })),
+
+  closeScreen: () => set(CLOSED),
+
+  toggleScreen: (screen) => {
+    if (get().screen === screen) get().closeScreen();
+    else get().openScreen(screen);
+  },
   setFocus: (focus) => set({ focus }),
   setZoom: (zoom) => set({ zoom }),
 
@@ -419,17 +491,17 @@ export const useStore = create<AppState>()((set, get) => ({
   toggleRail: () => set((s) => ({ railCollapsed: !s.railCollapsed })),
   setRailCollapsed: (railCollapsed) => set({ railCollapsed }),
   setRailView: (railView) => set({ railView }),
+  setRailWidth: (width) => set({ railWidth: clampRailWidth(width) }),
   setLibraryPath: (libraryPath) => set({ libraryPath }),
 
   openDoc: (doc) => {
     if (get().docs.some((d) => d.id === doc.id)) {
-      set({ activeId: doc.id });
+      set((s) => toDocument(s, { activeId: doc.id }));
       return;
     }
     const path = doc.path;
     set((s) => ({
-      docs: [...s.docs, doc],
-      activeId: doc.id,
+      ...toDocument(s, { docs: [...s.docs, doc], activeId: doc.id }),
       recent: path ? [path, ...s.recent.filter((p) => p !== path)].slice(0, 20) : s.recent,
     }));
   },
@@ -459,16 +531,18 @@ export const useStore = create<AppState>()((set, get) => ({
     return next;
   },
 
-  activate: (id) => set({ activeId: id }),
+  // Choosing a document is a way back to it: whatever screen was over the
+  // content area steps aside (spec §4).
+  activate: (id) => set((s) => toDocument(s, { activeId: id })),
 
   closeDoc: (id) =>
     set((s) => {
       const index = s.docs.findIndex((d) => d.id === id);
       if (index < 0) return {};
       const docs = s.docs.filter((d) => d.id !== id);
-      if (s.activeId !== id) return { docs };
+      if (s.activeId !== id) return toDocument(s, { docs }, false);
       const next = docs[Math.min(index, docs.length - 1)];
-      return { docs, activeId: next ? next.id : null };
+      return toDocument(s, { docs, activeId: next ? next.id : null }, false);
     }),
 
   cycleDoc: (step) => {
@@ -476,14 +550,17 @@ export const useStore = create<AppState>()((set, get) => ({
     if (docs.length < 2) return;
     const index = docs.findIndex((d) => d.id === activeId);
     const next = docs[(index + step + docs.length) % docs.length];
-    if (next) set({ activeId: next.id });
+    if (next) set((s) => toDocument(s, { activeId: next.id }));
   },
 
   setSplitRatio: (splitRatio) => set({ splitRatio }),
 
+  // Picking a mode in the mode bar asks for the document, so it closes the
+  // screen over it — even when there is no document to show yet (spec §4).
   setMode: (mode) =>
     set((s) => ({
       docs: s.docs.map((d) => (d.id === s.activeId ? { ...d, mode } : d)),
+      ...CLOSED,
     })),
 
   // `Ctrl+/` is the read/edit switch (spec §4); from rich it goes to read.
@@ -492,6 +569,7 @@ export const useStore = create<AppState>()((set, get) => ({
       docs: s.docs.map((d) =>
         d.id === s.activeId ? { ...d, mode: d.mode === "read" ? "edit" : "read" } : d,
       ),
+      ...CLOSED,
     })),
 
   setMessage: (message) => {
@@ -543,18 +621,33 @@ export const useStore = create<AppState>()((set, get) => ({
   setTreeDraft: (treeDraft) => set({ treeDraft }),
   setTreeRenaming: (treeRenaming) => set({ treeRenaming }),
   setQuickSearch: (quickSearch) => set({ quickSearch }),
-  setFolderSearch: (folderSearch) => set({ folderSearch }),
-  setHistory: (history) => set({ history }),
-  setComparison: (comparison) => set({ comparison }),
+  setHistory: (history) => {
+    if (history === null) {
+      get().closeScreen();
+      return;
+    }
+    set({ history });
+    get().openScreen("history");
+  },
 
-  setLibraryOpen: (libraryOpen) =>
-    set(libraryOpen ? { libraryOpen } : { libraryOpen, libraryFilterTag: null }),
+  setComparison: (comparison) => {
+    if (comparison === null) {
+      // The diff opens on top of the history screen; closing it goes back
+      // there when that is where it came from, and to the document when the
+      // conflict banner opened it instead.
+      set((s) => ({ screen: s.history ? "history" : null, comparison: null }));
+      return;
+    }
+    set({ comparison });
+    get().openScreen("comparison");
+  },
+
   setLibrarySort: (librarySort) => set({ librarySort }),
   toggleLibraryFilter: (tag) =>
     set((s) => ({
       libraryFilterTag: tag !== null && s.libraryFilterTag === tag ? null : tag,
       // A tag is a way into the library screen, so it opens it.
-      libraryOpen: tag === null ? s.libraryOpen : true,
+      screen: tag === null ? s.screen : "library",
     })),
   setTags: (tags) => set({ tags }),
   setBacklinks: (backlinks) => set({ backlinks }),

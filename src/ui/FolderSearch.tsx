@@ -63,7 +63,7 @@ export function FolderSearch() {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
-      useStore.getState().setFolderSearch(false);
+      useStore.getState().closeScreen();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -74,7 +74,7 @@ export function FolderSearch() {
     ask.run({ root: libraryPath, query, caseSensitive, regex, extensions });
   }, [ask, libraryPath, query, caseSensitive, regex, extensions]);
 
-  const close = () => useStore.getState().setFolderSearch(false);
+  const close = () => useStore.getState().closeScreen();
 
   const lines = answer?.files.reduce((total, file) => total + file.matches.length, 0) ?? 0;
 
@@ -101,9 +101,14 @@ export function FolderSearch() {
 
   return (
     <div className="folder-search">
-      <h1 className="folder-search-title">
-        search in <span className="is-where">{basename(libraryPath ?? "")}</span>
-      </h1>
+      <div className="screen-head">
+        <h1 className="folder-search-title">
+          search in <span className="is-where">{basename(libraryPath ?? "")}</span>
+        </h1>
+        <button className="link" onClick={close}>
+          close
+        </button>
+      </div>
 
       <div className="folder-search-field">
         <span className="qs-glyph">⌕</span>
@@ -129,9 +134,6 @@ export function FolderSearch() {
         >
           .*
         </button>
-        <button className="link" onClick={close}>
-          close
-        </button>
       </div>
 
       {note() && <div className="folder-search-note">{note()}</div>}
@@ -150,7 +152,7 @@ export function FolderSearch() {
                 // The screen has the content area, so it has to step aside
                 // before the line it points at can be shown.
                 void openInEdit(file.path).then(() => {
-                  useStore.getState().setFolderSearch(false);
+                  useStore.getState().closeScreen();
                   // A frame later the editor is mounted and measured, so the
                   // jump scrolls instead of only moving the caret.
                   requestAnimationFrame(() => emitGotoLine(match.line));

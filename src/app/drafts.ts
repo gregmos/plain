@@ -218,6 +218,33 @@ export function dropDraft(doc: Pick<Doc, "id" | "path">): Promise<void> {
   });
 }
 
+/**
+ * A renamed file takes its recovery draft with it. Written under the new name
+ * first and only then removed from the old one, so a failure in between
+ * leaves the text somewhere rather than nowhere (review w10 #2).
+ *
+ * Says whether anything moved; nothing to move is not a failure.
+ */
+export async function moveDraft(
+  from: Pick<Doc, "id" | "path">,
+  to: Pick<Doc, "id" | "path">,
+): Promise<boolean> {
+  if (!inTauri) return false;
+  if (documentKey(from) === documentKey(to)) return false;
+  try {
+    const source = await draftPath(from);
+    if (!(await exists(source))) return false;
+    const text = await readTextFile(source);
+    await writeTextAtomic(await draftPath(to), text);
+    await remove(source);
+    return true;
+  } catch {
+    // The old draft stays where it is: recovery will still offer it under
+    // the old name, which is better than offering nothing.
+    return false;
+  }
+}
+
 /** Every dirty buffer belongs to the store, so one subscription covers all. */
 export function installDrafts(): () => void {
   return useStore.subscribe((state, previous) => {

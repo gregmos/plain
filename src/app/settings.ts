@@ -15,12 +15,23 @@ export type Eol = "crlf" | "lf";
 export interface Settings {
   appearance: { theme: Theme; fontSize: number; contentWidth: number };
   read: { codeWrap: boolean };
-  edit: { lineNumbers: boolean; indentUnit: IndentUnit; spellcheck: boolean };
+  edit: { lineNumbers: boolean; indentUnit: IndentUnit };
   files: { newFileEol: Eol; autosave: number };
   library: { extensions: string[] };
 }
 
 export const SETTINGS_FILE = "settings.json";
+
+/** The reading column, in px (spec §3, §10). The `−`/`+` step is the same. */
+export const CONTENT_WIDTH = { min: 440, max: 1400, step: 20 } as const;
+
+/**
+ * A 560px column leaves a 1920px screen mostly empty, so a wide screen starts
+ * wider. Only on a first run: once settings.json exists it says what the
+ * width is, whatever screen you moved to since (spec §3).
+ */
+const WIDE_SCREEN = 1600;
+const WIDE_DEFAULT = 720;
 
 /** macOS writes LF, Windows writes CRLF (spec §13a). */
 export function defaultEol(): Eol {
@@ -35,7 +46,7 @@ export function defaultSettings(): Settings {
   return {
     appearance: { theme: "system", fontSize: 13.5, contentWidth: 560 },
     read: { codeWrap: false },
-    edit: { lineNumbers: true, indentUnit: 2, spellcheck: true },
+    edit: { lineNumbers: true, indentUnit: 2 },
     files: { newFileEol: defaultEol(), autosave: 0 },
     library: { extensions: [".md", ".markdown"] },
   };
@@ -43,6 +54,18 @@ export function defaultSettings(): Settings {
 
 /** The shape, for anything that only needs a value to fall back to. */
 export const DEFAULTS: Settings = defaultSettings();
+
+/**
+ * The defaults a first run gets: the same ones, with a wider column on a wide
+ * screen. The width is a parameter so the tests can drive both.
+ */
+export function firstRunSettings(
+  screenWidth: number = typeof screen === "undefined" ? 0 : screen.width,
+): Settings {
+  const settings = defaultSettings();
+  if (screenWidth >= WIDE_SCREEN) settings.appearance.contentWidth = WIDE_DEFAULT;
+  return settings;
+}
 
 /** `files.autosave` bounds, from spec §2a. 0 turns it off. */
 export const AUTOSAVE = { min: 0, max: 60, step: 1 };
@@ -87,13 +110,17 @@ export function normalizeSettings(raw: unknown): Settings {
     appearance: {
       theme: oneOf(appearance["theme"], ["system", "light", "dark"] as const, DEFAULTS.appearance.theme),
       fontSize: num(appearance["fontSize"], 11, 20, DEFAULTS.appearance.fontSize),
-      contentWidth: num(appearance["contentWidth"], 440, 900, DEFAULTS.appearance.contentWidth),
+      contentWidth: num(
+        appearance["contentWidth"],
+        CONTENT_WIDTH.min,
+        CONTENT_WIDTH.max,
+        DEFAULTS.appearance.contentWidth,
+      ),
     },
     read: { codeWrap: bool(read["codeWrap"], DEFAULTS.read.codeWrap) },
     edit: {
       lineNumbers: bool(edit["lineNumbers"], DEFAULTS.edit.lineNumbers),
       indentUnit: oneOf(edit["indentUnit"], ["tab", 2, 4] as const, DEFAULTS.edit.indentUnit),
-      spellcheck: bool(edit["spellcheck"], DEFAULTS.edit.spellcheck),
     },
     files: {
       // An explicit choice in the file wins; the fallback follows the platform.
@@ -129,10 +156,12 @@ export function parseSettings(text: string): ParsedSettings {
 
 /** Reads settings.json from the app data dir. Missing file is not an error. */
 export async function loadSettings(): Promise<ParsedSettings> {
-  if (!inTauri) return { settings: defaultSettings(), invalid: false };
+  if (!inTauri) return { settings: firstRunSettings(), invalid: false };
   try {
     const file = await settingsPath();
-    if (!(await exists(file))) return { settings: defaultSettings(), invalid: false };
+    // No file is a first run; an unreadable one is not, so only this path
+    // gets the wide-screen column.
+    if (!(await exists(file))) return { settings: firstRunSettings(), invalid: false };
     return parseSettings(await readTextFile(file));
   } catch {
     return { settings: defaultSettings(), invalid: true };
@@ -157,7 +186,6 @@ export function serializeSettings(settings: Settings): string {
       edit: {
         lineNumbers: settings.edit.lineNumbers,
         indentUnit: settings.edit.indentUnit,
-        spellcheck: settings.edit.spellcheck,
       },
       files: { newFileEol: settings.files.newFileEol, autosave: settings.files.autosave },
       library: { extensions: settings.library.extensions },

@@ -75,6 +75,7 @@ export async function bootstrap(): Promise<void> {
     store.setRecentLibraries(session.recentLibraries);
     restoreZoom(session.zoom);
     store.setRailView(session.rail.view);
+    store.setRailWidth(session.rail.width);
     store.setRailCollapsed(session.rail.collapsed);
     store.setSplitRatio(session.split);
   }

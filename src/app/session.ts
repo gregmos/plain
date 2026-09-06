@@ -7,7 +7,7 @@ import { inTauri } from "./env";
 import { writeTextAtomic } from "./fs";
 import { pathKey } from "./paths";
 import { dataDir } from "./settings";
-import { useStore, type LibrarySort, type Mode, type RailView } from "./store";
+import { clampRailWidth, useStore, type LibrarySort, type Mode, type RailView } from "./store";
 
 const FILE = "state.json";
 const DEBOUNCE_MS = 2000;
@@ -18,7 +18,7 @@ export interface SessionFile {
   version: 1;
   files: { path: string; mode: Mode; caret: { line: number; col: number } | null }[];
   active: string | null;
-  rail: { collapsed: boolean; view: RailView };
+  rail: { collapsed: boolean; view: RailView; width: number };
   /** Editor's share of the width in split view (spec §2a). */
   split: number;
   library: string | null;
@@ -72,7 +72,7 @@ export function toSession(): SessionFile {
       .filter((d) => d.path !== null)
       .map((d) => ({ path: d.path as string, mode: d.mode, caret: d.caret })),
     active: active?.path ?? null,
-    rail: { collapsed: state.railCollapsed, view: state.railView },
+    rail: { collapsed: state.railCollapsed, view: state.railView, width: state.railWidth },
     split: state.splitRatio,
     library: state.libraryPath,
     collapsed: state.collapsed,
@@ -109,6 +109,11 @@ export function parseSession(text: string): SessionFile | null {
     rail: {
       collapsed: value.rail?.collapsed === true,
       view: value.rail?.view === "outline" ? "outline" : "files",
+      // A rail dragged to nothing by a broken file would be a rail you
+      // cannot get hold of again.
+      width: clampRailWidth(
+        typeof value.rail?.width === "number" ? value.rail.width : Number.NaN,
+      ),
     },
     // A dragged-to-nothing panel would come back as a document you cannot see.
     split:
@@ -186,6 +191,7 @@ export function installSession(): () => void {
       state.activeId === previous.activeId &&
       state.railCollapsed === previous.railCollapsed &&
       state.railView === previous.railView &&
+      state.railWidth === previous.railWidth &&
       state.libraryPath === previous.libraryPath &&
       state.collapsed === previous.collapsed &&
       state.librarySort === previous.librarySort &&

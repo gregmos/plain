@@ -1,6 +1,6 @@
-// Right-click inside the rendered document (spec §2a). The editor keeps
-// WebView2's own menu — it is the only way to reach cut/copy/paste and the
-// Windows spelling suggestions — so this one is read's alone.
+// Right-click inside the rendered document (spec §2a). The editor has its
+// own (EditorContextMenu); this one is read's, and the two differ because
+// read has links and images to offer and nothing to paste into.
 //
 // It hands the element back rather than a resolved target: read already
 // knows how to follow a link and open an image, and knowing it twice is how
@@ -9,13 +9,14 @@
 import { useState, type ReactNode } from "react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { copyPlainText } from "../app/commands";
+import { copyText } from "../app/platform";
 import { useStore } from "../app/store";
 import "./library.css";
 
 async function toClipboard(text: string, said: string): Promise<void> {
   const store = useStore.getState();
   try {
-    await navigator.clipboard.writeText(text);
+    await copyText(text);
     store.setMessage(said);
   } catch {
     store.setMessage("couldn't copy");
