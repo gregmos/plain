@@ -11,6 +11,7 @@ import {
   type TransactionSpec,
 } from "@codemirror/state";
 import { indentUnit, syntaxTree } from "@codemirror/language";
+import type { SyntaxNode } from "@lezer/common";
 import type { Command, EditorView } from "@codemirror/view";
 
 /** Every line touched by the selection, once, in document order. */
@@ -172,27 +173,58 @@ export const insertLink: StateCommand = editing(({ state, dispatch }) => {
 
 /* ------------------------------------------------------------------ line */
 
-const FENCE = /^\s{0,3}(```|~~~)/;
+const FENCE = /^\s{0,3}(`{3,}|~{3,}|\${2})/;
 
 /** Nobody has a code block this long, and huge files must not be scanned. */
 const FENCE_SEARCH = 500;
 
-/** Nearest fence line above `number`, or 0 — the line the block opens with. */
-function fenceAbove(state: EditorState, number: number): number {
-  const stop = Math.max(1, number - FENCE_SEARCH);
-  for (let n = number - 1; n >= stop; n -= 1) {
-    if (FENCE.test(state.doc.line(n).text)) return n;
-  }
-  return 0;
+interface Fence {
+  /** The character the fence is made of: a backtick, a tilde, a dollar. */
+  char: string;
+  length: number;
+  line: number;
 }
 
-/** Nearest fence line below, or 0. */
-function fenceBelow(state: EditorState, number: number): number {
-  const stop = Math.min(state.doc.lines, number + FENCE_SEARCH);
-  for (let n = number + 1; n <= stop; n += 1) {
-    if (FENCE.test(state.doc.line(n).text)) return n;
+function fenceAt(state: EditorState, n: number): Fence | null {
+  const match = FENCE.exec(state.doc.line(n).text);
+  const delimiter = match?.[1];
+  if (!delimiter) return null;
+  return { char: delimiter[0] ?? "", length: delimiter.length, line: n };
+}
+
+/**
+ * The fenced block a line is inside, if the fences are the kind we were
+ * asked about. Blocks are paired from the top of a window, so a fence that
+ * closes someone else's block is not mistaken for one that opens ours, and a
+ * `$$` command never takes a ``` block apart (review #2).
+ */
+type Enclosing =
+  | { kind: "none" }
+  | { kind: "other" }
+  | { kind: "match"; open: Fence; close: Fence };
+
+function enclosing(state: EditorState, line: number, want: string): Enclosing {
+  const from = Math.max(1, line - FENCE_SEARCH);
+  const to = Math.min(state.doc.lines, line + FENCE_SEARCH);
+  let open: Fence | null = null;
+
+  for (let n = from; n <= to; n += 1) {
+    const fence = fenceAt(state, n);
+    if (!fence) continue;
+    if (!open) {
+      open = fence;
+      continue;
+    }
+    // A closer is the same character, at least as long (CommonMark).
+    if (fence.char === open.char && fence.length >= open.length) {
+      if (open.line <= line && line <= fence.line) {
+        return open.char === want[0] ? { kind: "match", open, close: fence } : { kind: "other" };
+      }
+      open = null;
+      continue;
+    }
   }
-  return 0;
+  return { kind: "none" };
 }
 
 /** Takes a whole line out, with the line break that joins it to its neighbour. */
@@ -203,47 +235,53 @@ function dropLine(state: EditorState, line: Line): ChangeSpec {
 }
 
 /**
- * Fences each run of selected lines, or — when the selection sits inside a
- * block already — takes that block's fences off. Twice in a row leaves the
- * document as it was (review #3).
+ * Fences each run of selected lines, or — when the selection is already
+ * inside a block of this kind — takes that block's fences off. Inside a block
+ * of another kind it does nothing at all. Twice in a row leaves the document
+ * as it was (review #2, #3).
  */
-export const toggleCodeBlock: StateCommand = editing(({ state, dispatch }) => {
-  const groups = lineGroups(state);
-  if (groups.length === 0) return false;
-  const changes: ChangeSpec[] = [];
+function toggleFence(fence: string): StateCommand {
+  return editing(({ state, dispatch }) => {
+    const groups = lineGroups(state);
+    if (groups.length === 0) return false;
+    const changes: ChangeSpec[] = [];
+    const undone = new Set<number>();
 
-  for (const group of groups) {
-    const first = group[0];
-    const last = group[group.length - 1];
-    if (!first || !last) continue;
+    for (const group of groups) {
+      const first = group[0];
+      const last = group[group.length - 1];
+      if (!first || !last) continue;
 
-    // The selection covers the fences themselves.
-    if (group.length >= 2 && FENCE.test(first.text) && FENCE.test(last.text)) {
-      // Two fences with nothing between them: one removal, or the two ranges
-      // would overlap on the line break they share.
-      if (last.number === first.number + 1) {
-        changes.push({ from: first.from, to: Math.min(last.to + 1, state.doc.length) });
-      } else {
-        changes.push(dropLine(state, first), dropLine(state, last));
+      const block = enclosing(state, first.number, fence);
+      if (block.kind === "other") continue;
+      if (block.kind === "match") {
+        // Two selections in one block unwrap it once (review #2).
+        if (undone.has(block.open.line)) continue;
+        undone.add(block.open.line);
+        const openLine = state.doc.line(block.open.line);
+        const closeLine = state.doc.line(block.close.line);
+        if (block.close.line === block.open.line + 1) {
+          changes.push({ from: openLine.from, to: Math.min(closeLine.to + 1, state.doc.length) });
+        } else {
+          changes.push(dropLine(state, openLine), dropLine(state, closeLine));
+        }
+        continue;
       }
-      continue;
+      changes.push(
+        { from: first.from, insert: fence + state.lineBreak },
+        { from: last.to, insert: state.lineBreak + fence },
+      );
     }
-    const open = fenceAbove(state, first.number);
-    const close = fenceBelow(state, last.number);
-    if (open > 0 && close > 0) {
-      changes.push(dropLine(state, state.doc.line(open)), dropLine(state, state.doc.line(close)));
-      continue;
-    }
-    changes.push(
-      { from: first.from, insert: "```" + state.lineBreak },
-      { from: last.to, insert: state.lineBreak + "```" },
-    );
-  }
 
-  if (changes.length === 0) return false;
-  dispatch(state.update({ changes, userEvent: "input", scrollIntoView: true }));
-  return true;
-});
+    if (changes.length === 0) return false;
+    dispatch(state.update({ changes, userEvent: "input", scrollIntoView: true }));
+    return true;
+  });
+}
+
+export const toggleCodeBlock = toggleFence("```");
+/** `$$ … $$` on its own lines (spec §5.2, v2.6). */
+export const toggleMathBlock = toggleFence("$$");
 
 /** `> ` on every selected line, or off every selected line. */
 export const toggleQuote: StateCommand = editing(({ state, dispatch }) => {
@@ -291,13 +329,15 @@ function markerLength(text: string): number {
   return m ? m[0].length - (m[1]?.length ?? 0) : 0;
 }
 
-/** `-` -> `1.` -> `- [ ]` -> nothing (spec §5.2). */
-export const cycleList: StateCommand = editing(({ state, dispatch }) => {
-  const lines = selectedLines(state).filter((l) => l.text.trim() !== "");
-  const first = lines[0];
-  if (!first) return false;
+function listMarker(kind: ListKind, number: number): string {
+  if (kind === "bullet") return "- ";
+  if (kind === "ordered") return `${number}. `;
+  return kind === "task" ? "- [ ] " : "";
+}
 
-  const next = NEXT[listKind(first.text)];
+/** Rewrites the markup of every selected line to one kind. */
+function applyList(state: EditorState, next: ListKind): ChangeSpec[] {
+  const lines = selectedLines(state).filter((l) => l.text.trim() !== "");
   const changes: ChangeSpec[] = [];
   let number = 1;
   for (const line of lines) {
@@ -308,10 +348,71 @@ export const cycleList: StateCommand = editing(({ state, dispatch }) => {
       next === "bullet" ? "- " : next === "ordered" ? `${number++}. ` : next === "task" ? "- [ ] " : "";
     changes.push({ from, to, insert: marker });
   }
-  if (changes.length === 0) return false;
-  dispatch(state.update({ changes, userEvent: "input", scrollIntoView: true }));
-  return true;
-});
+  return changes;
+}
+
+/** The lines a list command works on: the written ones, or the empty one. */
+function listLines(state: EditorState): Line[] {
+  const lines = selectedLines(state);
+  const written = lines.filter((line) => line.text.trim() !== "");
+  // An empty line is where a list usually starts (review #4).
+  return written.length > 0 ? written : lines.slice(0, 1);
+}
+
+function listCommand(pick: (current: ListKind) => ListKind): StateCommand {
+  return editing(({ state, dispatch }) => {
+    const first = listLines(state)[0];
+    if (!first) return false;
+    const changes = applyList(state, pick(listKind(first.text)));
+    if (changes.length === 0) return false;
+    dispatch(state.update({ changes, userEvent: "input", scrollIntoView: true }));
+    return true;
+  });
+}
+
+/** `-` -> `1.` -> `- [ ]` -> nothing (spec §5.2). */
+export const cycleList = listCommand((current) => NEXT[current]);
+
+/**
+ * One kind of list, on or off again (spec §5.2, v2.6). Lines that already
+ * carry a different marker keep it: turning a paragraph into a list must not
+ * quietly rewrite the numbered item next to it (review #4).
+ */
+function listToggle(kind: ListKind): StateCommand {
+  return editing(({ state, dispatch }) => {
+    const lines = listLines(state);
+    if (lines.length === 0) return false;
+    const off = lines.every((line) => listKind(line.text) === kind);
+    const changes: ChangeSpec[] = [];
+    let number = 1;
+    for (const line of lines) {
+      const current = listKind(line.text);
+      if (!off && current !== "none" && current !== kind) continue;
+      const indent = /^\s*/.exec(line.text)?.[0].length ?? 0;
+      const from = line.from + indent;
+      const to = from + markerLength(line.text);
+      const marker = off ? "" : listMarker(kind, number++);
+      if (from === to && marker === "") continue;
+      changes.push({ from, to, insert: marker });
+    }
+    if (changes.length === 0) return false;
+    const spec = state.changes(changes);
+    dispatch(
+      state.update({
+        changes: spec,
+        // After the marker, which is where the item is written.
+        selection: state.selection.map(spec, 1),
+        userEvent: "input",
+        scrollIntoView: true,
+      }),
+    );
+    return true;
+  });
+}
+
+export const toggleBulletList = listToggle("bullet");
+export const toggleOrderedList = listToggle("ordered");
+export const toggleTaskList = listToggle("task");
 
 /** Ctrl+Enter: tick or untick, adding the checkbox when there is none. */
 export const toggleCheckbox: StateCommand = editing(({ state, dispatch }) => {
@@ -479,4 +580,301 @@ export function detectIndent(text: string, fallback: string): string {
     }
   }
   return fallback;
+}
+
+
+/* ------------------------------------------------------- insert (v2.6) */
+
+/** True where markdown means what it says: not in code, not in a link target. */
+export function isProse(state: EditorState, pos: number): boolean {
+  for (let node: SyntaxNode | null = syntaxTree(state).resolveInner(pos, -1); node; node = node.parent) {
+    if (
+      node.name === "InlineCode" ||
+      node.name === "CodeText" ||
+      node.name === "CodeMark" ||
+      node.name === "FencedCode" ||
+      node.name === "CodeBlock" ||
+      node.name === "URL" ||
+      node.name === "Autolink" ||
+      node.name === "LinkTitle"
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** `==highlight==`, but never inside code or a link target (review #11). */
+export const toggleHighlight: StateCommand = editing((target) => {
+  const { state } = target;
+  if (state.selection.ranges.some((range) => !isProse(state, range.from))) return false;
+  return toggleInline("==")(target);
+});
+
+/** `$…$` around the selection, or an empty pair to type into. */
+export const toggleMathInline = toggleInline("$");
+
+const WIKI_OPEN = "[[";
+const WIKI_CLOSE = "]]";
+
+/** `[[wikilink]]`; again takes one pair off (review #6). */
+export const insertWikilink: StateCommand = editing(({ state, dispatch }) => {
+  const tr = state.changeByRange((range) => {
+    const inner = state.sliceDoc(range.from, range.to);
+    const before = state.sliceDoc(Math.max(0, range.from - 2), range.from);
+    const after = state.sliceDoc(range.to, Math.min(state.doc.length, range.to + 2));
+
+    if (before === WIKI_OPEN && after === WIKI_CLOSE) {
+      return {
+        changes: [
+          { from: range.from - 2, to: range.from },
+          { from: range.to, to: range.to + 2 },
+        ],
+        range: EditorSelection.range(range.from - 2, range.to - 2),
+      };
+    }
+    if (inner.length >= 4 && inner.startsWith(WIKI_OPEN) && inner.endsWith(WIKI_CLOSE)) {
+      return {
+        changes: [
+          { from: range.from, to: range.from + 2 },
+          { from: range.to - 2, to: range.to },
+        ],
+        range: EditorSelection.range(range.from, range.to - 4),
+      };
+    }
+    const insert = WIKI_OPEN + inner + WIKI_CLOSE;
+    return {
+      changes: { from: range.from, to: range.to, insert },
+      range: range.empty
+        ? EditorSelection.cursor(range.from + 2)
+        : EditorSelection.range(range.from + 2, range.to + 2),
+    };
+  });
+  dispatch(state.update(tr, { userEvent: "input", scrollIntoView: true }));
+  return true;
+});
+
+/* --------------------------------------------------------------- blocks */
+
+/** `> ` (however deep) at the head of a line: a block there keeps it. */
+function containerPrefix(text: string): string {
+  return /^(\s*(?:>\s?)+)/.exec(text)?.[1] ?? "";
+}
+
+function isBlank(text: string, prefix: string): boolean {
+  return text.slice(prefix.length).trim() === "";
+}
+
+/**
+ * Where a whole block (a table, a rule) goes when the caret is on `line`, and
+ * what it has to carry to stay inside its container (review #3, #7): after
+ * the line it is on, one blank line apart, quoted if that line is quoted.
+ */
+function blockSpot(
+  state: EditorState,
+  line: Line,
+): { at: number; prefix: string; before: string; after: string } {
+  const prefix = containerPrefix(line.text);
+  const blank = prefix.trimEnd();
+  const nl = state.lineBreak;
+  const below = line.number < state.doc.lines ? state.doc.line(line.number + 1) : null;
+  const gapBelow = below && !isBlank(below.text, containerPrefix(below.text)) ? nl + blank + nl : nl;
+
+  if (isBlank(line.text, prefix)) {
+    const above = line.number > 1 ? state.doc.line(line.number - 1) : null;
+    return {
+      at: line.to,
+      prefix,
+      before: above && !isBlank(above.text, containerPrefix(above.text)) ? nl + blank + nl : "",
+      after: gapBelow,
+    };
+  }
+  // A line right above `---` would turn into a Setext heading (review #3).
+  return { at: line.to, prefix, before: nl + blank + nl, after: gapBelow };
+}
+
+/** One entry per line the selection starts on, in order. */
+function caretLines(state: EditorState): Line[] {
+  const seen = new Set<number>();
+  const lines: Line[] = [];
+  for (const range of state.selection.ranges) {
+    const line = state.doc.lineAt(range.from);
+    if (seen.has(line.number)) continue;
+    seen.add(line.number);
+    lines.push(line);
+  }
+  return lines;
+}
+
+/** `---` alone, with a blank line on either side (spec §5.2, review #3). */
+export const insertRule: StateCommand = editing(({ state, dispatch }) => {
+  const changes: ChangeSpec[] = [];
+  let first = -1;
+  for (const line of caretLines(state)) {
+    const spot = blockSpot(state, line);
+    if (first < 0) first = spot.at;
+    changes.push({ from: spot.at, insert: spot.before + spot.prefix + "---" + spot.after });
+  }
+  if (changes.length === 0) return false;
+  const spec = state.changes(changes);
+  dispatch(
+    state.update({
+      changes: spec,
+      // Below the rule, where the writing goes on.
+      selection: EditorSelection.cursor(spec.mapPos(first, 1)),
+      userEvent: "input",
+      scrollIntoView: true,
+    }),
+  );
+  return true;
+});
+
+const TABLE = ["| a | b | c |", "|---|---|---|", "|   |   |   |"];
+
+/** A 3x3 table after the caret's line, the caret on the first header cell. */
+export const insertTable: StateCommand = editing(({ state, dispatch }) => {
+  const changes: ChangeSpec[] = [];
+  let caretAt = -1;
+  for (const line of caretLines(state)) {
+    const spot = blockSpot(state, line);
+    const body = TABLE.map((row) => spot.prefix + row).join(state.lineBreak);
+    if (caretAt < 0) caretAt = spot.at + spot.before.length + spot.prefix.length + 2;
+    changes.push({ from: spot.at, insert: spot.before + body + spot.after });
+  }
+  if (changes.length === 0) return false;
+  dispatch(
+    state.update({
+      changes,
+      // On `a`, so typing names the first column.
+      selection: EditorSelection.cursor(caretAt),
+      userEvent: "input",
+      scrollIntoView: true,
+    }),
+  );
+  return true;
+});
+
+/**
+ * The next footnote number: one past the highest the document already uses.
+ * Gaps are not filled — `[^2]` after `[^1] [^3]` would read as a repeat of
+ * something deleted. Numbers inside code, or escaped as `\[^1]`, are text
+ * rather than references (review #8).
+ */
+export function nextFootnote(text: string): number {
+  const prose = text
+    .replace(/^ {0,3}(```|~~~)[\s\S]*?^ {0,3}\1/gm, "")
+    .replace(/`[^`\n]*`/g, "")
+    .replace(/\\\[\^/g, "");
+  let top = 0;
+  for (const match of prose.matchAll(/\[\^(\d+)\]/g)) {
+    top = Math.max(top, Number(match[1] ?? 0));
+  }
+  return top + 1;
+}
+
+/**
+ * `[^n]` where the caret is and `[^n]: ` at the end of the document, with the
+ * caret in the first definition — which is where the text goes. Every cursor
+ * gets its own number (review #1, #7).
+ */
+export const insertFootnote: StateCommand = editing(({ state, dispatch }) => {
+  const text = state.doc.toString();
+  const end = state.doc.length;
+  const nl = state.lineBreak;
+  let label = nextFootnote(text);
+
+  const changes: ChangeSpec[] = [];
+  const definitions: string[] = [];
+  for (const range of state.selection.ranges) {
+    // After what is selected, not instead of it: the reference follows the
+    // words it belongs to (review #1).
+    changes.push({ from: range.to, insert: `[^${label}]` });
+    definitions.push(`[^${label}]: `);
+    label += 1;
+  }
+  const tail = text.endsWith("\n\n") ? "" : text.endsWith("\n") ? nl : nl + nl;
+  const joined = definitions.join(nl);
+  changes.push({ from: end, insert: tail + joined });
+
+  // Everything shifts when the marks go in, so the caret is mapped, not
+  // counted from the old document (review #1).
+  const spec = state.changes(changes);
+  const at = spec.newLength - (joined.length - (definitions[0]?.length ?? 0));
+  dispatch(
+    state.update({
+      changes: spec,
+      selection: EditorSelection.cursor(at),
+      userEvent: "input",
+      scrollIntoView: true,
+    }),
+  );
+  return true;
+});
+
+export const CALLOUT_TYPES = ["note", "tip", "important", "warning", "caution"] as const;
+export type CalloutType = (typeof CALLOUT_TYPES)[number];
+
+const CALLOUT_MARK = /^(\s*>\s*)\[!(\w+)\]\s*$/;
+
+/** The callout a line belongs to: up through the quoted lines to its marker. */
+function calloutOf(state: EditorState, line: Line): { marker: Line; type: string } | null {
+  for (let n = line.number; n >= 1; n -= 1) {
+    const current = state.doc.line(n);
+    const marked = CALLOUT_MARK.exec(current.text);
+    if (marked) return { marker: current, type: (marked[2] ?? "").toLowerCase() };
+    if (!/^\s*>/.test(current.text)) return null;
+  }
+  return null;
+}
+
+/**
+ * `> [!NOTE]` above the selected lines, quoted. Inside a callout of the same
+ * type it comes off; inside one of another type only the marker changes
+ * (review #5). Separate runs of lines are separate callouts.
+ */
+export function toggleCallout(type: CalloutType): StateCommand {
+  return editing(({ state, dispatch }) => {
+    const changes: ChangeSpec[] = [];
+    const handled = new Set<number>();
+
+    for (const group of lineGroups(state)) {
+      const first = group[0];
+      if (!first) continue;
+      const callout = calloutOf(state, first);
+      if (callout) {
+        if (handled.has(callout.marker.number)) continue;
+        handled.add(callout.marker.number);
+      }
+
+      if (callout && callout.type === type) {
+        changes.push(dropLine(state, callout.marker));
+        for (const line of group) {
+          if (line.number === callout.marker.number) continue;
+          const quoted = /^(\s*)> ?/.exec(line.text);
+          if (quoted) {
+            changes.push({
+              from: line.from + (quoted[1]?.length ?? 0),
+              to: line.from + quoted[0].length,
+            });
+          }
+        }
+      } else if (callout) {
+        // Another type: only the label changes, the quoting stays.
+        const marked = CALLOUT_MARK.exec(callout.marker.text);
+        const lead = (marked?.[1] ?? "> ").length;
+        changes.push({
+          from: callout.marker.from + lead,
+          to: callout.marker.to,
+          insert: `[!${type.toUpperCase()}]`,
+        });
+      } else {
+        changes.push({ from: first.from, insert: `> [!${type.toUpperCase()}]${state.lineBreak}` });
+        for (const line of group) changes.push({ from: line.from, insert: "> " });
+      }
+    }
+
+    if (changes.length === 0) return false;
+    dispatch(state.update({ changes, userEvent: "input", scrollIntoView: true }));
+    return true;
+  });
 }

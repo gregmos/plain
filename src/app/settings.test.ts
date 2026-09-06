@@ -13,8 +13,8 @@ describe("parseSettings", () => {
     const { settings, invalid } = parseSettings(
       JSON.stringify({
         appearance: { theme: "dark", fontSize: 99, contentWidth: 700 },
-        edit: { lineNumbers: false, indentUnit: "tab" },
-        library: { extensions: [".md", ".txt"] },
+        edit: { lineNumbers: false, indentUnit: "tab", toolbar: false },
+        library: { extensions: [".md", ".txt"], tags: false },
       }),
     );
     expect(invalid).toBe(false);
@@ -43,9 +43,9 @@ describe("parseSettings", () => {
 const CHANGED: Settings = {
   appearance: { theme: "dark", fontSize: 15, contentWidth: 700 },
   read: { codeWrap: true },
-  edit: { lineNumbers: false, indentUnit: "tab" },
+  edit: { lineNumbers: false, indentUnit: "tab", toolbar: false },
   files: { newFileEol: "lf", autosave: 0 },
-  library: { extensions: [".md", ".txt"] },
+  library: { extensions: [".md", ".txt"], tags: false },
 };
 
 describe("serializeSettings", () => {
@@ -61,6 +61,7 @@ describe("serializeSettings", () => {
       "indentUnit",
       "newFileEol",
       "extensions",
+      "tags",
     ]) {
       expect(text).toContain(`"${key}"`);
     }
@@ -71,6 +72,21 @@ describe("serializeSettings", () => {
     expect(invalid).toBe(false);
     expect(settings).toEqual(CHANGED);
     expect(parseSettings(serializeSettings(DEFAULTS)).settings).toEqual(DEFAULTS);
+  });
+
+  it("keeps library.tags on for a file that predates it (spec §2a)", () => {
+    // An old settings.json has no such key; tags were on before it existed,
+    // so its absence must not turn them off.
+    const older = parseSettings('{ "library": { "extensions": [".md"] } }');
+    expect(older.invalid).toBe(false);
+    expect(older.settings.library.tags).toBe(true);
+  });
+
+  it("takes the value the file gives it, either way", () => {
+    expect(parseSettings('{"library":{"tags":false}}').settings.library.tags).toBe(false);
+    expect(parseSettings('{"library":{"tags":true}}').settings.library.tags).toBe(true);
+    // Anything that is not a boolean falls back to the default.
+    expect(parseSettings('{"library":{"tags":"yes"}}').settings.library.tags).toBe(true);
   });
 });
 

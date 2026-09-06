@@ -26,17 +26,31 @@ import { zoomIn, zoomOut, zoomReset } from "./zoom";
 import { runEditorCommand } from "../editor";
 import { redo, undo } from "@codemirror/commands";
 import {
+  CALLOUT_TYPES,
   clearHeading,
   cycleList,
+  insertFootnote,
   insertLink,
+  insertRule,
+  insertTable,
+  insertWikilink,
   toggleBold,
+  toggleBulletList,
+  toggleCallout,
   toggleCheckbox,
   toggleCodeBlock,
   toggleHeading,
+  toggleHighlight,
   toggleInlineCode,
   toggleItalic,
+  toggleMathBlock,
+  toggleMathInline,
+  toggleOrderedList,
   toggleQuote,
+  toggleStrike,
+  toggleTaskList,
 } from "../editor/commands";
+import { insertImageFromFile } from "../editor/images";
 import { reopenAs, saveActive, saveAs } from "./save";
 import { toggleLineNumbers } from "../editor/setup";
 import { goBack, goForward } from "../read/history";
@@ -278,6 +292,26 @@ export const commands: Command[] = [
     when: inEdit,
   })),
   { id: "edit.headingOff", title: "no heading", run: () => void runEditorCommand(clearHeading), when: inEdit },
+
+  /* the insert group (spec §5.2, v2.6) */
+  { id: "edit.strike", title: "strikethrough", hint: "Ctrl+Alt+S", run: () => void runEditorCommand(toggleStrike), when: inEdit },
+  { id: "edit.highlight", title: "highlight", hint: "Ctrl+Alt+H", run: () => void runEditorCommand(toggleHighlight), when: inEdit },
+  { id: "edit.bulletList", title: "bulleted list", hint: "Ctrl+Alt+U", run: () => void runEditorCommand(toggleBulletList), when: inEdit },
+  { id: "edit.orderedList", title: "numbered list", hint: "Ctrl+Alt+E", run: () => void runEditorCommand(toggleOrderedList), when: inEdit },
+  { id: "edit.taskList", title: "task list", hint: "Ctrl+Alt+C", run: () => void runEditorCommand(toggleTaskList), when: inEdit },
+  { id: "edit.table", title: "table", hint: "Ctrl+Alt+T", run: () => void runEditorCommand(insertTable), when: inEdit },
+  { id: "edit.image", title: "image…", hint: "Ctrl+Alt+I", run: () => void insertImageFromFile(), when: inEdit },
+  { id: "edit.rule", title: "horizontal rule", hint: "Ctrl+Alt+-", run: () => void runEditorCommand(insertRule), when: inEdit },
+  { id: "edit.footnote", title: "footnote", hint: "Ctrl+Alt+N", run: () => void runEditorCommand(insertFootnote), when: inEdit },
+  { id: "edit.mathInline", title: "math inline", hint: "Ctrl+Alt+M", run: () => void runEditorCommand(toggleMathInline), when: inEdit },
+  { id: "edit.mathBlock", title: "math block", hint: "Ctrl+Alt+Shift+M", run: () => void runEditorCommand(toggleMathBlock), when: inEdit },
+  { id: "edit.wikilink", title: "wikilink", hint: "Ctrl+Alt+W", run: () => void runEditorCommand(insertWikilink), when: inEdit },
+  ...CALLOUT_TYPES.map((type) => ({
+    id: `edit.callout${type[0]?.toUpperCase()}${type.slice(1)}`,
+    title: `callout: ${type}`,
+    run: () => void runEditorCommand(toggleCallout(type)),
+    when: inEdit,
+  })),
 
   /* ------------------------------------------------------- navigation */
   { id: "nav.quickSearch", title: "quick search", chord: "Ctrl+K", run: () => openQuickSearch() },

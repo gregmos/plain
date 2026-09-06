@@ -29,7 +29,8 @@ export function reloadTags(): Promise<void> {
         again = false;
         const store = useStore.getState();
         const root = store.libraryPath;
-        if (!root || !inTauri) {
+        // Nothing walks the folder while the setting is off (spec §2a).
+        if (!root || !inTauri || !store.settings.library.tags) {
           store.setTags([]);
           continue;
         }
@@ -49,6 +50,15 @@ export function reloadTags(): Promise<void> {
   })();
 }
 
+/**
+ * Whether the rail draws the `tags` section at all (spec §2a). An empty
+ * section is not a section: the heading alone tells you nothing, and the
+ * setting is there for people who do not use tags.
+ */
+export function showsTags(enabled: boolean, count: number): boolean {
+  return enabled && count > 0;
+}
+
 /** The files a tag is in, for the library filter. */
 export function filesOf(tags: TagCount[], tag: string | null): string[] | null {
   if (!tag) return null;
@@ -65,7 +75,8 @@ export function installTags(): () => void {
   const unsubscribe = useStore.subscribe((state, previous) => {
     if (
       state.libraryPath !== previous.libraryPath ||
-      state.settings.library.extensions !== previous.settings.library.extensions
+      state.settings.library.extensions !== previous.settings.library.extensions ||
+      state.settings.library.tags !== previous.settings.library.tags
     ) {
       void reloadTags();
     }
@@ -73,6 +84,7 @@ export function installTags(): () => void {
 
   window.addEventListener(TREE_CHANGED, later);
   void reloadTags();
+
 
   return () => {
     clearTimeout(timer);

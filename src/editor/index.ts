@@ -4,6 +4,7 @@
 export {
   dropImagesInEditor,
   EditView,
+  liveEditor,
   flushActiveEditor,
   focusEditor,
   renameBuffer,

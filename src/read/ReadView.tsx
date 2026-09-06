@@ -112,6 +112,9 @@ async function openInViewer(path: string): Promise<void> {
  */
 function filterByTag(tag: string): void {
   if (tag === "") return;
+  // With the setting off a `#tag` is just words: it still renders as it did,
+  // and clicking it does nothing (spec §2a).
+  if (!useStore.getState().settings.library.tags) return;
   const store = useStore.getState() as { openLibraryWithTag?: (tag: string) => void };
   if (typeof store.openLibraryWithTag === "function") store.openLibraryWithTag(tag);
   else window.dispatchEvent(new CustomEvent("plain:filter-tag", { detail: tag }));
@@ -246,10 +249,11 @@ export function ReadView({ doc }: { doc: Doc }) {
 
   // The document's tags follow the meta line; a long list keeps its count
   // rather than wrapping over the title (spec §2a).
+  const tagsEnabled = useStore((s) => s.settings.library.tags);
   const metaTags = useMemo(() => {
-    const tags = result?.tags ?? [];
+    const tags = tagsEnabled ? (result?.tags ?? []) : [];
     return { shown: tags.slice(0, META_TAGS), rest: Math.max(0, tags.length - META_TAGS) };
-  }, [result]);
+  }, [result, tagsEnabled]);
 
   /* ------------------------------------------------------------ the dom */
 

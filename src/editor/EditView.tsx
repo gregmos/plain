@@ -39,6 +39,11 @@ let liveId: string | null = null;
 let pending: { goto: Goto; at: number } | null = null;
 let pendingReplace = 0;
 
+/** The editor on screen, for the commands that arrive without one. */
+export function liveEditor(): EditorView | null {
+  return live;
+}
+
 /**
  * Puts whatever the editor holds into the store synchronously. Wave 4 calls
  * this before saving, so the snapshot never waits for the idle callback.

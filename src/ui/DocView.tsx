@@ -3,6 +3,7 @@ import { Group, Panel, Separator, type Layout } from "react-resizable-panels";
 import { useStore, type Doc } from "../app/store";
 import { ReadView } from "../read/ReadView";
 import { EditView } from "../editor/EditView";
+import { FormatBar } from "./FormatBar";
 import { ColumnEdge } from "./Resizer";
 import "./resizer.css";
 import "./split.css";
@@ -17,15 +18,19 @@ export function DocView({ doc }: { doc: Doc }) {
   // edges belong to the one-column modes (spec §3).
   if (doc.mode === "split") return <SplitView doc={doc} />;
   return (
-    <div className={"content-frame" + (doc.mode === "read" ? "" : " is-edit")}>
-      {doc.mode === "read" ? (
-        <ReadView doc={doc} />
-      ) : (
-        <EditView doc={doc} rich={doc.mode === "rich"} />
-      )}
-      <ColumnEdge side="left" />
-      <ColumnEdge side="right" />
-    </div>
+    <>
+      {/* Above the editor, under the mode bar and any banner (spec §5.2). */}
+      {doc.mode !== "read" && <FormatBar />}
+      <div className={"content-frame" + (doc.mode === "read" ? "" : " is-edit")}>
+        {doc.mode === "read" ? (
+          <ReadView doc={doc} />
+        ) : (
+          <EditView doc={doc} rich={doc.mode === "rich"} />
+        )}
+        <ColumnEdge side="left" />
+        <ColumnEdge side="right" />
+      </div>
+    </>
   );
 }
 
@@ -84,6 +89,7 @@ function SplitView({ doc }: { doc: Doc }) {
       onLayoutChanged={onLayoutChanged}
     >
       <Panel id={EDITOR_PANEL} className="split-panel" minSize="20%">
+        <FormatBar />
         <EditView doc={doc} split />
       </Panel>
       <Separator className="split-handle" />

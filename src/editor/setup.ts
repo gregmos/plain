@@ -40,6 +40,7 @@ import {
 import type { Settings } from "../app/settings";
 import type { Doc } from "../app/store";
 import { activeDoc, useStore } from "../app/store";
+import { activeWatch } from "./active";
 import { detectIndent, urlPaste } from "./commands";
 import { pasteImage } from "./images";
 import { editorKeymap } from "./keymap";
@@ -329,6 +330,7 @@ export function editorExtensions(doc: Doc, settings: Settings): Extension {
     indentUnit.of(detectIndent(doc.text, unit)),
     languageExtension(doc.large),
     pasteLink,
+    activeWatch,
     storeSync,
     remoteCommands,
     formatToolbar,

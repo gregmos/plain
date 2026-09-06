@@ -2,6 +2,7 @@
 // on the editor, they land in `assets/` next to the file and the caret gets
 // `![](assets/<name>)`. Nothing is rewritten, resized or renamed afterwards.
 
+import { open } from "@tauri-apps/plugin-dialog";
 import { copyFile, exists, mkdir, writeFile } from "@tauri-apps/plugin-fs";
 import type { EditorView } from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
@@ -10,6 +11,7 @@ import { inTauri } from "../app/env";
 import { useStore, type Doc } from "../app/store";
 import { allowAssetDir } from "../read/assets";
 import { syncTarget } from "./sync";
+import { liveEditor } from "./EditView";
 
 const FOLDER = "assets";
 
@@ -172,6 +174,42 @@ export async function pasteImage(view: EditorView, doc: Doc, file: File): Promis
     useStore.getState().setMessage(`couldn't save the image — ${reason(error)}`);
     return false;
   }
+}
+
+/**
+ * `Ctrl+Alt+I` and `edit → insert → image…`: pick a file, copy it in, link
+ * it (spec §5.2, v2.6). The dropping path does the work.
+ */
+export async function insertImageFromFile(): Promise<boolean> {
+  const state = useStore.getState();
+  const doc = state.docs.find((d) => d.id === state.activeId);
+  const view = liveEditor();
+  // Nothing to write into: no editor, no file, or a read-only one. Asking
+  // for a picture first and refusing afterwards would be rude (review #12).
+  if (!doc || !view || view.state.readOnly) return false;
+  if (!doc.path) {
+    needsFile();
+    return false;
+  }
+  if (!inTauri) return false;
+
+  let picked: string | string[] | null = null;
+  try {
+    picked = await open({
+      multiple: false,
+      directory: false,
+      filters: [{ name: "image", extensions: IMAGE_EXTENSIONS.map((e) => e.slice(1)) }],
+    });
+  } catch (error) {
+    useStore.getState().setMessage(`couldn't open the picker — ${reason(error)}`);
+    return false;
+  }
+  if (typeof picked !== "string") return false;
+
+  // The dialog took its time; the editor may be showing something else now.
+  const target = liveEditor();
+  if (!target || syncTarget() !== doc.id) return false;
+  return dropImages(target, doc, [picked]);
 }
 
 /** Dropped image files -> `assets/<their own name>` (spec §2a). */

@@ -15,9 +15,9 @@ export type Eol = "crlf" | "lf";
 export interface Settings {
   appearance: { theme: Theme; fontSize: number; contentWidth: number };
   read: { codeWrap: boolean };
-  edit: { lineNumbers: boolean; indentUnit: IndentUnit };
+  edit: { lineNumbers: boolean; indentUnit: IndentUnit; toolbar: boolean };
   files: { newFileEol: Eol; autosave: number };
-  library: { extensions: string[] };
+  library: { extensions: string[]; tags: boolean };
 }
 
 export const SETTINGS_FILE = "settings.json";
@@ -46,9 +46,9 @@ export function defaultSettings(): Settings {
   return {
     appearance: { theme: "system", fontSize: 13.5, contentWidth: 560 },
     read: { codeWrap: false },
-    edit: { lineNumbers: true, indentUnit: 2 },
+    edit: { lineNumbers: true, indentUnit: 2, toolbar: true },
     files: { newFileEol: defaultEol(), autosave: 0 },
-    library: { extensions: [".md", ".markdown"] },
+    library: { extensions: [".md", ".markdown"], tags: true },
   };
 }
 
@@ -121,6 +121,7 @@ export function normalizeSettings(raw: unknown): Settings {
     edit: {
       lineNumbers: bool(edit["lineNumbers"], DEFAULTS.edit.lineNumbers),
       indentUnit: oneOf(edit["indentUnit"], ["tab", 2, 4] as const, DEFAULTS.edit.indentUnit),
+      toolbar: bool(edit["toolbar"], DEFAULTS.edit.toolbar),
     },
     files: {
       // An explicit choice in the file wins; the fallback follows the platform.
@@ -130,7 +131,10 @@ export function normalizeSettings(raw: unknown): Settings {
         num(files["autosave"], AUTOSAVE.min, AUTOSAVE.max, DEFAULTS.files.autosave),
       ),
     },
-    library: { extensions: validExtensions },
+    library: {
+      extensions: validExtensions,
+      tags: bool(library["tags"], DEFAULTS.library.tags),
+    },
   };
 }
 
@@ -184,11 +188,15 @@ export function serializeSettings(settings: Settings): string {
       },
       read: { codeWrap: settings.read.codeWrap },
       edit: {
+        toolbar: settings.edit.toolbar,
         lineNumbers: settings.edit.lineNumbers,
         indentUnit: settings.edit.indentUnit,
       },
       files: { newFileEol: settings.files.newFileEol, autosave: settings.files.autosave },
-      library: { extensions: settings.library.extensions },
+      library: {
+        extensions: settings.library.extensions,
+        tags: settings.library.tags,
+      },
     },
     null,
     2,

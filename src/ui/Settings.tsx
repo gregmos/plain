@@ -136,7 +136,7 @@ export function SettingsScreen() {
     const value = list.length > 0 ? list : DEFAULTS.library.extensions;
     setExtensions(value.join(", "));
     if (value.join() === settings.library.extensions.join()) return;
-    patch({ ...settings, library: { extensions: value } });
+    patch({ ...settings, library: { ...settings.library, extensions: value } });
     window.dispatchEvent(new CustomEvent(TREE_CHANGED));
   };
 
@@ -214,6 +214,14 @@ export function SettingsScreen() {
           />
         </Row>
 
+        <Row name="edit.toolbar" about="the bar above the editor">
+          <Choice
+            value={settings.edit.toolbar}
+            options={ON_OFF}
+            onPick={(toolbar) => patch({ ...settings, edit: { ...settings.edit, toolbar } })}
+          />
+        </Row>
+
         <Row name="edit.lineNumbers" about="ctrl shift 9 still flips them for the session">
           <Choice
             value={settings.edit.lineNumbers}
@@ -253,6 +261,14 @@ export function SettingsScreen() {
             value={settings.files.autosave}
             bounds={AUTOSAVE}
             onChange={(autosave) => patch({ ...settings, files: { ...settings.files, autosave } })}
+          />
+        </Row>
+
+        <Row name="library.tags" about="#tags in the sidebar and the meta line">
+          <Choice
+            value={settings.library.tags}
+            options={ON_OFF}
+            onPick={(tags) => patch({ ...settings, library: { ...settings.library, tags } })}
           />
         </Row>
 

@@ -1,6 +1,7 @@
 import { closeDocs } from "../app/close";
 import { openPaths, openQuickSearch } from "../app/commands";
 import { activeDoc, useStore } from "../app/store";
+import { showsTags } from "../library/tags";
 import { FileTree } from "./FileTree";
 import { Outline } from "./Outline";
 import "./rail.css";
@@ -9,8 +10,10 @@ import "./library.css";
 /** `tags` under the tree (mockup 1e): the tag, how many files, click filters. */
 function Tags() {
   const tags = useStore((s) => s.tags);
+  const enabled = useStore((s) => s.settings.library.tags);
   const filter = useStore((s) => s.libraryFilterTag);
-  if (tags.length === 0) return null;
+  // No heading over an empty list, and none at all when tags are off (§2a).
+  if (!showsTags(enabled, tags.length)) return null;
 
   return (
     <section className="rail-section rail-side">

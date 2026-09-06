@@ -15,17 +15,29 @@ import { selectNextOccurrence } from "@codemirror/search";
 import type { Extension } from "@codemirror/state";
 import { ViewPlugin, type Command } from "@codemirror/view";
 import { matchesChord, parseChord } from "../app/chords";
+import { insertImageFromFile } from "./images";
 import {
   cycleList,
+  insertFootnote,
   insertLink,
+  insertRule,
+  insertTable,
+  insertWikilink,
   tabIndent,
   toggleBold,
   toggleCheckbox,
   toggleCodeBlock,
   toggleHeading,
+  toggleBulletList,
+  toggleHighlight,
   toggleInlineCode,
   toggleItalic,
+  toggleMathBlock,
+  toggleMathInline,
+  toggleOrderedList,
   toggleQuote,
+  toggleStrike,
+  toggleTaskList,
 } from "./commands";
 
 export interface CodeBinding {
@@ -77,6 +89,26 @@ export function editorKeymap(): Extension {
     { chord: "Ctrl+4", run: toggleHeading(4) },
     { chord: "Ctrl+5", run: toggleHeading(5) },
     { chord: "Ctrl+6", run: toggleHeading(6) },
+    // v2.6: the insert group (spec §5.2).
+    { chord: "Ctrl+Alt+S", run: toggleStrike },
+    { chord: "Ctrl+Alt+H", run: toggleHighlight },
+    { chord: "Ctrl+Alt+-", run: insertRule },
+    { chord: "Ctrl+Alt+T", run: insertTable },
+    {
+      chord: "Ctrl+Alt+I",
+      run: () => {
+        void insertImageFromFile();
+        return true;
+      },
+    },
+    { chord: "Ctrl+Alt+N", run: insertFootnote },
+    { chord: "Ctrl+Alt+M", run: toggleMathInline },
+    { chord: "Ctrl+Alt+Shift+M", run: toggleMathBlock },
+    { chord: "Ctrl+Alt+W", run: insertWikilink },
+    { chord: "Ctrl+Alt+U", run: toggleBulletList },
+    { chord: "Ctrl+Alt+E", run: toggleOrderedList },
+    { chord: "Ctrl+Alt+C", run: toggleTaskList },
+
     { chord: "Ctrl+]", run: indentMore },
     { chord: "Ctrl+[", run: indentLess },
     { chord: "Tab", run: tabIndent },

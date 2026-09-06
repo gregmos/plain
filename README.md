@@ -24,7 +24,7 @@ Builds for both systems are on the [releases page](https://github.com/gregmos/pl
 ### Windows 11
 
 1. Unpack `Plain-0.2.0-win-x64.zip` into any folder, for example `C:\Program Files\Plain` or `%LOCALAPPDATA%\Programs\Plain`. It contains a single `plain.exe`; there is no installer.
-2. Run `plain.exe`. On first launch, Windows SmartScreen shows a blue "Windows protected your PC" dialog because the program is not code-signed. Click **More info → Run anyway**. Windows remembers the decision for that copy of the file; a new version may ask once more.
+2. Run `plain.exe`. The exe is code-signed and timestamped (signer **Grigorii Moskalev**, certificate issued by Certum; right-click → Properties → Digital Signatures shows it). Windows SmartScreen may still show a blue "Windows protected your PC" dialog on first launch while the certificate is new and has no download reputation yet: click **More info → Run anyway**. Windows remembers the decision for that copy of the file.
 3. To open `.md` files in Plain with a double-click: right-click any `.md` file → **Open with → Choose another app → Plain → Always**. Plain appears in that list after its first launch, but it never makes itself the default on its own.
 
 If you move the folder later, just run the exe from its new location.
@@ -76,8 +76,11 @@ On Windows you need Node.js 22, Rust (`rustup` with the `stable-x86_64-pc-window
 ```
 npm install
 npm run tauri dev     # development build with live reload
-npm run pack          # release build, produces dist-win\Plain-0.2.0-win-x64.zip
+npm run pack          # signed release build, produces dist-win\Plain-0.2.0-win-x64.zip
+npm run pack -- -Unsigned   # unsigned local test build (dist-win\...-unsigned.zip, never published)
 ```
+
+The Windows exe is signed with the maintainer's Certum code-signing certificate through SimplySign Desktop, so `npm run pack` needs an open SimplySign session (tray → Connect to SimplySign, token from the phone app) and stops before building if there is none; `scripts/pack.ps1` has the details. The signature is verified, timestamp included, before the zip is made.
 
 Checks: `npm run build`, `npx vitest run`, and `cargo test` inside `src-tauri`. The manual checklist used before a release is in `CHECKLIST.md`.
 

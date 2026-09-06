@@ -6,6 +6,7 @@ import type { EditorView } from "@codemirror/view";
 import type { TransactionSpec } from "@codemirror/state";
 import { indentLess, indentMore } from "@codemirror/commands";
 import {
+  CALLOUT_TYPES,
   clearHeading,
   cycleList,
   detectIndent,
@@ -13,9 +14,21 @@ import {
   listKind,
   selectedLines,
   toggleBold,
+  insertFootnote,
+  insertRule,
+  insertTable,
+  insertWikilink,
+  nextFootnote,
+  toggleBulletList,
+  toggleCallout,
   toggleCheckbox,
   toggleCheckboxAt,
   toggleCodeBlock,
+  toggleHighlight,
+  toggleMathBlock,
+  toggleMathInline,
+  toggleOrderedList,
+  toggleTaskList,
   toggleHeading,
   toggleItalic,
   toggleQuote,
@@ -307,5 +320,116 @@ describe("ticking a box the parser found (review #7)", () => {
     const state = EditorState.create({ doc: "- plain item" });
     const view = { state, dispatch: () => undefined } as unknown as EditorView;
     expect(toggleCheckboxAt(view, 0)).toBe(false);
+  });
+});
+
+describe("the v2.6 commands", () => {
+  it("wraps and unwraps a highlight and inline math", () => {
+    expect(run(toggleHighlight, "one «two» three")).toBe("one ==«two»== three");
+    expect(run(toggleHighlight, "one ==«two»== three")).toBe("one «two» three");
+    expect(run(toggleMathInline, "sum «x» here")).toBe("sum $«x»$ here");
+    expect(run(toggleMathInline, "sum $«x»$ here")).toBe("sum «x» here");
+    expect(run(toggleMathInline, "empty |")).toBe("empty $|$");
+  });
+
+  it("fences a block of math and takes it back off", () => {
+    expect(twice(toggleMathBlock, "a = b|")).toBe("a = b|");
+    expect(run(toggleMathBlock, "a = b|")).toBe("$$\na = b|\n$$");
+  });
+
+  it("puts a rule on a line of its own", () => {
+    expect(run(insertRule, "|")).toBe("---\n|");
+    // A blank line before it, or `text` would turn into a Setext heading.
+    expect(run(insertRule, "text|")).toBe("text\n\n---\n|");
+  });
+
+  it("lays out a table with the caret on the first cell", () => {
+    expect(run(insertTable, "|")).toBe("| |a | b | c |\n|---|---|---|\n|   |   |   |\n");
+    // Not inside the list item: after it, at the top level (review #7).
+    expect(run(insertTable, "- item|")).toBe(
+      "- item\n\n| |a | b | c |\n|---|---|---|\n|   |   |   |\n",
+    );
+  });
+
+  it("numbers a footnote and waits in the definition", () => {
+    expect(nextFootnote("a [^1] b [^7] c")).toBe(8);
+    expect(nextFootnote("nothing here")).toBe(1);
+    expect(run(insertFootnote, "see|")).toBe("see[^1]\n\n[^1]: |");
+  });
+
+  it("wraps a wikilink", () => {
+    expect(run(insertWikilink, "see «notes» now")).toBe("see [[«notes»]] now");
+    expect(run(insertWikilink, "see |")).toBe("see [[|]]");
+  });
+
+  it("turns a paragraph into one kind of list, and back", () => {
+    expect(run(toggleBulletList, "item|")).toBe("- item|");
+    expect(run(toggleBulletList, "- item|")).toBe("item|");
+    expect(run(toggleOrderedList, "item|")).toBe("1. item|");
+    expect(run(toggleTaskList, "item|")).toBe("- [ ] item|");
+    expect(run(toggleTaskList, "- [ ] item|")).toBe("item|");
+  });
+
+  it("quotes a callout under its type, and unquotes it", () => {
+    expect(run(toggleCallout("note"), "careful|")).toBe("> [!NOTE]\n> careful|");
+    // The same type again takes it off; another type only relabels it
+    // (review #5).
+    expect(run(toggleCallout("note"), "> [!NOTE]\n> careful|")).toBe("careful|");
+    expect(run(toggleCallout("warning"), "> [!NOTE]\n> careful|")).toBe(
+      "> [!WARNING]\n> careful|",
+    );
+    expect(twice(toggleCallout("tip"), "«one\ntwo»")).toBe("«one\ntwo»");
+  });
+
+  it("offers exactly the five types of the spec", () => {
+    expect([...CALLOUT_TYPES]).toEqual(["note", "tip", "important", "warning", "caution"]);
+  });
+});
+
+describe("what the review found (w12)", () => {
+  it("leaves someone else's fenced block alone (#2)", () => {
+    const state = EditorState.create({
+      doc: ["```js", "x = 1|", "```"].join("\n"),
+      selection: EditorSelection.single(9),
+    });
+    let touched = false;
+    expect(toggleMathBlock({ state, dispatch: () => (touched = true) })).toBe(false);
+    expect(touched).toBe(false);
+  });
+
+  it("unwraps only its own kind of fence (#2)", () => {
+    expect(twice(toggleMathBlock, "a = b|")).toBe("a = b|");
+    expect(twice(toggleCodeBlock, "print()|")).toBe("print()|");
+  });
+
+  it("keeps a footnote working with a selection (#1)", () => {
+    // The selected words stay; the reference follows them.
+    expect(run(insertFootnote, "see «this» now")).toBe("see this[^1] now\n\n[^1]: |");
+  });
+
+  it("does not rewrite the markers of other lines (#4)", () => {
+    expect(run(toggleBulletList, "«plain\n1. numbered»")).toBe("- «plain\n1. numbered»");
+    expect(run(toggleBulletList, "|")).toBe("- |");
+  });
+
+  it("takes a wikilink back off (#6)", () => {
+    expect(twice(insertWikilink, "«word»")).toBe("«word»");
+    expect(run(insertWikilink, "[[«word»]]")).toBe("«word»");
+  });
+
+  it("counts footnotes outside code only (#8)", () => {
+    expect(nextFootnote("`[^900]` and [^2]")).toBe(3);
+    expect(nextFootnote("```\n[^900]\n``` [^1]")).toBe(2);
+    expect(nextFootnote(String.raw`\[^900] alone`)).toBe(1);
+  });
+
+  it("will not highlight inside code or a link target (#11)", () => {
+    const inCode = EditorState.create({
+      doc: "`a b`",
+      selection: EditorSelection.single(1, 4),
+      extensions: markdown({ base: markdownLanguage }),
+    });
+    ensureSyntaxTree(inCode, inCode.doc.length, 5000);
+    expect(toggleHighlight({ state: inCode, dispatch: () => undefined })).toBe(false);
   });
 });
