@@ -24,7 +24,7 @@ Builds for both systems are on the [releases page](https://github.com/gregmos/pl
 ### Windows 11
 
 1. Unpack `Plain-0.2.1-win-x64.zip` into any folder, for example `C:\Program Files\Plain` or `%LOCALAPPDATA%\Programs\Plain`. It contains a single `plain.exe`; there is no installer.
-2. Run `plain.exe`. The exe is code-signed and timestamped (signer **Grigorii Moskalev**, certificate issued by Certum; right-click → Properties → Digital Signatures shows it). Windows SmartScreen may still show a blue "Windows protected your PC" dialog on first launch while the certificate is new and has no download reputation yet: click **More info → Run anyway**. Windows remembers the decision for that copy of the file.
+2. Run `plain.exe`.
 3. To open `.md` files in Plain with a double-click: right-click any `.md` file → **Open with → Choose another app → Plain → Always**. Plain appears in that list after its first launch, but it never makes itself the default on its own.
 
 If you move the folder later, just run the exe from its new location.
@@ -32,8 +32,7 @@ If you move the folder later, just run the exe from its new location.
 ### macOS 13+
 
 1. Download `Plain_0.2.1_universal.dmg`, open it, and drag Plain into Applications. One build runs on both Apple Silicon and Intel.
-2. The app is signed ad hoc, without a Developer ID or notarisation, so macOS refuses the first launch. On macOS 15 (Sequoia) and later: open it once, let the refusal appear, then go to **System Settings → Privacy & Security** and click **Open Anyway** next to Plain. On macOS 13 and 14: right-click the app in Applications and choose **Open**. Terminal alternative for either: `xattr -dr com.apple.quarantine /Applications/Plain.app`. After that it opens normally.
-3. To open `.md` files from Finder with a double-click: select any `.md` file, **Get Info → Open with → Plain → Change All**. Plain is listed there from its first launch.
+2. To open `.md` files from Finder with a double-click: select any `.md` file, **Get Info → Open with → Plain → Change All**. Plain is listed there from its first launch.
 
 ## Using it
 
@@ -76,11 +75,9 @@ On Windows you need Node.js 22, Rust (`rustup` with the `stable-x86_64-pc-window
 ```
 npm install
 npm run tauri dev     # development build with live reload
-npm run pack          # signed release build, produces dist-win\Plain-0.2.1-win-x64.zip
-npm run pack -- -Unsigned   # unsigned local test build (dist-win\...-unsigned.zip, never published)
+npm run pack          # release build, produces dist-win\Plain-0.2.1-win-x64.zip
 ```
 
-The Windows exe is signed with the maintainer's Certum code-signing certificate through SimplySign Desktop, so `npm run pack` needs an open SimplySign session (tray → Connect to SimplySign, token from the phone app) and stops before building if there is none; `scripts/pack.ps1` has the details. The signature is verified, timestamp included, before the zip is made.
 
 Checks: `npm run build`, `npx vitest run`, and `cargo test` inside `src-tauri`. The manual checklist used before a release is in `CHECKLIST.md`.
 
