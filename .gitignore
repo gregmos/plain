@@ -8,3 +8,9 @@ src-tauri/gen/schemas/
 Thumbs.db
 review/codex-stderr-*.txt
 tests/pack/generated/
+
+# Working notes of the author, not part of the project
+review/
+research/
+mockups/
+*.zip

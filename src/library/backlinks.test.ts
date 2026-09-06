@@ -22,8 +22,8 @@ const { makeDoc, useStore } = await import("../app/store");
 // The short 8.3 spelling of the library, against the long one of the file:
 // this is what a folder argument and a canonicalized document really look
 // like, and comparing them as strings used to leave `links here` empty.
-const ROOT = "C:\\Users\\KOTENO~1\\notes";
-const DOC = "C:\\Users\\Kotenochek\\notes\\проекты\\plain\\тз.md";
+const ROOT = "C:\\Users\\ALEXAN~1\\notes";
+const DOC = "C:\\Users\\Alexander\\notes\\проекты\\plain\\тз.md";
 
 const found: Backlink[] = [
   { path: "C:\\lib\\index.md", rel: "index.md", name: "index.md", line: 20, text: "[[тз]]" },
