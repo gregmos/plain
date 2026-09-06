@@ -52,6 +52,8 @@
   white-space: nowrap;
 }
 
+
+
 /* enum and bool: words, the one in force in --fg */
 
 .choice {
@@ -154,4 +156,30 @@
   padding-top: 20px;
   font-size: var(--fs-small);
   color: var(--muted);
+}
+
+/* Below this the key and its control cannot both have a line of their own
+   without one of them being squeezed into nothing, so they stack: the name
+   and what it means on top, the control under them (spec §10). */
+@media (max-width: 700px) {
+  .setting {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  /* Stacked, the control starts where the name does: right-aligning it
+     against nothing would leave it stranded at the far edge. */
+  .setting-control {
+    white-space: normal;
+    text-align: left;
+  }
+
+  .setting-field {
+    width: 100%;
+    text-align: left;
+  }
+
+  .settings-column {
+    width: 100%;
+  }
 }

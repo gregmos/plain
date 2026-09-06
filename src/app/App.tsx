@@ -1,4 +1,4 @@
-import { useEffect, type CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Banner } from "../ui/Banner";
 import { DocView } from "../ui/DocView";
@@ -84,7 +84,7 @@ function ScreenView({
 export function App() {
   const railCollapsed = useStore((s) => s.railCollapsed);
   const railWidth = useStore((s) => s.railWidth);
-  const banner = useStore((s) => s.banner);
+  const banners = useStore((s) => s.banners);
   const recovery = useStore((s) => s.recovery);
   const screen = useStore((s) => s.screen);
   const history = useStore((s) => s.history);
@@ -92,6 +92,37 @@ export function App() {
   const searching = useStore((s) => s.quickSearch !== null);
   const focus = useStore((s) => s.focus);
   const doc = useStore(activeDoc);
+
+  /**
+   * Where the focus was before a screen took the content area, so closing
+   * the last one gives it back. Taking the focus is each screen's own job —
+   * one effect here could only run after theirs, and would pull it off the
+   * field folder search had just put it in (review #4).
+   */
+  const focusWas = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (screen) {
+      if (!focusWas.current) focusWas.current = document.activeElement as HTMLElement | null;
+      return;
+    }
+    const back = focusWas.current;
+    focusWas.current = null;
+    // Only back into the document: focus that was on a menu trigger belongs
+    // to the menu, which has already put it back itself, and the editor
+    // takes its own focus when it mounts.
+    if (back?.isConnected && back.closest(".main")) back.focus({ preventScroll: true });
+  }, [screen]);
+
+  // A window too narrow for both takes the rail away, and gives it back when
+  // it grows — unless it was the reader who closed it (spec §4). Bootstrap
+  // calls `fitRail` once the session has been restored; this is the resizing
+  // afterwards, and the first fit for a run with no session at all.
+  useEffect(() => {
+    const fit = () => useStore.getState().fitRail(window.innerWidth);
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, []);
 
   useEffect(() => installKeys(), []);
   useEffect(() => installDrafts(), []);
@@ -148,7 +179,9 @@ export function App() {
         )}
         <div className="main">
           <ModeBar />
-          {banner && <Banner banner={banner} />}
+          {banners.map((one) => (
+            <Banner banner={one} key={one.id} />
+          ))}
           {recovery && recovery.length > 0 ? (
             <RecoveryScreen entries={recovery} />
           ) : screen ? (
@@ -161,6 +194,13 @@ export function App() {
           <StatusBar />
         </div>
       </div>
+      {/* Focus mode hides the chrome, so it also has to say how to leave —
+          `Esc` does it, and so does this (spec §2a). */}
+      {focus && (
+        <button className="focus-exit" onClick={() => useStore.getState().setFocus(false)}>
+          focus · esc
+        </button>
+      )}
       <Modal />
       <QuickSearch />
     </div>

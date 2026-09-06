@@ -41,6 +41,20 @@ export interface MenuSubmenu {
   key: string;
   label: string;
   items: MenuNode[];
+  /** Greyed when there is nothing inside it to pick (spec §4). */
+  disabled?: boolean;
+}
+
+/** A submenu whose every entry is greyed has nothing to open for. */
+function submenu(key: string, label: string, items: MenuNode[]): MenuSubmenu {
+  const entries = items.filter((item): item is MenuEntry => item.kind === "item");
+  return {
+    kind: "submenu",
+    key,
+    label,
+    items,
+    disabled: entries.length > 0 && entries.every((item) => item.disabled),
+  };
 }
 
 export type MenuNode = MenuEntry | MenuSeparator | MenuSubmenu;
@@ -181,16 +195,11 @@ export function menuModel(): MenuSection[] {
         entry("edit.link"),
         entry("edit.quote"),
         entry("edit.list"),
-        {
-          kind: "submenu",
-          key: "heading",
-          label: "heading",
-          items: [
-            ...[1, 2, 3, 4, 5, 6].map((level) => entry(`edit.heading${level}`, String(level))),
-            separator(),
-            entry("edit.headingOff", "off"),
-          ],
-        },
+        submenu("heading", "heading", [
+          ...[1, 2, 3, 4, 5, 6].map((level) => entry(`edit.heading${level}`, String(level))),
+          separator(),
+          entry("edit.headingOff", "off"),
+        ]),
       ],
     },
     {

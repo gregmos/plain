@@ -127,6 +127,12 @@
   color: var(--fg);
 }
 
+/* No document and no screen: there is nothing to switch to. */
+.mode:disabled,
+.mode:disabled:hover {
+  color: var(--muted-soft);
+}
+
 .mode.is-active {
   color: var(--fg);
   border-bottom-color: var(--fg);
@@ -367,4 +373,48 @@
 /* Without the mode bar the column would start at the very top edge. */
 .app.is-focus .content {
   padding-top: 56px;
+}
+
+/* Focus mode has taken every other control away, so it has to say how to
+   leave — and be a way out for the mouse as well as for `Esc` (spec §2a).
+   The rail resizer also went with the rail, so nothing else is down here. */
+.focus-exit {
+  position: fixed;
+  right: 14px;
+  bottom: 10px;
+  /* Under the scrim: while a dialog is up it is the only thing to answer. */
+  z-index: 15;
+  font-size: 10.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.focus-exit:hover {
+  color: var(--fg);
+}
+
+/* A pointer where a click does something. The chrome only: inside the
+   document the text cursor is the right one, and a pointer over a paragraph
+   would say it was a link (spec §4). */
+.menubar button,
+.modebar button,
+.statusbar button,
+.banner button,
+.rail button,
+.modal-actions button,
+.screen-head button,
+.mb-item,
+.mb-trigger,
+.menu-item {
+  cursor: pointer;
+}
+
+/* Nothing happens on click, so nothing suggests it will. */
+.menubar button:disabled,
+.modebar button:disabled,
+.statusbar button:disabled,
+.rail button:disabled,
+.mb-item[data-disabled],
+.menu-item[data-disabled] {
+  cursor: default;
 }

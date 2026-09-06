@@ -11,6 +11,7 @@ import {
   setBufferText,
 } from "./buffers";
 import { headingsOf } from "../read/headings";
+import { openReplace } from "./findPanel";
 import { dropImages, isImagePath } from "./images";
 import { headingAbove } from "./headings";
 import { richConf, richExtension } from "./rich";
@@ -28,12 +29,15 @@ import "../ui/editor.css";
 
 const GOTO_LINE = "plain:goto-line";
 const GOTO_HEADING = "plain:goto-heading";
+/** `Ctrl+H` in read: switch to edit, then open the panel here (UX #5). */
+const OPEN_REPLACE = "plain:open-replace";
 /** A jump sent just before this view mounts is still ours; an older one is not. */
 const PENDING_MS = 2000;
 
 let live: EditorView | null = null;
 let liveId: string | null = null;
 let pending: { goto: Goto; at: number } | null = null;
+let pendingReplace = 0;
 
 /**
  * Puts whatever the editor holds into the store synchronously. Wave 4 calls
@@ -163,6 +167,7 @@ function jump(view: EditorView, goto: Goto): void {
 // it is there before the first mount; the window slot keeps a hot reload from
 // leaving the previous module's listener (and its dead view) behind.
 const LISTENER_SLOT = "__plainGotoLine";
+const REPLACE_SLOT = "__plainOpenReplace";
 
 if (typeof window !== "undefined") {
   const slot = window as unknown as Record<string, EventListener | undefined>;
@@ -176,6 +181,15 @@ if (typeof window !== "undefined") {
   };
   slot[LISTENER_SLOT] = onGotoLine;
   window.addEventListener(GOTO_LINE, onGotoLine);
+
+  const previousReplace = slot[REPLACE_SLOT];
+  if (previousReplace) window.removeEventListener(OPEN_REPLACE, previousReplace);
+  const onOpenReplace: EventListener = () => {
+    if (live) openReplace(live);
+    else pendingReplace = Date.now();
+  };
+  slot[REPLACE_SLOT] = onOpenReplace;
+  window.addEventListener(OPEN_REPLACE, onOpenReplace);
 }
 
 /**
@@ -184,6 +198,17 @@ if (typeof window !== "undefined") {
  * scrolls anywhere — React's StrictMode builds and drops one on every mount —
  * and the jump has to survive that.
  */
+/** The find panel wanted by read, if the wish is still fresh (UX #5). */
+function takePendingReplace(view: EditorView): boolean {
+  if (pendingReplace === 0 || Date.now() - pendingReplace >= PENDING_MS) {
+    pendingReplace = 0;
+    return false;
+  }
+  pendingReplace = 0;
+  openReplace(view);
+  return true;
+}
+
 function takePending(view: EditorView): Goto | null {
   if (!pending || Date.now() - pending.at >= PENDING_MS) {
     pending = null;
@@ -282,12 +307,14 @@ export function EditView({
     const onScroll = () => (scrolled.current = created.scrollDOM.scrollTop);
     created.scrollDOM.addEventListener("scroll", onScroll);
     const jumped = takePending(created);
+    const replaced = takePendingReplace(created);
     // A scroll only lands once the view has been measured.
     let measured = false;
     created.requestMeasure({ read: () => (measured = true) });
 
     return () => {
       if (jumped && !measured) pending = { goto: jumped, at: Date.now() };
+      if (replaced && !measured) pendingReplace = Date.now();
       created.scrollDOM.removeEventListener("scroll", onScroll);
       const id = shown.current;
       const scrollTop = created.scrollDOM.isConnected
@@ -330,6 +357,7 @@ export function EditView({
     current.focus();
     current.scrollDOM.scrollTop = next.scrollTop;
     takePending(current);
+    takePendingReplace(current);
   }, [doc.id]);
 
   // Rich gives the left margin to the block markers instead (mockup 1d), so

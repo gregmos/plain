@@ -10,6 +10,7 @@ import { TREE_CHANGED } from "../app/watcher";
 import { syncLineNumbers } from "../editor/setup";
 import "./dialogs.css";
 import "./settings.css";
+import { useScreenFocus } from "./screen";
 
 /** `−`/`+` bounds, from spec §10. */
 const FONT_SIZE = { min: 11, max: 20, step: 0.5 };
@@ -101,6 +102,7 @@ const ON_OFF = [
 ];
 
 export function SettingsScreen() {
+  const scroller = useScreenFocus<HTMLDivElement>();
   const settings = useStore((s) => s.settings);
   const change = useStore((s) => s.changeSettings);
   const close = () => useStore.getState().closeScreen();
@@ -160,7 +162,7 @@ export function SettingsScreen() {
   };
 
   return (
-    <div className="screen">
+    <div className="screen" tabIndex={0} ref={scroller}>
       <div className="screen-column settings-column">
         <div className="settings-head">
           <h1 className="screen-title">settings</h1>
@@ -169,7 +171,7 @@ export function SettingsScreen() {
           </button>
         </div>
 
-        <Row name="appearance.theme" about="dark follows windows until you pick one">
+        <Row name="appearance.theme" about="system follows windows until you pick one">
           <Choice
             value={settings.appearance.theme}
             options={[

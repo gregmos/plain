@@ -12,6 +12,13 @@
   scroll-behavior: auto;
 }
 
+/* The pane is focusable so the keyboard can scroll it (audit #1). A ring
+   around the whole document would be noise; the elements inside keep theirs. */
+.content.read:focus,
+.content.read:focus-visible {
+  outline: none;
+}
+
 .read-column {
   /* The text column itself is --content-width; the padding is the gutter the
      heading anchors live in. */

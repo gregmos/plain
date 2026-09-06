@@ -131,6 +131,33 @@ export interface DiffRow {
  * only on the right was added (spec §2a). A trailing newline is not a line,
  * so it never shows up as an empty row at the end.
  */
+/**
+ * Where each run of changed lines starts. `previous`/`next` on the compare
+ * screen step through these rather than through single lines, so a rewritten
+ * paragraph counts as one difference and not as ten.
+ */
+export function changeBlocks(rows: DiffRow[]): number[] {
+  const starts: number[] = [];
+  let inside = false;
+  rows.forEach((row, index) => {
+    const changed = row.kind !== "same";
+    if (changed && !inside) starts.push(index);
+    inside = changed;
+  });
+  return starts;
+}
+
+/** The block a row belongs to, or -1. Used to outline the current one. */
+export function blockOf(starts: number[], rows: DiffRow[], index: number): number {
+  if (rows[index]?.kind === "same") return -1;
+  let found = -1;
+  for (let at = 0; at < starts.length; at += 1) {
+    if ((starts[at] as number) <= index) found = at;
+    else break;
+  }
+  return found;
+}
+
 export function diffRows(left: string, right: string): DiffRow[] {
   const rows: DiffRow[] = [];
   for (const part of diffLines(normalizeEol(left), normalizeEol(right))) {

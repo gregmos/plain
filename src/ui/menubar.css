@@ -60,8 +60,9 @@
   background: var(--surface);
 }
 
+/* Readable, but plainly not available: `--faint` is decoration. */
 .mb-item[data-disabled] {
-  color: var(--faint);
+  color: var(--muted-soft);
 }
 
 /* The tick column keeps every label on the same left edge. */
@@ -74,7 +75,7 @@
 }
 
 .mb-item[data-disabled] .mb-check {
-  color: var(--faint);
+  color: var(--muted-soft);
 }
 
 .mb-label {

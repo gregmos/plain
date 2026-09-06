@@ -76,9 +76,37 @@
 }
 
 .rail-item-name {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: inherit;
+}
+
+/* `×` only while the pointer is on the row, and it stands exactly where the
+   dot does — a row never shows both (audit #9). */
+.rail-close {
+  display: none;
+  flex: none;
+  color: var(--muted);
+}
+
+/* `:focus-within` on the row, not `:focus-visible` on the button: a button
+   that is `display: none` cannot be tabbed to in the first place, so the row
+   has to reveal it before the focus can land there (review #7). */
+.rail-item:hover .rail-close,
+.rail-item:focus-within .rail-close {
+  display: block;
+}
+
+.rail-item:hover .rail-dot,
+.rail-item:focus-within .rail-dot {
+  display: none;
+}
+
+.rail-close:hover {
+  color: var(--fg);
 }
 
 .rail-empty {

@@ -2,7 +2,7 @@
 // with the dates the tree already knows and word counts read lazily for the
 // rows that are actually on screen.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { newDoc, openPaths } from "../app/commands";
 import { basename, pathKey } from "../app/paths";
 import { useStore, type LibrarySort } from "../app/store";
@@ -18,6 +18,7 @@ import {
 } from "../library/library";
 import { filesOf } from "../library/tags";
 import "./library.css";
+import { useFocusOnMount } from "./screen";
 
 const SORTS: LibrarySort[] = ["modified", "name", "created"];
 
@@ -33,6 +34,7 @@ export function Library() {
   // outside the store.
   const [counted, setCounted] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
+  useFocusOnMount(scroller);
   const pending = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const list = useMemo(() => {
@@ -103,21 +105,24 @@ export function Library() {
   };
 
   return (
-    <div className="library" ref={scroller}>
+    <div className="library" tabIndex={0} ref={scroller}>
       <div className="library-head">
         <h1 className="library-title">
           library <span className="is-where">{basename(libraryPath ?? "")}</span>
         </h1>
         <div className="library-sorts">
-          {SORTS.map((option) => (
-            <button
-              key={option}
-              className={option === sort ? "is-active" : "link"}
-              onClick={() => useStore.getState().setLibrarySort(option)}
-            >
-              {option}
-            </button>
+          {SORTS.map((option, at) => (
+            <Fragment key={option}>
+              {at > 0 && <span className="sep">·</span>}
+              <button
+                className={option === sort ? "is-active" : "link"}
+                onClick={() => useStore.getState().setLibrarySort(option)}
+              >
+                {option}
+              </button>
+            </Fragment>
           ))}
+          <span className="sep">·</span>
           <button className="library-new" onClick={() => newDoc()}>
             + new
           </button>

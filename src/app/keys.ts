@@ -7,6 +7,7 @@ import { tinykeys } from "tinykeys";
 import { chordToPattern, matchesChord } from "./chords";
 import { isMac } from "./platform";
 import { commands } from "./registry";
+import { useStore } from "./store";
 
 /**
  * WebView2 keeps its own accelerators (spec §12 leaves them on for zoom), but
@@ -45,8 +46,20 @@ export function bindings(): Record<string, () => void> {
   return map;
 }
 
+/**
+ * A dialog is the one question on screen, so nothing else answers the
+ * keyboard while it is up: `Ctrl+K` used to open quick search on top of it,
+ * and a mode chord used to switch modes underneath it (review #5). `Esc` is
+ * the exception, and the dialog handles that itself.
+ */
+function dialogHasTheKeyboard(): boolean {
+  return useStore.getState().dialog !== null;
+}
+
 export function installKeys(): () => void {
   const swallow = (event: KeyboardEvent) => {
+    // The accelerators still have to be kept off WebView2 while a dialog is
+    // up — `Ctrl+P` would print the dialog — even though we run nothing.
     if (swallowed().some((chord) => matchesChord(chord, event))) event.preventDefault();
   };
   window.addEventListener("keydown", swallow, { capture: true });
@@ -61,6 +74,7 @@ export function installKeys(): () => void {
   for (const [chord, run] of Object.entries(bindings())) {
     map[chordToPattern(chord)] = (event) => {
       event.preventDefault();
+      if (dialogHasTheKeyboard()) return;
       run();
     };
   }

@@ -316,6 +316,23 @@ async function isRegistered(): Promise<boolean> {
  * A release registers itself at every start, so the entry here only has to
  * offer the way back out.
  */
+/**
+ * What the installed app calls itself. Tauri knows, and it is the number in
+ * the installer; in a browser there is no Tauri to ask, so the build baked
+ * package.json's version in (vite.config.ts).
+ */
+async function appVersion(): Promise<string> {
+  if (inTauri) {
+    try {
+      const { getVersion } = await import("@tauri-apps/api/app");
+      return await getVersion();
+    } catch {
+      /* fall through to the number the build knew */
+    }
+  }
+  return __APP_VERSION__;
+}
+
 export async function showAbout(): Promise<void> {
   const store = useStore.getState();
   const go = async (url: string) => {
@@ -336,7 +353,7 @@ export async function showAbout(): Promise<void> {
 
   const registered = await isRegistered();
   store.setDialog({
-    title: "plain 0.1.0",
+    title: `plain ${await appVersion()}`,
     lines: [
       "a markdown reader and editor that leaves your files alone.",
       registered ? "registered for .md · .markdown" : "not registered for .md",

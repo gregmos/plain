@@ -16,6 +16,12 @@ export const REPLACE = "plain:replace";
 export const FIND_STEP = "plain:find-step";
 /** `Ctrl+G` — edit only. */
 export const GOTO_LINE_PROMPT = "plain:goto-line-prompt";
+/**
+ * "Open the replace panel." Sent by read when `Ctrl+H` switches to edit: the
+ * editor is not mounted yet at that moment, so the editor parks this the way
+ * it parks a goto-line and answers it on its first mount (audit #5).
+ */
+export const OPEN_REPLACE = "plain:open-replace";
 
 export function emitGotoLine(line: number): void {
   window.dispatchEvent(new CustomEvent(GOTO_LINE, { detail: line }));
@@ -51,4 +57,8 @@ export function emitFindStep(direction: 1 | -1): void {
 
 export function emitGotoLinePrompt(): void {
   window.dispatchEvent(new CustomEvent(GOTO_LINE_PROMPT));
+}
+
+export function emitOpenReplace(): void {
+  window.dispatchEvent(new CustomEvent(OPEN_REPLACE));
 }

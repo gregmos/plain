@@ -112,6 +112,9 @@ export function closeDocs(ids: string[], options: CloseOptions | (() => void) = 
       },
       { label: "cancel", run: () => store.setDialog(null) },
     ],
+    // The one dialog where the last button is not the safe answer: losing
+    // the work is what this asks about, so `save` is what `Enter` does.
+    safe: "save",
     cancel: () => store.setDialog(null),
   });
 }

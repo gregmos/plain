@@ -2,12 +2,22 @@
 // instead of the document. One Rust call per question, results grouped by
 // file, a click lands on the line in edit.
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { openInEdit } from "../app/commands";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { openPaths } from "../app/commands";
 import { basename } from "../app/paths";
 import { emitGotoLine } from "../read/events";
-import { useStore } from "../app/store";
-import { runner, type LineMatch, type SearchAnswer } from "../library/search";
+import { activeDoc, useStore } from "../app/store";
+import {
+  hits,
+  openPlan,
+  handlesKey,
+  runner,
+  step,
+  type Hit,
+  type LineMatch,
+  type SearchAnswer,
+} from "../library/search";
+import { OPEN_IN_EDIT } from "./QuickSearch";
 import "./library.css";
 
 /** `notes/ideas.md` -> `notes`; a file in the root has nothing to add. */
@@ -38,7 +48,9 @@ export function FolderSearch() {
   const [regex, setRegex] = useState(false);
   const [answer, setAnswer] = useState<SearchAnswer | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [at, setAt] = useState(-1);
   const input = useRef<HTMLInputElement>(null);
+  const screen = useRef<HTMLDivElement>(null);
 
   const ask = useMemo(
     () =>
@@ -74,6 +86,59 @@ export function FolderSearch() {
     ask.run({ root: libraryPath, query, caseSensitive, regex, extensions });
   }, [ask, libraryPath, query, caseSensitive, regex, extensions]);
 
+  const found = useMemo(() => hits(answer), [answer]);
+
+  // A new answer is a new list; start at its first line.
+  useEffect(() => setAt(found.length > 0 ? 0 : -1), [found]);
+
+  /** Opens one result the way `Enter` or `Ctrl+Enter` asks for (spec §7). */
+  const open = useCallback((hit: Hit | undefined, withCtrl: boolean) => {
+    if (!hit) return;
+    const doc = activeDoc(useStore.getState());
+    const plan = openPlan(doc?.mode ?? null, withCtrl);
+    // The screen has the content area, so it has to step aside before the
+    // line it points at can be shown.
+    void openPaths([hit.path]).then((opened) => {
+      if (!opened) return;
+      useStore.getState().setMode(plan.mode);
+      useStore.getState().closeScreen();
+      // A frame later the editor is mounted and measured, so the jump
+      // scrolls instead of only moving the caret.
+      if (plan.jump) requestAnimationFrame(() => emitGotoLine(hit.line));
+    });
+  }, []);
+
+  /**
+   * `↑`/`↓` walk the results and `Enter` opens one. This listens on the
+   * screen rather than on `window`, so a key aimed at a toggle, at a dialog
+   * on top, or at quick search is not answered here as well (review #3).
+   */
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    const store = useStore.getState();
+    const target = event.target as HTMLElement | null;
+    const handled = handlesKey(event.key, {
+      defaultPrevented: event.defaultPrevented,
+      onControl: Boolean(target?.closest("button")),
+      blocked: store.dialog !== null || store.quickSearch !== null,
+    });
+    if (!handled) return;
+
+    event.preventDefault();
+    if (event.key === "Enter") {
+      open(found[at], event.ctrlKey || event.metaKey);
+      return;
+    }
+    setAt((current) => step(current, event.key === "ArrowDown" ? 1 : -1, found.length));
+  };
+
+  // Keep the chosen line on screen while the arrows walk past the fold.
+  useEffect(() => {
+    if (at < 0) return;
+    screen.current
+      ?.querySelector(`[data-hit="${at}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [at]);
+
   const close = () => useStore.getState().closeScreen();
 
   const lines = answer?.files.reduce((total, file) => total + file.matches.length, 0) ?? 0;
@@ -100,7 +165,7 @@ export function FolderSearch() {
   };
 
   return (
-    <div className="folder-search">
+    <div className="folder-search" ref={screen} onKeyDown={onKeyDown}>
       <div className="screen-head">
         <h1 className="folder-search-title">
           search in <span className="is-where">{basename(libraryPath ?? "")}</span>
@@ -144,27 +209,32 @@ export function FolderSearch() {
             <span className="folder-search-name">{file.name}</span>
             <span className="folder-search-where">{folderOf(file.rel)}</span>
           </div>
-          {file.matches.map((match) => (
+          {file.matches.map((match) => {
+            const index = found.findIndex(
+              (hit) => hit.path === file.path && hit.line === match.line,
+            );
+            return (
             <button
               key={`${match.line}`}
-              className="folder-search-line"
-              onClick={() => {
-                // The screen has the content area, so it has to step aside
-                // before the line it points at can be shown.
-                void openInEdit(file.path).then(() => {
-                  useStore.getState().closeScreen();
-                  // A frame later the editor is mounted and measured, so the
-                  // jump scrolls instead of only moving the caret.
-                  requestAnimationFrame(() => emitGotoLine(match.line));
-                });
-              }}
+              data-hit={index}
+              className={"folder-search-line" + (index === at ? " is-selected" : "")}
+              onClick={(event) => open(found[index], event.ctrlKey || event.metaKey)}
             >
               <span className="folder-search-no">{match.line}</span>
               <Line match={match} />
             </button>
-          ))}
+            );
+          })}
         </div>
       ))}
+
+      {found.length > 0 && (
+        <div className="folder-search-foot">
+          <span>↑↓ move</span>
+          <span>↵ open</span>
+          <span>{OPEN_IN_EDIT} open in edit</span>
+        </div>
+      )}
     </div>
   );
 }

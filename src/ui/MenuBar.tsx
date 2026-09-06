@@ -17,7 +17,7 @@ function Row({ node }: { node: MenuNode }) {
   if (node.kind === "submenu") {
     return (
       <Menubar.Sub>
-        <Menubar.SubTrigger className="mb-item">
+        <Menubar.SubTrigger className="mb-item" disabled={node.disabled}>
           <span className="mb-check" />
           <span className="mb-label">{node.label}</span>
           <span className="mb-arrow">▸</span>

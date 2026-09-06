@@ -72,7 +72,14 @@ export function toSession(): SessionFile {
       .filter((d) => d.path !== null)
       .map((d) => ({ path: d.path as string, mode: d.mode, caret: d.caret })),
     active: active?.path ?? null,
-    rail: { collapsed: state.railCollapsed, view: state.railView, width: state.railWidth },
+    rail: {
+      // What the reader chose, not what the window did: a rail collapsed
+      // because the window was narrow must not come back as a closed rail
+      // on a wide one (review #6).
+      collapsed: state.railAuto ? false : state.railCollapsed,
+      view: state.railView,
+      width: state.railWidth,
+    },
     split: state.splitRatio,
     library: state.libraryPath,
     collapsed: state.collapsed,

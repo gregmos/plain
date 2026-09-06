@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import { stat } from "@tauri-apps/plugin-fs";
 import { openPaths, openPathsInBackground } from "../app/commands";
 import { inTauri } from "../app/env";
@@ -8,7 +16,14 @@ import { useStore, type Doc } from "../app/store";
 import { libraryFiles } from "../library/tree";
 import { allowAssetDir } from "./assets";
 import { enhance, revealImage } from "./dom";
-import { emitScrollToLine, FIND, GOTO_HEADING, REPLACE, RERENDER } from "./events";
+import {
+  emitOpenReplace,
+  emitScrollToLine,
+  FIND,
+  GOTO_HEADING,
+  REPLACE,
+  RERENDER,
+} from "./events";
 import { FindBar } from "./FindBar";
 import { ReadContextMenu } from "../ui/ReadContextMenu";
 import {
@@ -23,6 +38,22 @@ import { render } from "./pipeline";
 import { readingMinutes } from "./words";
 import "katex/dist/katex.min.css";
 import "../ui/read.css";
+
+/** Anything that owns the focus more than a document does. */
+const FOCUS_HOLDERS = "input, textarea, [contenteditable='true'], .modal, [cmdk-root]";
+
+/**
+ * Whether the reading pane may take the keyboard on mount. It may not while
+ * a modal or the palette is up: `Ctrl+Alt+1` from under an open dialog
+ * changes the mode behind it, and stealing focus from the dialog's buttons
+ * would leave the reader typing into nothing (review #5).
+ */
+export function canTakeFocus(
+  overlay: { dialog: boolean; quickSearch: boolean },
+  focusClaimed: boolean,
+): boolean {
+  return !overlay.dialog && !overlay.quickSearch && !focusClaimed;
+}
 
 /** How many tags the meta line spells out before it counts them (spec §2a). */
 const META_TAGS = 6;
@@ -259,6 +290,16 @@ export function ReadView({ doc }: { doc: Doc }) {
     [trackHeading],
   );
 
+  // A screen on top of read unmounts it. The offset has to be taken before
+  // the node is detached, which is what a layout effect's cleanup guarantees
+  // — by the time a passive effect runs, `scrollTop` reads 0 (audit #2).
+  useLayoutEffect(() => {
+    const frame = scroller.current;
+    return () => {
+      if (frame) scrollTops.set(docId, frame.scrollTop);
+    };
+  }, [docId]);
+
   // Restore the offset for this document, or jump to the heading a link asked
   // for before the file was open.
   useEffect(() => {
@@ -279,6 +320,22 @@ export function ReadView({ doc }: { doc: Doc }) {
     const target = restoreTarget(saved, headingIds);
     if (!target || !scrollToId(target)) frame.scrollTop = 0;
   }, [docId, doc.path, html, headingIds, scrollToId]);
+
+  // Entering read, opening a document, coming back from a screen: the pane
+  // takes the keyboard so PageDown scrolls it. Declared after the restore
+  // above, and `preventScroll` so focusing cannot undo it (audit #1).
+  useEffect(() => {
+    const frame = scroller.current;
+    if (!frame) return;
+    const store = useStore.getState();
+    const active = document.activeElement;
+    const claimed =
+      active instanceof HTMLElement && active.closest(FOCUS_HOLDERS) !== null;
+    if (!canTakeFocus({ dialog: store.dialog !== null, quickSearch: store.quickSearch !== null }, claimed)) {
+      return;
+    }
+    frame.focus({ preventScroll: true });
+  }, [docId]);
 
   useEffect(() => {
     const onGoto = (event: Event) => {
@@ -313,7 +370,11 @@ export function ReadView({ doc }: { doc: Doc }) {
       setFindFocus((value) => value + 1);
     };
     // `Ctrl+H` in read means edit, which is where replacing happens (§5.1).
-    const onReplace = () => useStore.getState().setMode("edit");
+    const onReplace = () => {
+      // The editor mounts after this, so the request waits for it (audit #5).
+      emitOpenReplace();
+      useStore.getState().setMode("edit");
+    };
     window.addEventListener(FIND, onFind);
     window.addEventListener(REPLACE, onReplace);
     return () => {
@@ -435,6 +496,9 @@ export function ReadView({ doc }: { doc: Doc }) {
       <div
         className="content read"
         ref={scroller}
+        // A reader scrolls with the keyboard: PageDown, Space, arrows, Home
+        // and End all work once the pane can hold focus (audit #1).
+        tabIndex={0}
         onScroll={() => {
           const frame = scroller.current;
           if (frame) scrollTops.set(docId, frame.scrollTop);

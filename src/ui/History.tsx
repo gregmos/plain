@@ -5,6 +5,7 @@ import { normalizeEol } from "../app/eol";
 import { readFile } from "../app/fs";
 import { activeDoc, useStore } from "../app/store";
 import "./dialogs.css";
+import { useScreenFocus } from "./screen";
 
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
@@ -22,6 +23,7 @@ function size(bytes: number): string {
 
 /** `file → version history…` (spec §2a): the snapshots of one document. */
 export function HistoryScreen({ id }: { id: string }) {
+  const scroller = useScreenFocus<HTMLDivElement>();
   const doc = useStore((s) => s.docs.find((d) => d.id === id));
   const setHistory = useStore((s) => s.setHistory);
   const [snapshots, setSnapshots] = useState<Snapshot[] | null>(null);
@@ -85,7 +87,7 @@ export function HistoryScreen({ id }: { id: string }) {
   };
 
   return (
-    <div className="screen">
+    <div className="screen" tabIndex={0} ref={scroller}>
       <div className="screen-column">
         <div className="screen-head">
           <div className="screen-title">version history</div>

@@ -17,6 +17,14 @@ import type { Command, EditorView, Panel, ViewUpdate } from "@codemirror/view";
 
 const MAX_COUNT = 2000;
 
+/**
+ * `Ctrl+H` with nothing to look for yet starts in the find field — typing a
+ * replacement for the empty query would be typing into the void (UX #6).
+ */
+export function replaceFocus(find: string): "find" | "replace" {
+  return find.trim() === "" ? "find" : "replace";
+}
+
 const TOGGLES = ["caseSensitive", "wholeWord", "regexp"] as const;
 type Toggle = (typeof TOGGLES)[number];
 
@@ -145,8 +153,9 @@ class FindPanel implements Panel {
 
   showReplace(): void {
     this.replaceRow.hidden = false;
-    this.replace.focus();
-    this.replace.select();
+    const field = replaceFocus(this.find.value) === "find" ? this.find : this.replace;
+    field.focus();
+    field.select();
   }
 
   mount(): void {

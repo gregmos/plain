@@ -2,7 +2,7 @@
 // and the autosave clock. Snapshots themselves live in Rust (cargo test).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { diffRows } from "./history";
+import { blockOf, changeBlocks, diffRows } from "./history";
 import { createAutosave } from "./save";
 
 describe("the line diff", () => {
@@ -52,6 +52,58 @@ describe("the line diff", () => {
     const rows = diffRows("disk only\n", "buffer only\n");
     expect(rows.find((row) => row.kind === "removed")?.text).toBe("disk only");
     expect(rows.find((row) => row.kind === "added")?.text).toBe("buffer only");
+  });
+});
+
+// `previous`/`next` on the compare screen step through runs of changed
+// lines, so a rewritten paragraph is one difference and not ten.
+describe("stepping through the differences", () => {
+  const rows = (kinds: string) =>
+    [...kinds].map((c) => ({
+      kind: c === "-" ? ("removed" as const) : c === "+" ? ("added" as const) : ("same" as const),
+      text: c,
+    }));
+
+  it("counts a run of changed lines as one difference", () => {
+    // same, removed, added, added, same, removed, same
+    expect(changeBlocks(rows("=-++=-="))).toEqual([1, 5]);
+  });
+
+  it("finds nothing in a file that matches", () => {
+    expect(changeBlocks(rows("===="))).toEqual([]);
+  });
+
+  it("starts at the first line when the file opens with a change", () => {
+    expect(changeBlocks(rows("-==+"))).toEqual([0, 3]);
+  });
+
+  it("treats a removed line followed by its replacement as one block", () => {
+    // What a single edited line looks like: one removed, one added.
+    expect(changeBlocks(rows("=-+="))).toEqual([1]);
+  });
+
+  it("counts every run when the whole file changed", () => {
+    expect(changeBlocks(rows("----"))).toEqual([0]);
+  });
+
+  it("says which block a line belongs to, and -1 for unchanged ones", () => {
+    const lines = rows("=-++=-=");
+    const starts = changeBlocks(lines);
+    expect(blockOf(starts, lines, 0)).toBe(-1);
+    expect(blockOf(starts, lines, 1)).toBe(0);
+    expect(blockOf(starts, lines, 2)).toBe(0);
+    expect(blockOf(starts, lines, 3)).toBe(0);
+    expect(blockOf(starts, lines, 4)).toBe(-1);
+    expect(blockOf(starts, lines, 5)).toBe(1);
+    expect(blockOf(starts, lines, 6)).toBe(-1);
+  });
+
+  it("wraps around the way the buttons do", () => {
+    const starts = changeBlocks(rows("=-=-=-="));
+    expect(starts).toHaveLength(3);
+    const step = (at: number, by: number) => (at + by + starts.length) % starts.length;
+    expect(step(2, 1)).toBe(0);
+    expect(step(0, -1)).toBe(2);
   });
 });
 

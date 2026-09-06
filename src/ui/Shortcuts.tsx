@@ -8,6 +8,7 @@ import { commands } from "../app/registry";
 import { useStore } from "../app/store";
 import "./dialogs.css";
 import "./settings.css";
+import { useScreenFocus } from "./screen";
 
 type Group =
   | "files"
@@ -107,6 +108,7 @@ function rows(): Record<Group, Row[]> {
 }
 
 export function ShortcutsScreen() {
+  const scroller = useScreenFocus<HTMLDivElement>();
   const close = () => useStore.getState().closeScreen();
 
   useEffect(() => {
@@ -124,7 +126,7 @@ export function ShortcutsScreen() {
   const grouped = rows();
 
   return (
-    <div className="screen">
+    <div className="screen" tabIndex={0} ref={scroller}>
       <div className="screen-column settings-column">
         <div className="settings-head">
           <h1 className="screen-title">shortcuts</h1>

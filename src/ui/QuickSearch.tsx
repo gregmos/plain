@@ -21,7 +21,7 @@ const RECENT = 8;
  * uses — its neighbour in the footer is `↵ open` — so only the modifier is
  * asked of `chordText`, which spells names out on Windows.
  */
-const OPEN_IN_EDIT = isMac() ? chordText("Ctrl+Enter") : "ctrl ↵";
+export const OPEN_IN_EDIT = isMac() ? chordText("Ctrl+Enter") : "ctrl ↵";
 
 interface Entry {
   key: string;
@@ -29,6 +29,11 @@ interface Entry {
   label: { text: string; hit: boolean }[];
   /** The folder, or the chord for a command. */
   where: string;
+  /**
+   * A folder is cut from the left, so its column reads right-to-left; a
+   * chord is not a path and must not be (audit #7).
+   */
+  chord?: boolean;
   run: (inEdit: boolean) => void;
 }
 
@@ -50,6 +55,7 @@ function commandEntries(query: string, close: () => void): Entry[] {
       key: `action:${command.id}`,
       label: plain(command.title),
       where: command.chord ?? command.hint ? chordText((command.chord ?? command.hint) as string) : "",
+      chord: true,
       run: () => {
         close();
         void command.run();
@@ -213,7 +219,11 @@ export function QuickSearch() {
                       </span>
                     ))}
                   </span>
-                  {entry.where && <span className="qs-where">{entry.where}</span>}
+                  {entry.where && (
+                    <span className={entry.chord ? "qs-where qs-chord" : "qs-where"}>
+                      {entry.where}
+                    </span>
+                  )}
                 </Command.Item>
               ))}
             </Command.Group>

@@ -25,7 +25,10 @@ export function recoveryDone(): void {
   const next = afterRecovery;
   afterRecovery = null;
   useStore.getState().setRecovery(null);
-  void next?.();
+  void (async () => {
+    await next?.();
+    fitRail();
+  })();
 }
 
 async function restore(session: SessionFile): Promise<void> {
@@ -100,4 +103,15 @@ export async function bootstrap(): Promise<void> {
     return;
   }
   await open();
+  fitRail();
+}
+
+/**
+ * The rail the session asked for is the reader's choice; whether it fits is
+ * this window's business, and only now that the choice has been restored can
+ * the two be reconciled (review #6).
+ */
+function fitRail(): void {
+  if (typeof window === "undefined") return;
+  useStore.getState().fitRail(window.innerWidth);
 }

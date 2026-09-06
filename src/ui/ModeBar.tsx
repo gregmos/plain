@@ -8,7 +8,12 @@ export function ModeBar() {
   const toggleRail = useStore((s) => s.toggleRail);
   const libraryPath = useStore((s) => s.libraryPath);
   const doc = useStore(activeDoc);
+  const screen = useStore((s) => s.screen);
   const setMode = useStore((s) => s.setMode);
+
+  // Nothing to switch between with no document — unless a screen is up, in
+  // which case picking a mode is how you get out of it (spec §4).
+  const idle = !doc && !screen;
 
   const crumbs = crumbParts(libraryPath, doc);
 
@@ -55,7 +60,8 @@ export function ModeBar() {
           <button
             key={mode}
             className={"mode" + (doc?.mode === mode ? " is-active" : "")}
-            onClick={() => doc && setMode(mode)}
+            disabled={idle}
+            onClick={() => setMode(mode)}
           >
             {mode}
           </button>
@@ -63,7 +69,8 @@ export function ModeBar() {
         {/* Split is the two of them at once, so it stands a little apart. */}
         <button
           className={"mode mode-split" + (doc?.mode === "split" ? " is-active" : "")}
-          onClick={() => doc && setMode("split")}
+          disabled={idle}
+          onClick={() => setMode("split")}
         >
           split
         </button>

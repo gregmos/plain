@@ -163,6 +163,13 @@ export interface Dialog {
   title: string;
   lines?: string[];
   actions: DialogAction[];
+  /**
+   * Label of the action that gets the focus. The default is the last one,
+   * which is `cancel` everywhere: a dialog opens under whichever key was
+   * pressed, and `Enter` must not be the answer that destroys something.
+   * Only "unsaved work" names one — there `save` is the safe answer.
+   */
+  safe?: string;
   cancel: () => void;
 }
 
@@ -251,6 +258,28 @@ export interface Banner {
   actions?: BannerAction[];
 }
 
+/** How many banners fit under the mode bar before they are the screen. */
+export const BANNER_LIMIT = 2;
+
+/** Below this the rail takes too much of the window to be worth its width. */
+export const NARROW_WINDOW = 700;
+
+/**
+ * What a window of this width should do with the rail. Returns null when it
+ * should do nothing — which is most resize events, and every one where the
+ * rail was collapsed by hand: a window that grows must not reopen a rail the
+ * reader closed, only the one it closed itself.
+ */
+export function railForWidth(
+  width: number,
+  rail: { collapsed: boolean; auto: boolean },
+): { railCollapsed: boolean; railAuto: boolean } | null {
+  if (width < NARROW_WINDOW) {
+    return rail.collapsed ? null : { railCollapsed: true, railAuto: true };
+  }
+  return rail.collapsed && rail.auto ? { railCollapsed: false, railAuto: false } : null;
+}
+
 interface AppState {
   docs: Doc[];
   activeId: string | null;
@@ -258,6 +287,8 @@ interface AppState {
   theme: Theme;
   resolvedTheme: "light" | "dark";
   railCollapsed: boolean;
+  /** The rail was collapsed by the window being narrow, not by the reader. */
+  railAuto: boolean;
   railView: RailView;
   /** Dragged width of the rail, kept for the session (spec §4). */
   railWidth: number;
@@ -269,7 +300,8 @@ interface AppState {
   message: string | null;
   /** Transient document state (`reloaded from disk`, `recreated`), 3 s. */
   note: string | null;
-  banner: Banner | null;
+  /** Most urgent first; only the first `BANNER_LIMIT` are on screen. */
+  banners: Banner[];
   alwaysOnTop: boolean;
   dialog: Dialog | null;
   /** Drafts waiting to be restored or discarded; null once that is done. */
@@ -337,6 +369,8 @@ interface AppState {
   toggleRail: () => void;
   setRailCollapsed: (collapsed: boolean) => void;
   setRailView: (view: RailView) => void;
+  /** Collapses the rail on a narrow window, and opens it again when it grows. */
+  fitRail: (width: number) => void;
   /** Out-of-range values are clamped, so a dragged edge cannot lose the rail. */
   setRailWidth: (width: number) => void;
   setLibraryPath: (path: string | null) => void;
@@ -404,6 +438,7 @@ export const useStore = create<AppState>()((set, get) => ({
   theme: DEFAULTS.appearance.theme,
   resolvedTheme: resolveTheme(DEFAULTS.appearance.theme),
   railCollapsed: false,
+  railAuto: false,
   railView: "files",
   railWidth: RAIL_WIDTH.default,
   splitRatio: 0.5,
@@ -411,7 +446,7 @@ export const useStore = create<AppState>()((set, get) => ({
   recent: [],
   message: null,
   note: null,
-  banner: null,
+  banners: [],
   alwaysOnTop: false,
   dialog: null,
   recovery: null,
@@ -488,8 +523,12 @@ export const useStore = create<AppState>()((set, get) => ({
     if (get().theme === "system") set({ resolvedTheme: resolved });
   },
 
-  toggleRail: () => set((s) => ({ railCollapsed: !s.railCollapsed })),
-  setRailCollapsed: (railCollapsed) => set({ railCollapsed }),
+  // Collapsing by hand settles it: the window growing again will not undo
+  // a decision the reader made (spec §4).
+  toggleRail: () => set((s) => ({ railCollapsed: !s.railCollapsed, railAuto: false })),
+  setRailCollapsed: (railCollapsed) => set({ railCollapsed, railAuto: false }),
+  fitRail: (width) =>
+    set((s) => railForWidth(width, { collapsed: s.railCollapsed, auto: s.railAuto }) ?? {}),
   setRailView: (railView) => set({ railView }),
   setRailWidth: (width) => set({ railWidth: clampRailWidth(width) }),
   setLibraryPath: (libraryPath) => set({ libraryPath }),
@@ -588,10 +627,31 @@ export const useStore = create<AppState>()((set, get) => ({
     }
   },
 
-  // Only one banner at a time (spec §4), so the more urgent one wins.
   showBanner: (banner) =>
-    set((s) => (s.banner && rank(s.banner.id) > rank(banner.id) ? {} : { banner })),
-  dismissBanner: (id) => set((s) => (id && s.banner?.id !== id ? {} : { banner: null })),
+    set((s) => {
+      // Everything but the conflict banner can be waved away, and putting
+      // that here rather than at each call site means no banner can be
+      // raised without a way to put it down.
+      const dismissable =
+        banner.id === "conflict" || banner.actions?.some((a) => a.label === "dismiss")
+          ? banner
+          : {
+              ...banner,
+              actions: [
+                ...(banner.actions ?? []),
+                { label: "dismiss", run: () => get().dismissBanner(banner.id) },
+              ],
+            };
+      // The same id saying the same thing again replaces it where it stands.
+      const rest = s.banners.filter((b) => b.id !== banner.id);
+      // Stable sort: urgent first, and the newest of equals ahead of the
+      // ones already read.
+      const banners = [dismissable, ...rest].sort((a, b) => rank(b.id) - rank(a.id));
+      return { banners: banners.slice(0, BANNER_LIMIT) };
+    }),
+
+  dismissBanner: (id) =>
+    set((s) => (id === undefined ? { banners: [] } : { banners: s.banners.filter((b) => b.id !== id) })),
   setAlwaysOnTop: (alwaysOnTop) => set({ alwaysOnTop }),
   setDialog: (dialog) => set({ dialog }),
   setRecovery: (recovery) => set({ recovery }),

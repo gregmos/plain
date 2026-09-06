@@ -56,6 +56,9 @@ function anchors(root: HTMLElement): void {
     if (!heading.id || heading.querySelector(".h-anchor")) continue;
     const link = document.createElement("button");
     link.type = "button";
+    // Invisible until the heading is hovered, so tabbing through forty of
+    // them would be forty stops at nothing. This is a reader (audit #28).
+    link.tabIndex = -1;
     link.className = "h-anchor";
     link.dataset["slug"] = heading.id;
     link.textContent = "#";

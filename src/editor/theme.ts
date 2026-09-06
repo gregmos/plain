@@ -82,6 +82,8 @@ export const editorTheme = EditorView.theme({
   ".cm-frontmatter, .cm-frontmatter span": { color: "var(--muted)", fontWeight: "400" },
   ".cm-code": { backgroundColor: "var(--surface)" },
 
+  ".cm-placeholder": { color: "var(--faint)" },
+
   ".cm-searchMatch": { backgroundColor: "var(--selection)" },
   ".cm-searchMatch-selected": {
     backgroundColor: "transparent",

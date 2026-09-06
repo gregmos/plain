@@ -80,7 +80,7 @@ function draft(over: Partial<Record<string, unknown>> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   clearBuffers();
-  useStore.setState({ docs: [], activeId: null, dialog: null, banner: null });
+  useStore.setState({ docs: [], activeId: null, dialog: null, banners: [] });
 });
 
 /* ------------------------------------------------------------ review #1 */
@@ -201,6 +201,39 @@ describe("save as onto the file it already has", () => {
     expect(copy?.readOnly).toBe(false);
     const moved = buffer(copy!, DEFAULTS);
     expect(moved.state.facet(EditorState.readOnly)).toBe(false);
+  });
+
+  // The status bar has one slot and one timer: a `saved` landing on top of a
+  // snapshot failure is the same as never having said it (review w11 #2).
+  it("says both when the save worked and the snapshot did not", async () => {
+    open();
+    saveDialog.mockResolvedValue(PATH);
+    writeFileAtomic.mockResolvedValue({ hash: "newhash", snapshotError: "disk full" });
+
+    expect(await saveAs(ID)).toBe(true);
+    expect(useStore.getState().message).toBe("saved · snapshot failed — disk full");
+  });
+
+  it("says just the one thing when the snapshot was fine", async () => {
+    open();
+    saveDialog.mockResolvedValue(PATH);
+    writeFileAtomic.mockResolvedValue({ hash: "newhash", snapshotError: null });
+
+    expect(await saveAs(ID)).toBe(true);
+    expect(useStore.getState().message).toBe("saved");
+  });
+
+  // The line-ending normalisation is the more useful half of the sentence,
+  // and it must not swallow the snapshot failure either.
+  it("keeps the normalisation notice and the failure together", async () => {
+    open({ mixedEol: true, eol: "crlf" });
+    saveDialog.mockResolvedValue(PATH);
+    writeFileAtomic.mockResolvedValue({ hash: "newhash", snapshotError: "disk full" });
+
+    expect(await saveAs(ID)).toBe(true);
+    expect(useStore.getState().message).toBe(
+      "line endings normalized to crlf · snapshot failed — disk full",
+    );
   });
 
   it("a different name is still a copy, written without a base hash", async () => {

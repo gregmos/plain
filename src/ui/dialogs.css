@@ -65,12 +65,20 @@
 
 /* list screen: unsaved work found */
 
+/* The scroller takes the focus when the screen opens, so `PageDown`, the
+   arrows and `End` read it (spec §4). It is the page, not a control, so it
+   shows no focus ring of its own. */
 .screen {
   flex: 1;
   overflow: auto;
   display: flex;
   justify-content: center;
   padding: 60px 20px;
+}
+
+.screen:focus,
+.screen:focus-visible {
+  outline: none;
 }
 
 .screen-column {
@@ -211,8 +219,16 @@
   color: var(--fg);
 }
 
-.diff-heads .screen-when {
+/* `previous · next` and the counter sit at the right end of the heads row. */
+.diff-nav {
   margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.diff-mark {
+  color: var(--muted);
 }
 
 .diff {
@@ -228,6 +244,21 @@
 .diff-line {
   padding: 0 8px;
   white-space: pre;
+}
+
+/* One column, always there, so the text of every line starts in the same
+   place whether it is marked or not. */
+.diff-gutter {
+  display: inline-block;
+  width: 14px;
+  color: var(--muted);
+  user-select: none;
+}
+
+/* Where `previous`/`next` last stopped. */
+.diff-current {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
 }
 
 /* Gone from the left side; kept legible but plainly struck out. */

@@ -32,6 +32,7 @@ import {
   dropCursor,
   keymap,
   lineNumbers,
+  placeholder,
   type DecorationSet,
   type KeyBinding,
   type ViewUpdate,
@@ -159,6 +160,10 @@ export function gutterExtension(on: boolean): Extension {
 }
 
 /* ------------------------------------------------------------- assembling */
+
+/** Mockup 1d, for a document with nothing in it yet (UX #25). */
+export const PLACEHOLDER = "type here, or just keep writing.";
+export const placeholderHint = placeholder(PLACEHOLDER);
 
 const reducedMotion =
   typeof window !== "undefined" &&
@@ -312,6 +317,7 @@ export function editorExtensions(doc: Doc, settings: Settings): Extension {
     // Microcopy is lowercase latin (spec §1.4); this is CodeMirror's own.
     EditorState.phrases.of({ "Go to line": "go to line", go: "go", close: "×" }),
     EditorView.lineWrapping,
+    placeholderHint,
     lineLook,
     codeFolding(),
     closeBrackets(),

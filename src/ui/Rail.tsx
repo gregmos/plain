@@ -86,17 +86,30 @@ export function Rail() {
           <div className="rail-empty">nothing open</div>
         ) : (
           docs.map((doc) => (
-            <button
+            // A row, not a button: the close control is a button of its own
+            // and one cannot sit inside another.
+            <div
               key={doc.id}
               className={"rail-item" + (doc.id === activeId ? " is-active" : "")}
-              onClick={() => activate(doc.id)}
+              title={doc.path ?? doc.title}
               onAuxClick={(e) => {
                 if (e.button === 1) closeDocs([doc.id]);
               }}
             >
-              <span className="rail-item-name">{doc.title}</span>
-              {doc.dirty && <span className="dot">●</span>}
-            </button>
+              <button className="rail-item-name" onClick={() => activate(doc.id)}>
+                {doc.title}
+              </button>
+              {doc.dirty && <span className="dot rail-dot">●</span>}
+              {/* Takes the dot's place while the pointer is on the row, so
+                  the two never fight for the same corner (audit #9). */}
+              <button
+                className="rail-close"
+                title="close"
+                onClick={() => closeDocs([doc.id])}
+              >
+                ×
+              </button>
+            </div>
           ))
         )}
       </section>

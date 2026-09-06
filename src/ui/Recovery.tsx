@@ -1,9 +1,10 @@
 import { recoveryDone } from "../app/bootstrap";
-import { discardDraft, restoreDraft } from "../app/drafts";
+import { deferDraft, discardDraft, restoreDraft } from "../app/drafts";
 import { dirname } from "../app/paths";
 import { showConflict } from "../app/save";
 import { useStore, type Recovery as Entry } from "../app/store";
 import "./dialogs.css";
+import { useScreenFocus } from "./screen";
 
 function ago(at: number): string {
   const minutes = Math.max(0, Math.round((Date.now() - at) / 60000));
@@ -15,6 +16,7 @@ function ago(at: number): string {
 
 /** Shown at startup when %APPDATA%\Plain\drafts is not empty (spec §8). */
 export function RecoveryScreen({ entries }: { entries: Entry[] }) {
+  const scroller = useScreenFocus<HTMLDivElement>();
   const setRecovery = useStore((s) => s.setRecovery);
 
   const take = (entry: Entry) => {
@@ -32,14 +34,57 @@ export function RecoveryScreen({ entries }: { entries: Entry[] }) {
     take(entry);
   };
 
+  /** Throwing away unsaved text is asked about once, and `cancel` is safe. */
+  const confirm = (title: string, lines: string[], run: () => void) => {
+    const store = useStore.getState();
+    store.setDialog({
+      title,
+      lines,
+      safe: "cancel",
+      actions: [
+        {
+          label: "discard",
+          run: () => {
+            store.setDialog(null);
+            run();
+          },
+        },
+        { label: "cancel", run: () => store.setDialog(null) },
+      ],
+      cancel: () => store.setDialog(null),
+    });
+  };
+
   // A discard that could not reach the Recycle Bin leaves the row alone, so
   // the text stays reachable (spec §8).
-  const discard = async (entry: Entry) => {
-    if (await discardDraft(entry)) take(entry);
+  const discard = (entry: Entry) => {
+    confirm(`discard ${entry.title}?`, ["it goes to the recycle bin."], () => {
+      void discardDraft(entry).then((gone) => {
+        if (gone) take(entry);
+      });
+    });
+  };
+
+  const discardAll = () => {
+    confirm(
+      entries.length === 1 ? "discard 1 draft?" : `discard ${entries.length} drafts?`,
+      ["they go to the recycle bin."],
+      () => {
+        void (async () => {
+          const left: Entry[] = [];
+          for (const entry of entries) {
+            if (!(await discardDraft(entry))) left.push(entry);
+          }
+          // Whatever the Recycle Bin refused stays on the screen.
+          if (left.length > 0) setRecovery(left);
+          else recoveryDone();
+        })();
+      },
+    );
   };
 
   return (
-    <div className="screen">
+    <div className="screen" tabIndex={0} ref={scroller}>
       <div className="screen-column">
         <div className="screen-title">unsaved work found</div>
         <div className="screen-lead">
@@ -59,7 +104,7 @@ export function RecoveryScreen({ entries }: { entries: Entry[] }) {
                 restore
               </button>
               <span className="sep">·</span>
-              <button className="link" onClick={() => void discard(entry)}>
+              <button className="link" onClick={() => discard(entry)}>
                 discard
               </button>
             </span>
@@ -82,21 +127,23 @@ export function RecoveryScreen({ entries }: { entries: Entry[] }) {
             restore all
           </button>
           <span className="sep">·</span>
+          <button className="link" onClick={discardAll}>
+            discard all
+          </button>
+          <span className="sep">·</span>
+          {/* Neither restore nor discard. They are moved aside first: under
+              their working name the session about to start would overwrite or
+              delete them without anyone choosing (review w11 #1). */}
           <button
             className="link"
             onClick={() => {
               void (async () => {
-                const left: Entry[] = [];
-                for (const entry of entries) {
-                  if (!(await discardDraft(entry))) left.push(entry);
-                }
-                // Whatever the Recycle Bin refused stays on the screen.
-                if (left.length > 0) setRecovery(left);
-                else recoveryDone();
+                for (const entry of entries) await deferDraft(entry);
+                recoveryDone();
               })();
             }}
           >
-            discard all
+            later
           </button>
         </div>
       </div>

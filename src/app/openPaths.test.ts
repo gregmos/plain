@@ -44,14 +44,14 @@ const GONE = "C:\\notes\\gone.md";
 beforeEach(() => {
   disk.files.clear();
   disk.files.set(HERE, "# here");
-  useStore.setState({ docs: [], activeId: null, banner: null, recent: [GONE, HERE] });
+  useStore.setState({ docs: [], activeId: null, banners: [], recent: [GONE, HERE] });
 });
 
 describe("openPaths", () => {
   it("drops a recent entry whose file is gone (review #3)", async () => {
     await openPaths([GONE]);
     expect(useStore.getState().recent).toEqual([HERE]);
-    expect(useStore.getState().banner?.id).toBe("open-failed");
+    expect(useStore.getState().banners[0]?.id).toBe("open-failed");
   });
 
   it("keeps the entry when the failure is not a missing file", async () => {
@@ -61,22 +61,22 @@ describe("openPaths", () => {
       .mockRejectedValue({ kind: "io", message: "Access is denied. (os error 5)" });
     await openPaths([GONE]);
     expect(useStore.getState().recent).toContain(GONE);
-    expect(useStore.getState().banner?.id).toBe("open-failed");
+    expect(useStore.getState().banners[0]?.id).toBe("open-failed");
     spy.mockRestore();
   });
 
   it("takes the complaint down once something does open (review #4)", async () => {
     await openPaths([GONE]);
-    expect(useStore.getState().banner?.id).toBe("open-failed");
+    expect(useStore.getState().banners[0]?.id).toBe("open-failed");
 
     await openPaths([HERE]);
-    expect(useStore.getState().banner).toBeNull();
+    expect(useStore.getState().banners).toEqual([]);
     expect(useStore.getState().docs).toHaveLength(1);
   });
 
   it("leaves the banner up when nothing opened at all", async () => {
     await openPaths([GONE, "C:\\notes\\also-gone.md"]);
-    expect(useStore.getState().banner?.id).toBe("open-failed");
+    expect(useStore.getState().banners[0]?.id).toBe("open-failed");
     expect(useStore.getState().docs).toHaveLength(0);
   });
 });

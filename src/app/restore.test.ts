@@ -67,7 +67,7 @@ function open(over: Partial<Record<string, unknown>> = {}) {
     baseHash: "diskhash",
     ...over,
   });
-  useStore.setState({ docs: [doc], activeId: doc.id, dialog: null, banner: null });
+  useStore.setState({ docs: [doc], activeId: doc.id, dialog: null, banners: [] });
   return doc;
 }
 
@@ -76,7 +76,7 @@ const text = () => useStore.getState().docs[0]?.text;
 beforeEach(() => {
   vi.clearAllMocks();
   clearBuffers();
-  useStore.setState({ docs: [], activeId: null, banner: null, comparison: null });
+  useStore.setState({ docs: [], activeId: null, banners: [], comparison: null });
   invoke.mockResolvedValue(null);
   hashFile.mockResolvedValue("diskhash");
 });
@@ -99,7 +99,7 @@ describe("the copy taken before a restore", () => {
 
     expect(await restoreIntoBuffer({ id: ID, text: "older\n", note: "restored" })).toBe(false);
     expect(text()).toBe("buffer\n");
-    expect(useStore.getState().banner?.text).toContain("nothing was replaced");
+    expect(useStore.getState().banners[0]?.text).toContain("nothing was replaced");
   });
 
   // cp1251 cannot hold an emoji the buffer picked up; a UTF-8 copy is worth

@@ -8,12 +8,20 @@ import { exists, readDir, readTextFile, remove } from "@tauri-apps/plugin-fs";
 import { isDirty } from "../editor/buffers";
 import { normalizeEol, type Eol } from "./eol";
 import { inTauri } from "./env";
-import { readFile, trashPath, writeTextAtomic } from "./fs";
+import { fsError, readFile, trashPath, writeTextAtomic } from "./fs";
 import { basename, pathKey } from "./paths";
 import { dataDir } from "./settings";
 import { makeDoc, useStore, type Doc, type Recovery } from "./store";
 
 const FOLDER = "drafts";
+/**
+ * `later` on the recovery screen puts drafts here. The working name is
+ * `drafts/<key>.json`, derived from the path, so an ordinary `writeDraft` or
+ * `dropDraft` for the same document would overwrite or delete a deferred one
+ * without the user ever choosing restore or discard (review w11 #1). Nothing
+ * but the recovery screen looks in this folder.
+ */
+const DEFERRED = "deferred";
 export const DEBOUNCE_MS = 500;
 export const MAX_WAIT_MS = 2000;
 
@@ -197,10 +205,16 @@ export function writeDraft(id: string): Promise<void> {
     try {
       await writeTextAtomic(await draftPath(doc), JSON.stringify(draft));
       useStore.getState().dismissBanner("drafts");
-    } catch {
+    } catch (error) {
       // Nothing to offer here: the user cannot fix %APPDATA% from inside the
       // app, and the banner has to stay up as long as the risk does (§8).
-      useStore.getState().showBanner({ id: "drafts", text: "can't write recovery draft" });
+      // What it can do is say why, so a full disk and a locked folder are
+      // not the same three words (UX audit).
+      const why = fsError(error).message;
+      useStore.getState().showBanner({
+        id: "drafts",
+        text: why ? `can't write recovery draft — ${why}` : "can't write recovery draft",
+      });
     }
   });
 }
@@ -216,6 +230,28 @@ export function dropDraft(doc: Pick<Doc, "id" | "path">): Promise<void> {
       /* a draft that will not go away is not worth a banner */
     }
   });
+}
+
+/**
+ * `later`: neither restored nor discarded. Moved out of the working name so
+ * the session that starts next cannot touch it, and listed again at the next
+ * start (review w11 #1). Already-deferred drafts stay where they are.
+ */
+export async function deferDraft(entry: Recovery): Promise<boolean> {
+  if (!inTauri) return true;
+  try {
+    const folder = await join(await dataDir(), FOLDER, DEFERRED);
+    const target = await join(folder, basename(entry.file));
+    if (pathKey(target) === pathKey(entry.file)) return true;
+    const text = await readTextFile(entry.file);
+    await writeTextAtomic(target, text);
+    await remove(entry.file);
+    return true;
+  } catch {
+    // It stays under the working name, where the next edit may overwrite it —
+    // but the screen has already been answered, so there is nothing to undo.
+    return false;
+  }
 }
 
 /**
@@ -270,25 +306,33 @@ async function loadDraft(file: string): Promise<Draft | null> {
   }
 }
 
-/** What the `unsaved work found` screen lists at startup (spec §8). */
+async function draftsIn(folder: string, found: Recovery[]): Promise<void> {
+  if (!(await exists(folder))) return;
+  for (const entry of await readDir(folder)) {
+    if (!entry.isFile || !entry.name.endsWith(".json")) continue;
+    const file = await join(folder, entry.name);
+    const draft = await loadDraft(file);
+    if (!draft) continue;
+    found.push({
+      file,
+      path: draft.path,
+      title: draft.title || (draft.path ? basename(draft.path) : "Untitled"),
+      savedAt: draft.savedAt ?? 0,
+    });
+  }
+}
+
+/**
+ * What the `unsaved work found` screen lists at startup (spec §8): the
+ * working drafts, and the ones an earlier `later` put aside.
+ */
 export async function listDrafts(): Promise<Recovery[]> {
   if (!inTauri) return [];
   try {
     const folder = await join(await dataDir(), FOLDER);
-    if (!(await exists(folder))) return [];
     const found: Recovery[] = [];
-    for (const entry of await readDir(folder)) {
-      if (!entry.isFile || !entry.name.endsWith(".json")) continue;
-      const file = await join(folder, entry.name);
-      const draft = await loadDraft(file);
-      if (!draft) continue;
-      found.push({
-        file,
-        path: draft.path,
-        title: draft.title || (draft.path ? basename(draft.path) : "Untitled"),
-        savedAt: draft.savedAt ?? 0,
-      });
-    }
+    await draftsIn(folder, found);
+    await draftsIn(await join(folder, DEFERRED), found);
     return found.sort((a, b) => b.savedAt - a.savedAt);
   } catch {
     return [];

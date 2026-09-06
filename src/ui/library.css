@@ -109,10 +109,11 @@
   color: var(--fg);
 }
 
-/* Nothing selected, or the file is read-only (spec §2a). */
+/* Nothing selected, or the file is read-only (spec §2a). `--faint` is for
+   decoration; a word you could have picked has to stay readable. */
 .menu-item[data-disabled],
 .menu-item[data-disabled]:hover {
-  color: var(--faint);
+  color: var(--muted-soft);
 }
 
 /* --------------------------------------------------------- quick search */
@@ -224,6 +225,12 @@
   text-align: left;
   font-size: var(--fs-small);
   color: var(--muted);
+}
+
+/* A chord is read left to right; only a path is cut from its left end. */
+.qs-chord {
+  direction: ltr;
+  max-width: none;
 }
 
 .qs-hit {
@@ -377,6 +384,14 @@
   flex-direction: column;
 }
 
+/* Focused so the keyboard can scroll it; not a control, so no ring. */
+.library:focus,
+.library:focus-visible,
+.folder-search:focus,
+.folder-search:focus-visible {
+  outline: none;
+}
+
 .library-head {
   display: flex;
   align-items: baseline;
@@ -400,7 +415,7 @@
 .library-sorts {
   display: flex;
   align-items: baseline;
-  gap: 18px;
+  gap: 8px;
   flex: none;
   font-size: var(--fs-small);
 }
@@ -410,7 +425,7 @@
 }
 
 .library-new {
-  margin-left: 10px;
+  margin-left: 2px;
   color: var(--fg);
 }
 
@@ -572,4 +587,54 @@
   height: 1px;
   margin: 4px 0;
   background: var(--border);
+}
+
+/* A narrow window keeps the names and drops what it cannot afford: the two
+   right columns go, the padding shrinks, and nothing scrolls sideways
+   (audit #15). */
+@media (max-width: 700px) {
+  .library {
+    padding: 24px 16px 0;
+  }
+
+  /* The title and the sort row stop sitting side by side rather than
+     pushing the screen sideways. */
+  .library-head {
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+
+  /* `flex: none` is what keeps the row at its full width on a wide screen;
+     here it has to be allowed to wrap instead of pushing the screen. */
+  .library-sorts {
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .library-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .library-date,
+  .library-words {
+    display: none;
+  }
+}
+
+/* The result the keyboard is on, and the hint strip under the list. */
+.folder-search-line.is-selected {
+  color: var(--fg);
+  background: var(--surface);
+}
+
+.folder-search-foot {
+  display: flex;
+  gap: 16px;
+  padding: 16px 0 40px;
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-status);
+  color: var(--muted);
 }

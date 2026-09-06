@@ -97,7 +97,11 @@ interface Target {
   adopt?: () => string;
 }
 
-async function write(id: string, target: Target): Promise<boolean> {
+/**
+ * `announce` is what the status bar says on success — `undefined` for an
+ * autosave, which by §2a passes without a word.
+ */
+async function write(id: string, target: Target, announce?: string): Promise<boolean> {
   const current = liveDoc(id);
   if (!current) return false;
   const snapshot = normalizeEol(current.text);
@@ -117,16 +121,23 @@ async function write(id: string, target: Target): Promise<boolean> {
     });
     const settled = target.adopt ? target.adopt() : id;
     settle(settled, snapshot, written.hash);
-    // The save worked; the copy for the history did not. Said out loud, but
-    // the document is `saved` all the same (review #5).
-    if (written.snapshotError) {
-      useStore.getState().setMessage(`snapshot failed — ${written.snapshotError}`);
-    }
-    // One of the two allowed transformations, and it says so (spec §1.3).
+
+    // One message, not three overwriting each other. The status bar has one
+    // slot and one timer, so a `saved` landing on top of a snapshot failure
+    // is the same as never having said it (review w11 #2).
+    const said: string[] = [];
+    // One of the two allowed transformations, and it says so (spec §1.3) —
+    // which is more worth saying than `saved`.
     if (current.mixedEol) {
       useStore.getState().updateDoc(settled, { mixedEol: false });
-      useStore.getState().setMessage(`line endings normalized to ${current.eol}`);
+      said.push(`line endings normalized to ${current.eol}`);
+    } else if (announce) {
+      said.push(announce);
     }
+    // The save worked; the copy for the history did not. That part is said
+    // even for an autosave, which is otherwise silent: it is not good news.
+    if (written.snapshotError) said.push(`snapshot failed — ${written.snapshotError}`);
+    if (said.length > 0) useStore.getState().setMessage(said.join(" · "));
     return true;
   } catch (error) {
     const failure = fsError(error);
@@ -136,7 +147,7 @@ async function write(id: string, target: Target): Promise<boolean> {
     }
     // Deleted from under us, and the buffer holds edits: put the file back.
     if (failure.kind === "missing") {
-      const back = await write(id, { ...target, allowMissing: true });
+      const back = await write(id, { ...target, allowMissing: true }, announce);
       if (back) useStore.getState().setNote("recreated");
       return back;
     }
@@ -159,9 +170,16 @@ export function saveActive(): Promise<boolean> {
   return current ? save(current.id) : Promise.resolve(true);
 }
 
+interface SaveOptions {
+  /** The autosave: it says nothing at all (spec §2a). */
+  quiet?: boolean;
+  /** What the status bar says instead of `saved` — a conversion, say. */
+  announce?: string;
+}
+
 /** `Ctrl+S`. Resolves to false when the document is still unsaved. */
-export function save(id: string): Promise<boolean> {
-  return queued(id, () => saveNow(id));
+export function save(id: string, options: SaveOptions = {}): Promise<boolean> {
+  return queued(id, () => saveNow(id, options));
 }
 
 /**
@@ -169,7 +187,8 @@ export function save(id: string): Promise<boolean> {
  * the document already has can come back through here rather than round the
  * outside of every check (review #2).
  */
-async function saveNow(id: string): Promise<boolean> {
+async function saveNow(id: string, options: SaveOptions = {}): Promise<boolean> {
+  const quiet = options.quiet === true;
   const current = liveDoc(id);
   if (!current) return true;
   // A buffer that was never on disk goes through the Save As dialog (§6).
@@ -179,10 +198,14 @@ async function saveNow(id: string): Promise<boolean> {
     useStore.getState().setMessage("read-only — use save as…");
     return false;
   }
-  // §8: a clean document is not written at all, and says nothing.
-  if (!isDirty(id, current.text)) return true;
+  // §8: a clean document is not written at all. Saying nothing about it
+  // reads like a save that quietly failed, so it says that instead.
+  if (!isDirty(id, current.text)) {
+    if (!quiet) useStore.getState().setMessage("nothing to save");
+    return true;
+  }
   if (current.decodeErrors) {
-    askAboutDecodeErrors(current, () => void save(id));
+    askAboutDecodeErrors(current, () => void save(id, options));
     return false;
   }
   if (isLegacy(current.encoding)) {
@@ -191,11 +214,11 @@ async function saveNow(id: string): Promise<boolean> {
   }
   // Deleted from under us: the buffer's edits go back to disk (spec §6).
   const recreate = current.deleted;
-  const written = await write(id, {
-    path: current.path,
-    baseHash: current.baseHash,
-    allowMissing: recreate,
-  });
+  const written = await write(
+    id,
+    { path: current.path, baseHash: current.baseHash, allowMissing: recreate },
+    quiet ? undefined : (options.announce ?? "saved"),
+  );
   if (written && recreate) useStore.getState().setNote("recreated");
   return written;
 }
@@ -279,12 +302,11 @@ async function saveAsNow(id: string): Promise<boolean> {
   // `write` reads encoding and bom off the document, so the conversion has to
   // be visible to it; it is undone again if the write fails.
   if (legacy) useStore.getState().updateDoc(id, { encoding, bom });
-  const written = await write(id, {
-    path: target,
-    baseHash: null,
-    allowMissing: true,
-    adopt,
-  });
+  const written = await write(
+    id,
+    { path: target, baseHash: null, allowMissing: true, adopt },
+    "saved",
+  );
   if (!written) {
     if (legacy) {
       useStore.getState().updateDoc(id, { encoding: current.encoding, bom: current.bom });
@@ -311,8 +333,8 @@ function askAboutEncoding(current: Doc): void {
         run: () => {
           store.setDialog(null);
           useStore.getState().updateDoc(current.id, { encoding: "utf-8", bom: false });
-          useStore.getState().setMessage("converted to utf-8");
-          void save(current.id);
+          // Said by the save itself, or its own `saved` would land on top.
+          void save(current.id, { announce: "converted to utf-8" });
         },
       },
       {
@@ -575,7 +597,7 @@ export function createAutosave(run: (id: string) => void): {
   };
 }
 
-const autosave = createAutosave((id) => void save(id));
+const autosave = createAutosave((id) => void save(id, { quiet: true }));
 
 /** Every buffer that changes is on the same clock, one timer per document. */
 export function installAutosave(): () => void {

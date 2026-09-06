@@ -12,6 +12,9 @@ function state(doc: Doc): string {
   if (doc.readOnly) return "read-only";
   if (doc.dirty) return "unsaved";
   if (doc.large) return "large file";
+  // A buffer that has never been anywhere is not "saved" — there is no file
+  // for it to be saved to yet.
+  if (doc.path === null) return "new";
   return "saved";
 }
 
@@ -122,7 +125,7 @@ export function StatusBar() {
           <span className="status-words">{words.toLocaleString("en-US")} words</span>
         )}
         {doc && <span>{note ?? state(doc)}</span>}
-        <button className="link theme-toggle" onClick={toggleTheme}>
+        <button className="link theme-toggle" title="switch theme" onClick={toggleTheme}>
           {resolvedTheme === "dark" ? "◑ dark" : "◐ light"}
         </button>
       </span>
