@@ -2,6 +2,7 @@
 name = "plain"
 version = "0.2.1"
 description = "Plain — a monospace markdown reader/editor"
+license = "MIT"
 edition = "2021"
 rust-version = "1.85"
 

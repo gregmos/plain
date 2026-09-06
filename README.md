@@ -83,3 +83,7 @@ Checks: `npm run build`, `npx vitest run`, and `cargo test` inside `src-tauri`. 
 The released macOS build comes from CI (`.github/workflows/macos.yml`, on a `v*` tag or by hand): the same three checks on `macos-latest`, then a universal `.dmg` attached to the release.
 
 Stack: Tauri 2, React, CodeMirror 6, unified (remark and rehype), Shiki, KaTeX, Mermaid. Rust handles the file system, folder watching, and search.
+
+## License
+
+[MIT](LICENSE). Project page: [gmoskalev.com/plain](https://gmoskalev.com/plain).
