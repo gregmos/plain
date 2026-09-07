@@ -257,6 +257,17 @@ fn allow_asset_dir(app: tauri::AppHandle, path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Brings the one window back in front of the user: out of the Dock or the
+/// taskbar if it was minimised, and focused. What a second launch, a click on
+/// the Dock icon and a double-clicked file all end with.
+fn surface<R: Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 /// The webview never leaves our own origin (spec §14); links open in the
 /// system browser instead.
 fn navigation_guard<R: Runtime>() -> TauriPlugin<R> {
@@ -277,11 +288,7 @@ pub fn run() {
         // Order matters: single-instance first (spec §13), and persisted-scope
         // reads the fs scope during its own setup, so fs has to come before it.
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+            surface(app);
             let cwd = Path::new(&cwd);
             let paths = path_args(argv.clone(), cwd);
             let folders = folder_args(argv, cwd);
@@ -386,11 +393,20 @@ pub fn run() {
                     let _ = _app.emit(QUIT_REQUESTED, ());
                 }
             }
+            // A click on the Dock icon. AppKit is told not to do its own
+            // reopen handling (tao answers with `has_visible_windows`), so a
+            // minimised window would stay in the Dock unless we bring it back.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = &_event {
+                surface(_app);
+            }
             // Finder does not pass a path in argv: it sends the app an Apple
             // Event, which Tauri turns into this (spec §13a). Same queue the
-            // command line uses, same nudge to the front end.
+            // command line uses, same nudge to the front end — and the window
+            // comes forward, out of the Dock if it was minimised there.
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = _event {
+                surface(_app);
                 let paths: Vec<String> = urls
                     .iter()
                     .filter_map(|url| url.to_file_path().ok())
