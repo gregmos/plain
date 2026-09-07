@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { clearBuffers } from "../editor/buffers";
 import {
   READING_LIMIT,
-  loadSession,
+  loadState,
   parseSession,
+  parseState,
   readingPosition,
   rememberReading,
   toSession,
@@ -112,7 +113,56 @@ describe("state.json", () => {
   });
 
   it("does nothing outside Tauri", async () => {
-    await expect(loadSession()).resolves.toBeNull();
+    await expect(loadState()).resolves.toEqual([]);
+  });
+});
+
+describe("state.json, one entry per window", () => {
+  function slice(path: string): string {
+    return JSON.stringify({ files: [{ path, mode: "read", caret: null }] });
+  }
+
+  it("reads every window back, in the order they were made", () => {
+    const text = JSON.stringify({
+      version: 2,
+      windows: [JSON.parse(slice("C:/a.md")), JSON.parse(slice("C:/b.md"))],
+    });
+    const back = parseState(text);
+    expect(back).toHaveLength(2);
+    expect(back[0]?.files[0]?.path).toBe("C:/a.md");
+    expect(back[1]?.files[0]?.path).toBe("C:/b.md");
+  });
+
+  /**
+   * Version 1 was the single object one window wrote. Upgrading must not be
+   * the moment somebody's open files disappear.
+   */
+  it("reads a version 1 file as the one window that wrote it", () => {
+    const back = parseState(slice("C:/old.md"));
+    expect(back).toHaveLength(1);
+    expect(back[0]?.files[0]?.path).toBe("C:/old.md");
+  });
+
+  it("treats a broken file as no windows at all", () => {
+    expect(parseState("not json")).toEqual([]);
+    expect(parseState("null")).toEqual([]);
+  });
+
+  it("drops an entry it cannot use and keeps the rest", () => {
+    const text = JSON.stringify({
+      version: 2,
+      windows: [null, JSON.parse(slice("C:/b.md")), 7],
+    });
+    const back = parseState(text);
+    expect(back).toHaveLength(1);
+    expect(back[0]?.files[0]?.path).toBe("C:/b.md");
+  });
+
+  /** A window that saved nothing is still a window, and comes back empty. */
+  it("keeps a window with nothing open in it", () => {
+    const text = JSON.stringify({ version: 2, windows: [{}] });
+    expect(parseState(text)).toHaveLength(1);
+    expect(parseState(text)[0]?.files).toEqual([]);
   });
 });
 

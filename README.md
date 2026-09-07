@@ -14,6 +14,7 @@ Double-click a `.md` file and you are reading. Make a change, and the file stays
 - **All the Markdown you need.** Tables, task lists, footnotes, callouts like `> [!note]`, KaTeX math, Mermaid diagrams, syntax-highlighted code, `==highlights==`, `[[wikilinks]]`, and images from your folder.
 - **A folder as a library.** A file tree, create, rename, delete to the Recycle Bin or Trash, and full-text search across the folder.
 - **Quick open.** `Ctrl+K` finds files by name, lists recent ones, and runs commands.
+- **As many windows as you like.** `Ctrl+Shift+N` opens another one on the same folder, with nothing in it yet. Each window keeps its own documents and its own place in them; a file only ever opens in one of them, and the windows you had come back the next time you start.
 - **Careful saving.** Atomic writes, encodings and line endings preserved, recovery drafts in case of a crash, and a warning when a file changes on disk while you have it open.
 - **A quiet interface.** One monospace font, light and dark themes, no toolbars, no icons.
 
@@ -55,7 +56,7 @@ On Windows in `%APPDATA%\Plain` (that is `C:\Users\<you>\AppData\Roaming\Plain`)
 |---|---|
 | `settings.json` | settings; easier to change with `Ctrl+,` |
 | `drafts\` | recovery drafts of unsaved edits |
-| `state.json` | open files, reading positions, the last folder |
+| `state.json` | the windows, what each had open, reading positions, the last folder |
 | `history\` | snapshots of what you saved, kept for thirty days |
 
 On Windows, a folder called `data` next to `plain.exe` makes Plain keep all four there instead (portable mode); the macOS app is a bundle, so there is no portable mode there. Plain keeps no indexes, caches, or hidden service files in your folders. The only things it writes there are the documents you save and, if you paste an image, the `assets/` folder next to the document.

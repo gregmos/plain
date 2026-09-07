@@ -22,6 +22,13 @@ export interface Settings {
 
 export const SETTINGS_FILE = "settings.json";
 
+/**
+ * One file, however many windows: the window that writes it says so, and the
+ * others apply the same values instead of carrying on with the old ones and
+ * writing those back over the top (app/windows.ts).
+ */
+export const SETTINGS_CHANGED = "plain:settings-changed";
+
 /** The reading column, in px (spec §3, §10). The `−`/`+` step is the same. */
 export const CONTENT_WIDTH = { min: 440, max: 1400, step: 20 } as const;
 
@@ -232,6 +239,11 @@ async function write(settings: Settings): Promise<void> {
   try {
     const path = await settingsPath();
     await invoke("write_text_atomic", { path, text: serializeSettings(settings) });
+    // Only after the file is really there: a window that applied a change it
+    // was told about would otherwise be showing something nothing holds.
+    const { emit } = await import("@tauri-apps/api/event");
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await emit(SETTINGS_CHANGED, { from: getCurrentWindow().label, settings });
   } catch (error) {
     console.error("couldn't write settings.json", error);
   }

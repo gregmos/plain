@@ -32,6 +32,7 @@ import { installSession } from "./session";
 import { activeDoc, useStore, type Comparison, type Screen } from "./store";
 import { watchSystemTheme } from "./theme";
 import { installWatcher } from "./watcher";
+import { installActivateDoc, installDocRegistry, installSettingsSync } from "./windows";
 
 
 /**
@@ -135,6 +136,9 @@ export function App() {
   useEffect(() => installTags(), []);
   useEffect(() => installBacklinks(), []);
   useEffect(() => installLibraryCounts(), []);
+  useEffect(() => installDocRegistry(), []);
+  useEffect(() => installActivateDoc(), []);
+  useEffect(() => installSettingsSync(), []);
 
   useEffect(
     () => watchSystemTheme((resolved) => useStore.getState().syncSystemTheme(resolved)),

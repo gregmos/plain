@@ -1,10 +1,15 @@
 // %APPDATA%\Plain\state.json — what was open and where you were in it
 // (spec §8). Window geometry is not here: the window-state plugin owns it.
+//
+// One entry per window. A window only ever knows its own, so the file itself
+// is assembled and written in Rust (src-tauri/src/windows.rs), which is the
+// one place that can see them all. Version 1 was the single object one
+// window wrote, and still reads as the one window it was.
 
+import { invoke } from "@tauri-apps/api/core";
 import { join } from "@tauri-apps/api/path";
 import { exists, readTextFile } from "@tauri-apps/plugin-fs";
 import { inTauri } from "./env";
-import { writeTextAtomic } from "./fs";
 import { pathKey } from "./paths";
 import { dataDir } from "./settings";
 import { clampRailWidth, useStore, type LibrarySort, type Mode, type RailView } from "./store";
@@ -93,12 +98,15 @@ export function toSession(): SessionFile {
 
 /** Anything unreadable is simply "no session"; a fresh start is not a bug. */
 export function parseSession(text: string): SessionFile | null {
-  let raw: unknown;
   try {
-    raw = JSON.parse(text);
+    return shapeSession(JSON.parse(text));
   } catch {
     return null;
   }
+}
+
+/** One window's entry, from an already-parsed value. */
+function shapeSession(raw: unknown): SessionFile | null {
   if (!raw || typeof raw !== "object") return null;
   const value = raw as Partial<SessionFile>;
   const files = Array.isArray(value.files) ? value.files : [];
@@ -148,35 +156,73 @@ export function parseSession(text: string): SessionFile | null {
   };
 }
 
-export async function loadSession(): Promise<SessionFile | null> {
-  if (!inTauri) return null;
+/**
+ * Every window's entry, oldest window first. Version 1 was one object rather
+ * than a list, and reads as the single window that wrote it.
+ */
+export function parseState(text: string): SessionFile[] {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  if (!raw || typeof raw !== "object") return [];
+  const windows = (raw as { windows?: unknown }).windows;
+  if (!Array.isArray(windows)) {
+    const one = shapeSession(raw);
+    return one ? [one] : [];
+  }
+  return windows.map(shapeSession).filter((one): one is SessionFile => one !== null);
+}
+
+export async function loadState(): Promise<SessionFile[]> {
+  if (!inTauri) return [];
   try {
     const file = await join(await dataDir(), FILE);
-    if (!(await exists(file))) return null;
-    const session = parseSession(await readTextFile(file));
-    if (session) {
-      positions.clear();
-      for (const [path, heading] of session.reading) positions.set(path, heading);
-    }
-    return session;
+    if (!(await exists(file))) return [];
+    return parseState(await readTextFile(file));
   } catch {
-    return null;
+    return [];
   }
+}
+
+/**
+ * The reading positions this window starts from. They are one list for the
+ * whole app rather than one per window, so a window with no entry of its own
+ * still takes them from whichever window has them (spec §8).
+ */
+export function seedReading(session: SessionFile | null): void {
+  positions.clear();
+  for (const [path, heading] of session?.reading ?? []) positions.set(path, heading);
 }
 
 /**
  * Takes the session it is given, because closing the window empties the open
  * list before the app is allowed to go — the snapshot has to be older.
+ *
+ * Rust keeps this window's entry and writes the file with every other
+ * window's entry still in it.
  */
 export async function writeSession(session: SessionFile): Promise<void> {
   if (!inTauri) return;
   clearTimeout(timer);
   timer = undefined;
-  try {
-    await writeTextAtomic(await join(await dataDir(), FILE), JSON.stringify(session));
-  } catch {
+  await invoke("put_session", { session }).catch(() => {
     /* losing the session is not worth a banner */
-  }
+  });
+}
+
+/**
+ * A window closed on purpose does not come back next time. The last window
+ * is the exception, and Rust makes it: closing the last window is how the
+ * app is quit on Windows, and quitting comes back where it left off.
+ */
+export async function dropSession(): Promise<void> {
+  if (!inTauri) return;
+  clearTimeout(timer);
+  timer = undefined;
+  await invoke("forget_session").catch(() => undefined);
 }
 
 export function flushSession(): Promise<void> {
