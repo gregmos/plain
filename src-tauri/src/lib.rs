@@ -372,11 +372,16 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Plain")
         .run(|_app, _event| {
-            // The Dock's Quit, and anything else that asks the app to go:
-            // held back and handed to the same scenario as `⌘Q` (review #1).
+            // Anything that asks the app to go without a code — held back and
+            // handed to the same scenario as `⌘Q` (review #1). But only while
+            // there is a window to answer: the same event comes when the last
+            // window is destroyed, which is how the window's X ends after its
+            // own question. Preventing the exit then left the process alive
+            // with no window, nobody to receive the event, and no way to get
+            // a window back from the Dock or from a double-clicked file.
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::ExitRequested { api, code, .. } = &_event {
-                if code.is_none() {
+                if code.is_none() && _app.get_webview_window("main").is_some() {
                     api.prevent_exit();
                     let _ = _app.emit(QUIT_REQUESTED, ());
                 }
