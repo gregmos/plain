@@ -1,8 +1,13 @@
-// One debounced watcher for the library root and for the folders of files
-// that are open outside it (spec §6). Whatever it sees goes to the front end
-// as a single `fs-change` event; deciding what a change means is the front
-// end's job, because only it knows the hash the buffer came from.
+// One debounced watcher per window, for its library root and for the folders
+// of the files it has open outside it (spec §6). Whatever it sees goes to
+// that window as a single `fs-change` event; deciding what a change means is
+// the front end's job, because only it knows the hash the buffer came from.
+//
+// One watcher each, rather than one covering them all: a window only ever
+// hears about its own files, and a window opening a document does not make
+// every other window's library be indexed again.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -10,10 +15,13 @@ use std::time::Duration;
 use notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, RecommendedCache};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State, WebviewWindow};
 
+type Running = Debouncer<RecommendedWatcher, RecommendedCache>;
+
+/// Window label -> the watcher running for it.
 #[derive(Default)]
-pub struct Watcher(Mutex<Option<Debouncer<RecommendedWatcher, RecommendedCache>>>);
+pub struct Watcher(Mutex<HashMap<String, Running>>);
 
 #[derive(Clone, Serialize)]
 struct Change {
@@ -49,19 +57,13 @@ fn under(folder: &Path, root: &Path) -> bool {
     }
 }
 
-/// Restarts the watcher over the given root and files. Called again whenever
-/// the library or the set of open documents changes.
-#[tauri::command]
-pub fn watch(
-    app: AppHandle,
+/// A watcher over one window's root and files, reporting to that window.
+fn build(
+    app: &AppHandle,
+    label: String,
     root: Option<String>,
     files: Vec<String>,
-    state: State<'_, Watcher>,
-) -> Result<(), String> {
-    let mut slot = state.0.lock().map_err(|error| error.to_string())?;
-    // Dropping the old one stops its thread; there is only ever one.
-    *slot = None;
-
+) -> Result<Running, String> {
     let handle = app.clone();
     let mut debouncer = new_debouncer(
         Duration::from_millis(150),
@@ -81,7 +83,9 @@ pub fn watch(
                 }
             }
             if !paths.is_empty() {
-                let _ = handle.emit("fs-change", Change { paths });
+                // To that window alone: the others have their own watchers
+                // and their own libraries, and a change here is not theirs.
+                let _ = handle.emit_to(&label, "fs-change", Change { paths });
             }
         },
     )
@@ -117,15 +121,44 @@ pub fn watch(
             .map_err(|error| error.to_string())?;
     }
 
-    *slot = Some(debouncer);
+    Ok(debouncer)
+}
+
+/// Restarts this window's watcher over the given root and files. Called
+/// again whenever its library or its set of open documents changes.
+///
+/// `async`, and so off the main thread: starting a watcher walks the whole
+/// tree to index it, which on a large library is long enough to be seen. On
+/// the main thread that is the window not drawing for as long as it takes.
+#[tauri::command]
+pub async fn watch(
+    app: AppHandle,
+    window: WebviewWindow,
+    root: Option<String>,
+    files: Vec<String>,
+    state: State<'_, Watcher>,
+) -> Result<(), String> {
+    let label = window.label().to_string();
+    let running = build(&app, label.clone(), root, files)?;
+    let mut watchers = state.0.lock().map_err(|error| error.to_string())?;
+    // Dropping the old one stops its thread; there is only ever one per
+    // window, and the new one is already watching before it goes.
+    watchers.insert(label, running);
     Ok(())
 }
 
 #[tauri::command]
-pub fn unwatch(state: State<'_, Watcher>) -> Result<(), String> {
-    let mut slot = state.0.lock().map_err(|error| error.to_string())?;
-    *slot = None;
+pub async fn unwatch(window: WebviewWindow, state: State<'_, Watcher>) -> Result<(), String> {
+    let mut watchers = state.0.lock().map_err(|error| error.to_string())?;
+    watchers.remove(window.label());
     Ok(())
+}
+
+/// A window that has gone stops being watched, whether it said so or not.
+pub fn forget<R: Runtime>(app: &tauri::AppHandle<R>, label: &str) {
+    if let Ok(mut watchers) = app.state::<Watcher>().0.lock() {
+        watchers.remove(label);
+    }
 }
 
 #[cfg(test)]

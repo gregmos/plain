@@ -2,16 +2,18 @@
 // one explicit answer, and the answer has to still be true when the buffer
 // is actually thrown away (spec §8).
 
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { dropBuffer, flushActiveEditor, isDirty } from "../editor";
 import { draftsSettled, dropDraft } from "./drafts";
 import { inTauri } from "./env";
 import { save } from "./save";
-import { toSession, writeSession } from "./session";
+import { dropSession, toSession, writeSession } from "./session";
 import { flushSettings } from "./settings";
 import { useStore, type Doc } from "./store";
+
+/** Rust asks every window for the close scenario under this name. */
+const QUIT_REQUESTED = "plain:quit-requested";
 
 /** Always measured on live editor text, never on a stale `Doc`. */
 function unsaved(ids: string[]): Doc[] {
@@ -125,12 +127,18 @@ export function closeActive(): void {
 }
 
 /**
- * Everything that ends the app goes through here: the window's X, `Alt+F4`,
- * and on macOS `⌘Q` and the Dock's Quit — Rust holds those back and asks for
- * this instead, because native `terminate:` would take the unsaved text with
- * it (review #1).
+ * Everything that closes a window goes through here: its X, `Alt+F4`, and on
+ * macOS `⌘Q` and the Dock's Quit — Rust holds those back and asks every
+ * window for this instead, because native `terminate:` would take the
+ * unsaved text with it (review #1).
+ *
+ * `keep` is the difference between the two. Quitting means to come back
+ * where you left off, so the window writes its entry in state.json; closing
+ * one window of several says that window is done, so its entry goes. The
+ * last window is quitting whichever way it is closed, and Rust knows that
+ * without being told (session.ts).
  */
-function leave(finish: () => Promise<void>, leaving: { yes: boolean }): void {
+function leave(finish: () => Promise<void>, leaving: { yes: boolean }, keep: boolean): void {
   if (leaving.yes) return;
   const ids = useStore.getState().docs.map((d) => d.id);
   let session = toSession();
@@ -144,12 +152,17 @@ function leave(finish: () => Promise<void>, leaving: { yes: boolean }): void {
     },
     done: () => {
       leaving.yes = true;
-      void Promise.all([writeSession(session), flushSettings()]).then(finish);
+      const written = keep ? writeSession(session) : dropSession();
+      void Promise.all([written, flushSettings()]).then(finish);
     },
   });
 }
 
-/** The window's X and Alt+F4 go through the same one question. */
+/**
+ * The window's X and Alt+F4 go through the same one question, and so does
+ * quitting — in every window at once. Each window answers for its own
+ * documents and closes itself; the app goes when the last one has.
+ */
 export function installCloseGuard(): () => void {
   if (!inTauri) return () => undefined;
   const leaving = { yes: false };
@@ -158,15 +171,14 @@ export function installCloseGuard(): () => void {
   const unlisten = window.onCloseRequested((event) => {
     if (leaving.yes) return;
     event.preventDefault();
-    leave(async () => window.destroy(), leaving);
+    leave(async () => window.destroy(), leaving, false);
   });
 
-  // `⌘Q`, the Dock's Quit and anything else macOS routes to `terminate:`.
-  // Rust prevented the exit and asked; the app goes when we say so.
-  const unlistenQuit = listen("plain:quit-requested", () => {
-    leave(async () => {
-      await invoke("exit_app").catch(() => undefined);
-    }, leaving);
+  // `⌘Q`, the Dock's Quit, `file → exit`, and anything else macOS routes to
+  // `terminate:`. Rust prevented the exit and asked; the app goes when the
+  // last window has closed itself.
+  const unlistenQuit = listen(QUIT_REQUESTED, () => {
+    leave(async () => window.destroy(), leaving, true);
   });
 
   return () => {

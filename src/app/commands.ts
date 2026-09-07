@@ -17,18 +17,43 @@ import { newFile } from "../library/ops";
 import { copyText, isMac } from "./platform";
 import { basename, dirname, pathKey } from "./paths";
 import { reloadFromDisk } from "./save";
+import { toSession } from "./session";
 import { serializeSettings, settingsPath } from "./settings";
 import { activeDoc, makeDoc, useStore, type Doc } from "./store";
+import {
+  heldElsewhere,
+  label,
+  newWindow,
+  requestQuit,
+  showDocIn,
+  takeOpening,
+  type Holder,
+} from "./windows";
 
 /**
  * Reads each path into the open list; the first one becomes active.
  * Returns whether anything ended up open.
+ *
+ * A file another window already has is not read a second time: two windows
+ * with one file would be two buffers, two drafts under the same name and two
+ * saves racing each other (spec §8). That window is brought forward instead —
+ * but only if this one has nothing of its own to show, or asking for three
+ * files would throw the focus somewhere else over the one of them that had
+ * moved out.
  */
 export async function openPaths(paths: string[]): Promise<boolean> {
   const { activate, openDoc, showBanner } = useStore.getState();
   let opened = false;
+  const held = await heldElsewhere(paths.map(pathKey));
+  /** The first file that turned out to live in another window. */
+  let moved: { holder: Holder; path: string } | null = null;
 
   for (const path of paths) {
+    const label = held.get(pathKey(path));
+    if (label) {
+      moved ??= { holder: { label, key: pathKey(path) }, path };
+      continue;
+    }
     // The same spelling is already open: show it, and do not read the file
     // a second time.
     const known = useStore.getState().docs.find((d) => d.id === pathKey(path));
@@ -79,6 +104,15 @@ export async function openPaths(paths: string[]): Promise<boolean> {
     // purpose — the rail, quick search and `recent` all come through here.
     useStore.getState().closeScreen();
   }
+  if (moved) {
+    // Nothing of ours to show: go to the window that has it. Otherwise stay
+    // where we are and say where the other file went.
+    if (opened) {
+      useStore.getState().setMessage(`${basename(moved.path)} is open in another window`);
+    } else {
+      await showDocIn(moved.holder);
+    }
+  }
   return opened;
 }
 
@@ -107,12 +141,14 @@ export function newDoc(): void {
     void newFile(store.libraryPath);
     return;
   }
-  // Unique across runs as well as within one: a restored draft keeps the id
-  // it was written under, and two sessions must not collide on it (spec §8).
+  // Unique across runs as well as within one, and across windows as well as
+  // within one: a restored draft keeps the id it was written under, and two
+  // sessions — or two windows counting from one each — must not collide on
+  // it (spec §8).
   untitled += 1;
   store.openDoc(
     makeDoc({
-      id: `untitled-${Date.now().toString(36)}-${untitled}`,
+      id: `untitled-${label()}-${Date.now().toString(36)}-${untitled}`,
       path: null,
       text: "",
       mode: "edit",
@@ -140,23 +176,16 @@ export function refresh(): void {
 }
 
 /**
- * Takes whatever Rust parked for us — launch arguments, or the argv of a
- * second launch. Opening a file this way collapses the rail (spec §6).
+ * Takes whatever Rust parked for this window — launch arguments, or the argv
+ * of a second launch. Only the window the paths were addressed to is nudged,
+ * so a file from Finder opens once and in the window the user was in, rather
+ * than in all of them at once. Opening a file this way collapses the rail
+ * (spec §6).
  */
-export async function pendingPaths(): Promise<string[]> {
-  return inTauri ? invoke<string[]>("take_pending_paths") : [];
-}
-
-/** Folder arguments, parked separately: a folder is a library (spec §6). */
-export async function pendingFolders(): Promise<string[]> {
-  return inTauri ? invoke<string[]>("take_pending_folders") : [];
-}
-
 export async function drainPendingPaths(): Promise<void> {
-  const folders = await pendingFolders();
+  const { paths, folders } = await takeOpening();
   const first = folders[0];
   if (first) await openLibraryPath(first);
-  const paths = await pendingPaths();
   if (paths.length === 0) return;
   // A file on its own arrives with the rail out of the way; a file that came
   // with its folder does not, because the folder is the point.
@@ -368,10 +397,27 @@ export async function showAbout(): Promise<void> {
   });
 }
 
-/** `file → exit`: the same one question as the window's X (spec §8). */
+/**
+ * `file → exit`: the same one question as the window's X, in every window
+ * there is. The app goes when the last of them has closed itself (spec §8).
+ */
 export async function exitApp(): Promise<void> {
+  await requestQuit();
+}
+
+/** `file → close window`: this window only, and its documents with it. */
+export async function closeWindow(): Promise<void> {
   if (!inTauri) return;
   await getCurrentWindow().close();
+}
+
+/**
+ * `file → new window`. The same library, because a second window on the same
+ * folder is what it is usually for; none of the documents, because the file
+ * you want there is not the one already showing here.
+ */
+export async function openNewWindow(): Promise<void> {
+  await newWindow({ ...toSession(), files: [], active: null });
 }
 
 /* -------------------------------------------------- plain text (wave 5b) */

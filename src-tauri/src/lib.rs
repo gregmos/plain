@@ -7,23 +7,15 @@ pub mod history;
 pub mod search;
 pub mod tree;
 mod watch;
+pub mod windows;
 
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 use tauri::plugin::{Builder as PluginBuilder, TauriPlugin};
-use tauri::{Emitter, Manager, Runtime, State, Url};
+use tauri::{Emitter, Manager, Runtime, Url};
 use tauri_plugin_fs::FsExt;
 
-/// Paths waiting for the frontend to collect them: launch arguments and
-/// whatever a second launch handed over.
-#[derive(Default)]
-struct PendingPaths(Mutex<Vec<String>>);
-
-/// The same, for folders: a folder given as an argument opens as the library
-/// (spec §6).
-#[derive(Default)]
-struct PendingFolders(Mutex<Vec<String>>);
+use windows::QUIT_REQUESTED;
 
 /// argv -> absolute paths. A relative argument belongs to the working
 /// directory of the process that produced it, which for a second launch is
@@ -83,11 +75,6 @@ pub fn data_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> PathBuf {
 /// predefined items around it.
 #[cfg(target_os = "macos")]
 const QUIT_ID: &str = "plain-quit";
-
-/// The event the front end answers by running the ordinary close-everything
-/// scenario, dialog and all.
-#[cfg(target_os = "macos")]
-const QUIT_REQUESTED: &str = "plain:quit-requested";
 
 /// macOS puts an application menu in the bar whether we ask for one or not,
 /// and the default it builds owns `⌘Q` through native `terminate:` — which
@@ -149,12 +136,6 @@ fn build_app_menu<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<tauri:
     Menu::with_items(app, &[&application, &edit, &window])
 }
 
-/// Called by the front end once every document has been dealt with.
-#[tauri::command]
-fn exit_app(app: tauri::AppHandle) {
-    app.exit(0);
-}
-
 /// WKWebView's UI delegate does not answer JavaScript `window.print()`, so on
 /// macOS the call returns quietly and no dialog appears. The native one does
 /// show it (review #9).
@@ -186,54 +167,38 @@ fn folder_args<I: IntoIterator<Item = String>>(argv: I, cwd: &Path) -> Vec<Strin
 }
 
 /// Widens the fs scope — the dialog plugin only covers what the user picked
-/// in a dialog — and parks the paths until the frontend asks for them.
-fn queue_paths<R: Runtime, M: Manager<R>>(manager: &M, paths: Vec<String>) {
-    if paths.is_empty() {
+/// in a dialog — so the paths can be read once a window asks for them.
+fn allow_paths<R: Runtime, M: Manager<R>>(manager: &M, paths: &[String], folders: &[String]) {
+    let Some(scope) = manager.try_fs_scope() else {
+        return;
+    };
+    for path in paths {
+        let _ = scope.allow_file(path);
+    }
+    for folder in folders {
+        let _ = scope.allow_directory(folder, true);
+    }
+}
+
+/// Parks arguments on one window and nudges it to come and take them. Which
+/// window: the focused one, so a file from Finder lands where the user is
+/// looking, and never in all of them at once (spec §6, §13a).
+///
+/// A path that arrives before that window has a listener is not lost — the
+/// event is only a nudge, and the parcel keeps until the window drains it.
+fn hand_over<R: Runtime>(app: &tauri::AppHandle<R>, paths: Vec<String>, folders: Vec<String>) {
+    if paths.is_empty() && folders.is_empty() {
         return;
     }
-    if let Some(scope) = manager.try_fs_scope() {
-        for path in &paths {
-            let _ = scope.allow_file(path);
-        }
-    }
-    if let Ok(mut queue) = manager.state::<PendingPaths>().0.lock() {
-        queue.extend(paths);
-    }
-}
-
-/// Parks folder arguments the same way, and widens the scope they need.
-fn queue_folders<R: Runtime, M: Manager<R>>(manager: &M, folders: Vec<String>) {
-    if folders.is_empty() {
+    allow_paths(app, &paths, &folders);
+    let Some(label) = windows::target_window(app) else {
         return;
+    };
+    if windows::queue_for(app, &label, paths, folders) {
+        windows::surface_window(app, &label);
+        // No payload: the event only says "there is something to take".
+        let _ = app.emit_to(&label, "open-path", ());
     }
-    if let Some(scope) = manager.try_fs_scope() {
-        for folder in &folders {
-            let _ = scope.allow_directory(folder, true);
-        }
-    }
-    if let Ok(mut queue) = manager.state::<PendingFolders>().0.lock() {
-        queue.extend(folders);
-    }
-}
-
-/// Drained by the frontend at startup and again on every `open-path` signal,
-/// so a path that arrives before the listener exists is never lost.
-#[tauri::command]
-fn take_pending_paths(pending: State<'_, PendingPaths>) -> Vec<String> {
-    pending
-        .0
-        .lock()
-        .map(|mut queue| std::mem::take(&mut *queue))
-        .unwrap_or_default()
-}
-
-#[tauri::command]
-fn take_pending_folders(pending: State<'_, PendingFolders>) -> Vec<String> {
-    pending
-        .0
-        .lock()
-        .map(|mut queue| std::mem::take(&mut *queue))
-        .unwrap_or_default()
 }
 
 /// Hands a folder to the asset protocol so its images can be shown, and to
@@ -257,14 +222,12 @@ fn allow_asset_dir(app: tauri::AppHandle, path: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Brings the one window back in front of the user: out of the Dock or the
-/// taskbar if it was minimised, and focused. What a second launch, a click on
-/// the Dock icon and a double-clicked file all end with.
+/// Brings a window back in front of the user: out of the Dock or the taskbar
+/// if it was minimised, and focused. What a second launch and a click on the
+/// Dock icon end with — the window the user was last in, of however many.
 fn surface<R: Runtime>(app: &tauri::AppHandle<R>) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
+    if let Some(label) = windows::target_window(app) {
+        windows::surface_window(app, &label);
     }
 }
 
@@ -290,14 +253,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             surface(app);
             let cwd = Path::new(&cwd);
-            let paths = path_args(argv.clone(), cwd);
-            let folders = folder_args(argv, cwd);
-            if !paths.is_empty() || !folders.is_empty() {
-                queue_paths(app, paths);
-                queue_folders(app, folders);
-                // No payload: the event only says "there is something to take".
-                let _ = app.emit("open-path", ());
-            }
+            hand_over(app, path_args(argv.clone(), cwd), folder_args(argv, cwd));
         }))
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_persisted_scope::init())
@@ -308,9 +264,20 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(navigation_guard())
-        .manage(PendingPaths::default())
-        .manage(PendingFolders::default())
+        .manage(windows::Windows::default())
         .manage(watch::Watcher::default())
+        // Which window the user is in decides where a file from outside goes,
+        // and a window that has gone must not still be holding files.
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::Focused(true) => {
+                windows::remember_focus(window.app_handle(), window.label());
+            }
+            tauri::WindowEvent::Destroyed => {
+                windows::drop_window(window.app_handle(), window.label());
+                watch::forget(window.app_handle(), window.label());
+            }
+            _ => {}
+        })
         .setup(|app| {
             // Idempotent, and only for a real build: a `tauri dev` run would
             // otherwise point every `.md` at target/debug (spec §13).
@@ -318,8 +285,11 @@ pub fn run() {
             assoc::register_quietly();
             let cwd = std::env::current_dir().unwrap_or_default();
             let argv: Vec<String> = std::env::args().collect();
-            queue_paths(app.handle(), path_args(argv.clone(), &cwd));
-            queue_folders(app.handle(), folder_args(argv, &cwd));
+            hand_over(
+                app.handle(),
+                path_args(argv.clone(), &cwd),
+                folder_args(argv, &cwd),
+            );
             // Our own folder is ours to read and write, wherever it is. The
             // capability grants %APPDATA%, so portable mode would otherwise
             // leave the front end able to write drafts through Rust but not
@@ -346,15 +316,21 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            take_pending_paths,
-            take_pending_folders,
             allow_asset_dir,
             assoc::register_file_association,
             assoc::unregister_file_association,
             assoc::file_association_registered,
             data_path,
-            exit_app,
             print_page,
+            windows::new_window,
+            windows::take_opening,
+            windows::focus_window,
+            windows::set_open_docs,
+            windows::holding_window,
+            windows::show_doc_in,
+            windows::put_session,
+            windows::forget_session,
+            windows::request_quit,
             fs::read_file,
             fs::canonical_path,
             fs::write_file_atomic,
@@ -380,15 +356,19 @@ pub fn run() {
         .expect("error while building Plain")
         .run(|_app, _event| {
             // Anything that asks the app to go without a code — held back and
-            // handed to the same scenario as `⌘Q` (review #1). But only while
-            // there is a window to answer: the same event comes when the last
-            // window is destroyed, which is how the window's X ends after its
-            // own question. Preventing the exit then left the process alive
-            // with no window, nobody to receive the event, and no way to get
-            // a window back from the Dock or from a double-clicked file.
+            // handed to the same scenario as `⌘Q` (review #1). Every window
+            // gets the question, and the app goes when the last of them has
+            // closed itself.
+            //
+            // Only while there is a window to answer: the same event comes
+            // when the last window is destroyed, which is how the window's X
+            // ends after its own question. Preventing the exit then left the
+            // process alive with no window, nobody to receive the event, and
+            // no way to get a window back from the Dock or a double-clicked
+            // file.
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::ExitRequested { api, code, .. } = &_event {
-                if code.is_none() && _app.get_webview_window("main").is_some() {
+                if code.is_none() && !_app.webview_windows().is_empty() {
                     api.prevent_exit();
                     let _ = _app.emit(QUIT_REQUESTED, ());
                 }
@@ -403,27 +383,19 @@ pub fn run() {
             // Finder does not pass a path in argv: it sends the app an Apple
             // Event, which Tauri turns into this (spec §13a). Same queue the
             // command line uses, same nudge to the front end — and the window
-            // comes forward, out of the Dock if it was minimised there.
+            // it goes to comes forward, out of the Dock if it was minimised.
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = _event {
                 surface(_app);
-                let paths: Vec<String> = urls
+                let files: Vec<PathBuf> = urls
                     .iter()
                     .filter_map(|url| url.to_file_path().ok())
-                    .filter(|path| path.is_file())
-                    .map(|path| path.to_string_lossy().into_owned())
                     .collect();
-                let folders: Vec<String> = urls
-                    .iter()
-                    .filter_map(|url| url.to_file_path().ok())
-                    .filter(|path| path.is_dir())
-                    .map(|path| path.to_string_lossy().into_owned())
-                    .collect();
-                if !paths.is_empty() || !folders.is_empty() {
-                    queue_paths(_app, paths);
-                    queue_folders(_app, folders);
-                    let _ = _app.emit("open-path", ());
-                }
+                let name = |path: &PathBuf| path.to_string_lossy().into_owned();
+                let of = |want: fn(&PathBuf) -> bool| -> Vec<String> {
+                    files.iter().filter(|path| want(path)).map(name).collect()
+                };
+                hand_over(_app, of(|path| path.is_file()), of(|path| path.is_dir()));
             }
         });
 }
