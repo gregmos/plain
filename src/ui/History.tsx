@@ -96,8 +96,9 @@ export function HistoryScreen({ id }: { id: string }) {
           </button>
         </div>
         <div className="screen-lead">
-          {doc.title} · kept for thirty days, one copy every five minutes of saving. restoring
-          only changes the buffer — the file is written when you save.
+          {doc.title} · kept for thirty days: one copy every five minutes of saving, and one
+          before every change made outside plain. restoring only changes the buffer — the file
+          is written when you save.
         </div>
 
         {snapshots === null ? (

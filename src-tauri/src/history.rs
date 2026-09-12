@@ -119,15 +119,30 @@ fn write_snapshot(dir: &Path, bytes: &[u8], now: SystemTime) -> FsResult<PathBuf
     Ok(target)
 }
 
+/// Whether a copy goes in now. A snapshot that was asked for — before a
+/// restore, before an external change overwrites the buffer (spec §8) — is
+/// written whatever the clock says: those come in bursts and every one of
+/// them is a version nothing else remembers. A save earns one every five
+/// minutes (spec §2a).
+fn wanted(dir: &Path, now: SystemTime, force: bool) -> bool {
+    force || !dir.is_dir() || due(dir, now)
+}
+
 /// Called straight after a successful write, with the bytes that were
-/// written. Failing to keep a copy must never fail the save, so the caller
-/// throws the result away.
-pub fn keep<R: Runtime>(app: &AppHandle<R>, id: &str, bytes: &[u8]) -> FsResult<Option<String>> {
+/// written, and by `snapshot_text` for the copies that are asked for.
+/// Failing to keep a copy must never fail the save, so that caller throws
+/// the result away.
+pub fn keep<R: Runtime>(
+    app: &AppHandle<R>,
+    id: &str,
+    bytes: &[u8],
+    force: bool,
+) -> FsResult<Option<String>> {
     let Some(dir) = folder(app, id) else {
         return Ok(None);
     };
     let now = SystemTime::now();
-    if dir.is_dir() && !due(&dir, now) {
+    if !wanted(&dir, now, force) {
         return Ok(None);
     }
     Ok(Some(
@@ -145,15 +160,17 @@ pub struct SnapshotRequest {
     pub encoding: String,
     pub bom: bool,
     pub eol: String,
+    /// Past the five-minute rule. The front end sets it for every copy it
+    /// asks for; absent, the request is treated like a save's.
+    #[serde(default)]
+    pub force: bool,
 }
 
 /// A snapshot of text that is not on disk — what the buffer holds before a
-/// restore replaces it (spec §2a). No five-minute rule: it is asked for.
+/// restore replaces it, and what it held before the file changed underneath
+/// it (spec §2a, §8).
 #[tauri::command]
 pub fn snapshot_text(app: AppHandle, request: SnapshotRequest) -> FsResult<Option<String>> {
-    let Some(dir) = folder(&app, &request.id) else {
-        return Ok(None);
-    };
     let bytes = crate::fs::encoded_bytes(&WriteRequest {
         path: String::new(),
         text: request.text,
@@ -164,11 +181,7 @@ pub fn snapshot_text(app: AppHandle, request: SnapshotRequest) -> FsResult<Optio
         allow_missing: true,
         snapshot_id: None,
     })?;
-    Ok(Some(
-        write_snapshot(&dir, &bytes, SystemTime::now())?
-            .to_string_lossy()
-            .into_owned(),
-    ))
+    keep(&app, &request.id, &bytes, request.force)
 }
 
 /// Newest first, which is the order the history screen wants.
@@ -324,6 +337,31 @@ mod tests {
         assert!(!due(&history, taken + Duration::from_secs(4 * 60)));
         assert!(due(&history, taken + EVERY));
         assert!(due(&history, taken + Duration::from_secs(10 * 60)));
+    }
+
+    /// §8: the copy taken before a file that changed on disk replaces the
+    /// buffer is asked for, not earned — an agent editing behind us saves in
+    /// bursts, and the five-minute rule would keep only the first version.
+    #[test]
+    fn a_forced_snapshot_ignores_the_five_minutes_a_save_waits() {
+        let dir = tempfile::tempdir().unwrap();
+        let history = dir.path().join("id");
+        let now = SystemTime::now();
+        let first = write_snapshot(&history, b"before\n", now).unwrap();
+
+        // The decision `keep` takes, without an AppHandle to build one from.
+        assert!(!wanted(&history, now, false), "a save waits its five minutes");
+        assert!(wanted(&history, now, true), "a copy that was asked for does not");
+
+        // And the second one is a file of its own, inside the same second.
+        let second = write_snapshot(&history, b"and after\n", now).unwrap();
+        assert_ne!(first, second);
+        assert_eq!(snapshots_in(&history).len(), 2);
+
+        // A folder with nothing in it is due either way.
+        let empty = dir.path().join("nothing yet");
+        assert!(wanted(&empty, now, false));
+        assert!(wanted(&empty, now, true));
     }
 
     #[test]

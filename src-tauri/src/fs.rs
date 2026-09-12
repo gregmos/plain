@@ -610,7 +610,7 @@ pub fn write_file_atomic(app: tauri::AppHandle, request: WriteRequest) -> FsResu
     // Keeping a copy must not fail the save, but it must not be silent about
     // failing either (review #5).
     let snapshot_error = match request.snapshot_id.as_deref() {
-        Some(id) => crate::history::keep(&app, id, &bytes)
+        Some(id) => crate::history::keep(&app, id, &bytes, false)
             .err()
             .map(|error| error.message().to_string()),
         None => None,

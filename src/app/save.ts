@@ -445,10 +445,21 @@ interface ReloadOptions {
 }
 
 /**
- * Reads the file again and drops it into the buffer as one undo step. The
- * "this buffer is clean" decision is taken twice — once on live text before
- * the read, once right before the swap — because a keystroke in between must
- * not be overwritten silently (spec §8).
+ * Whether the buffer already holds exactly this text, saved. Two reloads of
+ * one change can be in flight at once — `F5` goes straight here, outside the
+ * watcher's own guard — and the second one finding the first one's work done
+ * is not a conflict, it is nothing left to do (review w14 #2).
+ */
+function holds(id: string, current: Doc, text: string): boolean {
+  return normalizeEol(current.text) === text && !isDirty(id, current.text);
+}
+
+/**
+ * Reads the file again and drops it into the buffer as one undo step, after
+ * keeping what was on screen as a version of its own. The "this buffer is
+ * clean" decision is taken after every await — before the read, after it,
+ * after the copy — because a keystroke in between must not be overwritten
+ * silently (spec §8).
  */
 export async function reloadFromDisk(id: string, options: ReloadOptions = {}): Promise<void> {
   const { note = "reloaded from disk", force = false } = options;
@@ -462,21 +473,50 @@ export async function reloadFromDisk(id: string, options: ReloadOptions = {}): P
 
   try {
     const info = await readFile(before.path);
+    const fields = docFields(info);
     const after = liveDoc(id);
     if (!after) return;
     if (!force && (after.revision !== revision || isDirty(id, after.text))) {
+      // The other reload of this same change got there first: nothing to do,
+      // and nothing to say about it either.
+      if (holds(id, after, fields.text)) {
+        useStore.getState().dismissBanner("conflict");
+        return;
+      }
       // Typed while the file was being read: the buffer wins and the user is
       // told the file moved instead.
       showConflict(id);
       return;
     }
-    const fields = docFields(info);
+    // Something outside rewrote the file and the text on screen is about to
+    // go — an agent editing it behind us is the usual reason, and then one
+    // undo step is all that remembers what was there. That version goes into
+    // the history first, past the five-minute rule (spec §8). Best effort:
+    // a copy that fails is no reason to keep showing stale text.
+    const kept = normalizeEol(after.text) !== fields.text && (await snapshotBuffer(after));
+
+    // The copy was another await, and the editor stayed usable across it.
+    // `force` is permission to lose the edits the user was asked about, not
+    // whatever was typed since they answered, so this check holds for that
+    // path too (review w14 #1).
+    const settled = liveDoc(id);
+    if (!settled) return;
+    if (settled.revision !== after.revision) {
+      if (holds(id, settled, fields.text)) {
+        useStore.getState().dismissBanner("conflict");
+        return;
+      }
+      showConflict(id);
+      return;
+    }
     useStore.getState().updateDoc(id, fields);
     replaceText(id, fields.text);
-    void dropDraft(after);
+    void dropDraft(settled);
     useStore.getState().dismissBanner("conflict");
     if (fields.decodeErrors) useStore.getState().setNote("decoded with errors");
-    else if (note) useStore.getState().setNote(note);
+    else if (note) {
+      useStore.getState().setNote(kept ? `${note} · previous version kept in history` : note);
+    }
   } catch (error) {
     useStore.getState().setMessage(`couldn't reload — ${fsError(error).message}`);
   }

@@ -30,7 +30,7 @@ vi.mock("./fs", async (importOriginal) => ({
   trashPath: vi.fn(async () => undefined),
 }));
 
-const { installAutosave, restoreIntoBuffer, restoreSnapshot, takeComparison } =
+const { installAutosave, reloadFromDisk, restoreIntoBuffer, restoreSnapshot, takeComparison } =
   await import("./save");
 const { clearBuffers } = await import("../editor/buffers");
 const { DEFAULTS } = await import("./settings");
@@ -194,6 +194,164 @@ describe("taking the version the diff screen drew", () => {
     expect(text()).toBe("from a snapshot\n");
     expect(useStore.getState().docs[0]?.baseHash).toBe("diskhash");
     expect(useStore.getState().docs[0]?.dirty).toBe(true);
+  });
+});
+
+/* ---------------------------------------------------------------- §8 */
+
+describe("the version a quiet reload replaces", () => {
+  interface Asked {
+    text: string;
+    force: boolean;
+    /** What the buffer held at the moment the copy was asked for. */
+    onScreen: string | undefined;
+  }
+
+  /**
+   * Records every `snapshot_text`, so the order can be checked afterwards.
+   * `answer` is what the copy does — fail, or hang until the test lets go.
+   */
+  function watchSnapshots(answer: () => Promise<unknown> = async () => null): Asked[] {
+    const asked: Asked[] = [];
+    invoke.mockImplementation(async (command, args) => {
+      if (command !== "snapshot_text") return null;
+      const request = (args as { request: { text: string; force: boolean } }).request;
+      asked.push({ text: request.text, force: request.force, onScreen: text() });
+      return await answer();
+    });
+    return asked;
+  }
+
+  /** A promise the test holds open, so something can land in the middle. */
+  function gate<T>(): { promise: Promise<T>; open: (value: T) => void } {
+    let open = (_value: T): void => undefined;
+    const promise = new Promise<T>((resolve) => {
+      open = resolve;
+    });
+    return { promise, open };
+  }
+
+  function clean(text: string) {
+    return open({ text, savedText: text, dirty: false });
+  }
+
+  it("goes into the history first, past the five-minute rule", async () => {
+    clean("before the agent\n");
+    readFile.mockResolvedValue(fileInfo("after the agent\n", "newhash"));
+    const asked = watchSnapshots();
+
+    await reloadFromDisk(ID);
+    // The copy is of what was on screen, and the buffer still held it.
+    expect(asked).toEqual([
+      { text: "before the agent\n", force: true, onScreen: "before the agent\n" },
+    ]);
+    expect(text()).toBe("after the agent\n");
+    expect(useStore.getState().note).toBe("reloaded from disk · previous version kept in history");
+  });
+
+  // A watcher hit on a file whose bytes came back the same is not a version.
+  it("is not kept when the file came back the way the buffer already has it", async () => {
+    clean("unchanged\n");
+    readFile.mockResolvedValue(fileInfo("unchanged\n", "newhash"));
+    const asked = watchSnapshots();
+
+    await reloadFromDisk(ID);
+    expect(asked).toEqual([]);
+    expect(useStore.getState().note).toBe("reloaded from disk");
+    expect(useStore.getState().docs[0]?.baseHash).toBe("newhash");
+  });
+
+  // Unlike a restore, the reload is not a choice the user made: refusing to
+  // do it would leave stale text on screen for a reason nobody asked about.
+  it("does not hold the reload back when the copy cannot be written", async () => {
+    clean("before the agent\n");
+    readFile.mockResolvedValue(fileInfo("after the agent\n", "newhash"));
+    watchSnapshots(() => Promise.reject(new Error("disk full")));
+
+    await reloadFromDisk(ID);
+    expect(text()).toBe("after the agent\n");
+    expect(useStore.getState().note).toBe("reloaded from disk");
+  });
+
+  it("is on screen only once the copy has landed", async () => {
+    clean("before the agent\n");
+    readFile.mockResolvedValue(fileInfo("after the agent\n", "newhash"));
+    const writing = gate<null>();
+    const asked = watchSnapshots(() => writing.promise);
+
+    const running = reloadFromDisk(ID);
+    await vi.waitFor(() => expect(asked).toHaveLength(1));
+    // The copy is still being written, so the text it copies is still there.
+    expect(text()).toBe("before the agent\n");
+
+    writing.open(null);
+    await running;
+    expect(text()).toBe("after the agent\n");
+  });
+
+  // The conflict banner's `reload`, where the text being thrown away is the
+  // user's own and worth more than anything.
+  it("keeps the buffer the user agreed to lose", async () => {
+    open();
+    readFile.mockResolvedValue(fileInfo("on disk now\n", "newhash"));
+    const asked = watchSnapshots();
+
+    await reloadFromDisk(ID, { force: true });
+    expect(asked.map((a) => a.text)).toEqual(["buffer\n"]);
+    expect(text()).toBe("on disk now\n");
+  });
+
+  // Typed while the copy was being written: that keystroke was never part of
+  // anything the user was told about (spec §8).
+  it("leaves the buffer alone when it moves while the copy is written", async () => {
+    clean("before the agent\n");
+    readFile.mockResolvedValue(fileInfo("after the agent\n", "newhash"));
+    invoke.mockImplementation(async () => {
+      useStore.getState().updateDoc(ID, { text: "typed just now\n" });
+      return null;
+    });
+
+    await reloadFromDisk(ID);
+    expect(text()).toBe("typed just now\n");
+    expect(useStore.getState().banners[0]?.text).toBe("file changed on disk");
+  });
+
+  // `reload` in the banner is permission to lose the edits the dialog named,
+  // not the ones made after the answer (review w14 #1).
+  it("leaves it alone under force too, and asks again", async () => {
+    open();
+    readFile.mockResolvedValue(fileInfo("on disk now\n", "newhash"));
+    const writing = gate<null>();
+    const asked = watchSnapshots(() => writing.promise);
+
+    const running = reloadFromDisk(ID, { force: true });
+    await vi.waitFor(() => expect(asked).toHaveLength(1));
+    useStore.getState().updateDoc(ID, { text: "typed after the answer\n" });
+    writing.open(null);
+    await running;
+
+    expect(text()).toBe("typed after the answer\n");
+    expect(useStore.getState().banners[0]?.text).toBe("file changed on disk");
+  });
+
+  // `F5` reloads without the watcher's guard, so two reloads of one change
+  // can overlap. The second finding the work done is not a conflict.
+  it("says nothing when another reload of the same change got there first", async () => {
+    clean("before the agent\n");
+    const disk = fileInfo("after the agent\n", "newhash");
+    const late = gate<FileInfo>();
+    readFile.mockResolvedValueOnce(disk).mockReturnValueOnce(late.promise);
+    const asked = watchSnapshots();
+
+    const first = reloadFromDisk(ID);
+    const second = reloadFromDisk(ID);
+    await first;
+    late.open(disk);
+    await second;
+
+    expect(asked).toHaveLength(1);
+    expect(text()).toBe("after the agent\n");
+    expect(useStore.getState().banners).toEqual([]);
   });
 });
 

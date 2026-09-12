@@ -30,16 +30,18 @@ export async function listSnapshots(doc: Pick<Doc, "id" | "path">): Promise<Snap
 
 /**
  * A copy of what the buffer holds right now, whatever the five-minute rule
- * would say. Taken before a restore, so the text being replaced is never the
- * only copy (spec §2a). Says whether it worked: a restore that goes ahead
- * without it can destroy the last copy of that text (review #1).
+ * would say — `force` is how Rust is told so. Taken before a restore, and
+ * before a file that changed on disk replaces the buffer, so the text being
+ * replaced is never the only copy (spec §2a, §8). Says whether it worked: a
+ * restore that goes ahead without it can destroy the last copy of that text
+ * (review #1).
  */
 export async function snapshotBuffer(doc: Doc): Promise<boolean> {
   if (!inTauri) return true;
   const text = normalizeEol(doc.text);
   const attempt = (encoding: string, bom: boolean) =>
     invoke("snapshot_text", {
-      request: { id: documentKey(doc), text, encoding, bom, eol: doc.eol },
+      request: { id: documentKey(doc), text, encoding, bom, eol: doc.eol, force: true },
     });
   try {
     await attempt(doc.encoding, doc.bom);
