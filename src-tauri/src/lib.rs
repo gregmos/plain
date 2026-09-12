@@ -268,6 +268,24 @@ fn surface<R: Runtime>(app: &tauri::AppHandle<R>) {
     }
 }
 
+/// Windows hands the foreground to whoever received the last input — after a
+/// double-click in Explorer that is the second launch, not the instance that
+/// is already running, so its `set_focus` is refused and the taskbar button
+/// only flashes. The second launch therefore gives the right away before the
+/// single-instance plugin passes the path over (spec §13). `ASFW_ANY` is a
+/// grant to anyone, and it lasts until the next input: that is exactly the
+/// moment `surface` needs, and until that keystroke or click any process may
+/// come forward — which in the second between a launch and the window is
+/// nothing a user will notice.
+#[cfg(windows)]
+fn allow_foreground_handover() {
+    use windows::Win32::UI::WindowsAndMessaging::{AllowSetForegroundWindow, ASFW_ANY};
+    let _ = unsafe { AllowSetForegroundWindow(ASFW_ANY) };
+}
+
+#[cfg(not(windows))]
+fn allow_foreground_handover() {}
+
 /// The webview never leaves our own origin (spec §14); links open in the
 /// system browser instead.
 fn navigation_guard<R: Runtime>() -> TauriPlugin<R> {
@@ -284,6 +302,10 @@ fn navigation_guard<R: Runtime>() -> TauriPlugin<R> {
 }
 
 pub fn run() {
+    // Before the builder, because the single-instance plugin sends the path to
+    // the first instance while it initialises and the grant has to be in place
+    // by then (spec §13).
+    allow_foreground_handover();
     tauri::Builder::default()
         // Order matters: single-instance first (spec §13), and persisted-scope
         // reads the fs scope during its own setup, so fs has to come before it.

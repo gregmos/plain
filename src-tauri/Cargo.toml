@@ -44,7 +44,7 @@ xattr = "1"
 # on macOS the atomic write is `rename` and the association is in the bundle
 # (spec §13a).
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62.2", features = ["Win32_Storage_FileSystem", "Win32_Foundation", "Win32_UI_Shell"] }
+windows = { version = "0.62.2", features = ["Win32_Storage_FileSystem", "Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 winreg = "0.56.0"
 
 [profile.release]
