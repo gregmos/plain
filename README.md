@@ -14,7 +14,7 @@ Double-click a `.md` file and you are reading. Make a change, and the file stays
 - **All the Markdown you need.** Tables, task lists, footnotes, callouts like `> [!note]`, KaTeX math, Mermaid diagrams, syntax-highlighted code, `==highlights==`, `[[wikilinks]]`, and images from your folder.
 - **A folder as a library.** A file tree, create, rename, delete to the Recycle Bin or Trash, and full-text search across the folder.
 - **Quick open.** `Ctrl+K` finds files by name, lists recent ones, and runs commands.
-- **More than one window.** `Ctrl+Shift+N` opens another window on the same folder, empty; `Ctrl+Shift+W` closes it. A file only ever opens in one window, and `recent` is shared between them. Windows do not come back after a restart — the files do, through `recent`, as long as the first window was still open when you opened them.
+- **More than one window.** `Ctrl+Shift+N` opens another window on the same folder, empty; `Ctrl+Shift+W` closes it. A file only ever opens in one window, and `recent` is shared between them. Windows do not come back after a restart — the files do, through `recent`.
 - **Careful saving.** Atomic writes, encodings and line endings preserved, recovery drafts in case of a crash, and a warning when a file changes on disk while you have it open.
 - **A quiet interface.** One monospace font, light and dark themes, no toolbars, no icons.
 
@@ -24,7 +24,7 @@ Builds for both systems are on the [releases page](https://github.com/gregmos/pl
 
 ### Windows 11
 
-1. Unpack `Plain-0.2.3-win-x64.zip` into any folder, for example `C:\Program Files\Plain` or `%LOCALAPPDATA%\Programs\Plain`. It contains a single `plain.exe`; there is no installer.
+1. Unpack `Plain-0.3.0-win-x64.zip` into any folder, for example `C:\Program Files\Plain` or `%LOCALAPPDATA%\Programs\Plain`. It contains a single `plain.exe`; there is no installer.
 2. Run `plain.exe`.
 3. To open `.md` files in Plain with a double-click: right-click any `.md` file → **Open with → Choose another app → Plain → Always**. Plain appears in that list after its first launch, but it never makes itself the default on its own.
 
@@ -32,7 +32,7 @@ If you move the folder later, just run the exe from its new location.
 
 ### macOS 13+
 
-1. Download `Plain_0.2.3_universal.dmg`, open it, and drag Plain into Applications. One build runs on both Apple Silicon and Intel.
+1. Download `Plain_0.3.0_universal.dmg`, open it, and drag Plain into Applications. One build runs on both Apple Silicon and Intel.
 2. To open `.md` files from Finder with a double-click: select any `.md` file, **Get Info → Open with → Plain → Change All**. Plain is listed there from its first launch.
 
 ## Using it
@@ -57,7 +57,7 @@ On Windows in `%APPDATA%\Plain` (that is `C:\Users\<you>\AppData\Roaming\Plain`)
 | `settings.json` | settings; easier to change with `Ctrl+,` |
 | `drafts\` | recovery drafts of unsaved edits |
 | `state.json` | open files, reading positions, the last folder |
-| `history\` | snapshots of what you saved, kept for thirty days |
+| `history\` | snapshots of what you saved, and of what a file held before it changed on disk, kept for thirty days |
 
 On Windows, a folder called `data` next to `plain.exe` makes Plain keep all four there instead (portable mode); the macOS app is a bundle, so there is no portable mode there. Plain keeps no indexes, caches, or hidden service files in your folders. The only things it writes there are the documents you save and, if you paste an image, the `assets/` folder next to the document.
 
@@ -76,7 +76,7 @@ On Windows you need Node.js 22, Rust (`rustup` with the `stable-x86_64-pc-window
 ```
 npm install
 npm run tauri dev     # development build with live reload
-npm run pack          # release build, produces dist-win\Plain-0.2.3-win-x64.zip
+npm run pack          # release build, produces dist-win\Plain-0.3.0-win-x64.zip
 ```
 
 Checks: `npm run build`, `npx vitest run`, and `cargo test` inside `src-tauri`. The manual checklist used before a release is in `CHECKLIST.md`.
