@@ -7,6 +7,7 @@ import { listDrafts } from "./drafts";
 import { inTauri } from "./env";
 import { pathKey } from "./paths";
 import {
+  flushSession,
   loadSession,
   normalizeSession,
   readingPosition,
@@ -16,7 +17,14 @@ import {
 import { restoreZoom } from "./zoom";
 import { loadSettings } from "./settings";
 import { useStore } from "./store";
-import { installSettingsSync, isFirstWindow, settingsLoaded, takeOpening } from "./windows";
+import {
+  installSettingsSync,
+  installWriterRole,
+  isFirstWindow,
+  setPromotionHandler,
+  settingsLoaded,
+  takeOpening,
+} from "./windows";
 import { emitGotoHeading } from "../read/events";
 
 /** Held while the `unsaved work found` screen is up (spec §8). */
@@ -70,6 +78,13 @@ export async function bootstrap(): Promise<void> {
   // Before the file is read, and awaited: settings written by another window
   // while this one is starting must not be lost (W13 §7.2, M4).
   await installSettingsSync();
+  // Before the role is asked for, not after: taking it mid-startup would
+  // otherwise flush a half-restored window over a good session. In a window
+  // that is already running this promise is long since kept (W13 §4.2).
+  setPromotionHandler(() => startupSettled.then(() => flushSession()));
+  // The same reason as the settings, and the same moment: the window that was
+  // writing the session may close while this one is starting (W13 §4.2).
+  await installWriterRole();
   const { settings, invalid } = await loadSettings();
   const store = useStore.getState();
   store.applySettings(settings);

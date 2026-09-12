@@ -1,10 +1,17 @@
 // Closing a window: the one question about unsaved work, asked once and only
-// once, and the snapshot that goes to state.json when the window that writes
-// it is the one closing (W13 §4.1, §4.3, §8.2, M3, M5).
+// once, the snapshot that goes to state.json when the window writing it is
+// the one closing, and the session changing hands while it does (W13 §4.1,
+// §4.2, §4.3, §8.2, M3, M5).
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const invoke = vi.fn(async (command: string) => (command === "data_path" ? "C:/data" : null));
+/** Which window Rust says writes the session, when it is asked (§4.2). */
+const rust = { writer: "main" };
+const invoke = vi.fn(async (command: string) => {
+  if (command === "data_path") return "C:/data";
+  if (command === "session_writer") return rust.writer;
+  return null;
+});
 const writeTextAtomic = vi.fn(async (_path: string, _text: string) => undefined);
 const save = vi.fn(async (_id: string) => true);
 const destroy = vi.fn(async () => undefined);
@@ -16,6 +23,12 @@ const win = {
   closeRequested: null as ((event: { preventDefault: () => void }) => void) | null,
 };
 let quitRequested: (() => void) | null = null;
+/**
+ * Rust telling this window it writes the session now. Registered once for the
+ * module and kept between tests, because `installWriterRole` only ever puts
+ * one listener on (§4.2).
+ */
+let handedTheSession: (() => void) | null = null;
 
 vi.mock("./env", () => ({ inTauri: true }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (c: string) => invoke(c) }));
@@ -23,6 +36,7 @@ vi.mock("@tauri-apps/api/event", () => ({
   emit: vi.fn(async () => undefined),
   listen: async (name: string, handler: () => void) => {
     if (name === "plain:quit-requested") quitRequested = handler;
+    if (name === "plain:session-writer") handedTheSession = handler;
     return () => undefined;
   },
 }));
@@ -64,8 +78,9 @@ vi.mock("./fs", async (importOriginal) => ({
 }));
 
 const { installCloseGuard } = await import("./close");
-const { toSession, writeSession } = await import("./session");
+const { flushSession, toSession, writeSession } = await import("./session");
 const { makeDoc, useStore } = await import("./store");
+const { installWriterRole, isSessionWriter, setPromotionHandler } = await import("./windows");
 
 const PATH = "C:/notes/a.md";
 const ID = "c:/notes/a.md";
@@ -96,6 +111,10 @@ beforeEach(() => {
   win.label = "main";
   win.closeRequested = null;
   quitRequested = null;
+  rust.writer = "main";
+  // The role belongs to a window, so every test that takes it does so under a
+  // label of its own and none of them starts as anything but a stranger.
+  setPromotionHandler(null);
   dirty.clear();
   invoke.mockClear();
   writeTextAtomic.mockClear();
@@ -159,6 +178,108 @@ describe("the window that writes the session", () => {
     win.label = "w2";
     await writeSession(toSession());
     expect(writeTextAtomic).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Closing the first window used to freeze the session on its snapshot. The
+ * role is handed on instead, and a window that takes it writes at once: from
+ * that moment state.json is its own (W13 §4.1, N10).
+ */
+describe("the session changing hands", () => {
+  it("is taken by the window Rust tells, which writes what it has", async () => {
+    win.label = "w3";
+    await installWriterRole();
+    expect(isSessionWriter()).toBe(false);
+
+    handedTheSession?.();
+    await flush();
+
+    expect(isSessionWriter()).toBe(true);
+    expect(written()?.files.map((f) => f.path)).toEqual([PATH]);
+  });
+
+  /**
+   * A window starting while the writer closes is handed the role before it is
+   * listening, so it asks outright rather than waiting for an event that has
+   * already been and gone (§4.2).
+   */
+  it("is taken at startup from Rust's answer, with no event to hear", async () => {
+    win.label = "w4";
+    rust.writer = "w4";
+
+    await installWriterRole();
+    await flush();
+
+    expect(isSessionWriter()).toBe(true);
+    expect(written()?.files.map((f) => f.path)).toEqual([PATH]);
+  });
+
+  /**
+   * Mid-startup the window shows half a session; writing that over a good
+   * state.json would lose the rest. Bootstrap's handler holds the write until
+   * startup is done (§4.2).
+   */
+  it("waits, when it is taken while the window is still starting", async () => {
+    win.label = "w5";
+    let settle: () => void = () => {};
+    const startupSettled = new Promise<void>((resolve) => (settle = resolve));
+    await installWriterRole();
+    // What bootstrap installs before it reads anything.
+    setPromotionHandler(() => startupSettled.then(() => flushSession()));
+
+    handedTheSession?.();
+    await flush();
+    expect(writeTextAtomic).not.toHaveBeenCalled();
+
+    settle();
+    await flush();
+    expect(written()?.files.map((f) => f.path)).toEqual([PATH]);
+  });
+
+  /** The snapshot taken at the door, not the store the dialog is holding up. */
+  it("writes what this window is leaving with when it is taken mid-close", async () => {
+    win.label = "w6";
+    dirty.add(ID);
+    await installWriterRole();
+    installCloseGuard();
+    closeTheWindow();
+
+    handedTheSession?.();
+    await flush();
+
+    expect(written()?.files.map((f) => f.path)).toEqual([PATH]);
+    expect(useStore.getState().dialog).not.toBeNull();
+  });
+
+  /**
+   * The writer may go while this window is already past the question, its
+   * documents closed and the store empty. What it leaves behind is still the
+   * snapshot from `ready` — a Save As at the door and all — and not the empty
+   * store an immediate `flushSession` would have written (§4.2, §Д9 #2).
+   */
+  it("writes the snapshot from `ready` even when the documents have gone", async () => {
+    win.label = "w7";
+    dirty.add(ID);
+    save.mockImplementation(async (id: string) => {
+      useStore.getState().renameDoc(id, SAVED_AS);
+      dirty.delete(id);
+      return true;
+    });
+    await installWriterRole();
+    installCloseGuard();
+    closeTheWindow();
+    press("save");
+    await flush();
+
+    expect(writeTextAtomic).not.toHaveBeenCalled();
+    expect(useStore.getState().docs).toHaveLength(0);
+    expect(destroy).toHaveBeenCalled();
+
+    handedTheSession?.();
+    await flush();
+
+    expect(written()?.files.map((f) => f.path)).toEqual([SAVED_AS]);
   });
 });
 
@@ -248,5 +369,47 @@ describe("the question about unsaved work", () => {
 
     closeTheWindow();
     expect(useStore.getState().dialog).not.toBeNull();
+  });
+});
+
+/**
+ * A quit that is called off leaves Rust holding the session still for it, and
+ * possibly with no window writing at all — the one that was may have closed
+ * under the same quit. The window that said no is the one that says so
+ * (W13 §4.1, §4.3).
+ */
+describe("a quit the reader changed their mind about", () => {
+  beforeEach(() => {
+    dirty.add(ID);
+  });
+
+  it("is called off in Rust as well", () => {
+    installCloseGuard();
+    quitRequested?.();
+    press("cancel");
+
+    expect(invoke).toHaveBeenCalledWith("quit_cancelled");
+  });
+
+  /**
+   * The quit found the question already up and was ignored, but it was still
+   * asked for: cancelling the question that is up cancels the quit too.
+   */
+  it("is called off by the window whose dialog swallowed it", () => {
+    installCloseGuard();
+    closeTheWindow();
+    quitRequested?.();
+    press("cancel");
+
+    expect(invoke).toHaveBeenCalledWith("quit_cancelled");
+  });
+
+  /** One window closing and thinking better of it is nobody else's business. */
+  it("is not what a window closing on its own was doing", () => {
+    installCloseGuard();
+    closeTheWindow();
+    press("cancel");
+
+    expect(invoke).not.toHaveBeenCalledWith("quit_cancelled");
   });
 });

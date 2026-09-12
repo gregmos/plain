@@ -8,7 +8,7 @@ import { writeTextAtomic } from "./fs";
 import { pathKey } from "./paths";
 import { dataDir } from "./settings";
 import { clampRailWidth, useStore, type LibrarySort, type Mode, type RailView } from "./store";
-import { isFirstWindow } from "./windows";
+import { isSessionWriter } from "./windows";
 
 const FILE = "state.json";
 const DEBOUNCE_MS = 2000;
@@ -181,13 +181,14 @@ export async function loadSession(): Promise<SessionFile | null> {
  * Takes the session it is given, because closing the window empties the open
  * list before the app is allowed to go — the snapshot has to be older.
  *
- * Only `main` writes it, and this one line is what makes that true of every
- * way in: the debounce, `flushSession`, the close scenario and quit (W13 §4).
+ * One window writes it — the writer, `main` until it closes and hands the
+ * role on — and this one line is what makes that true of every way in: the
+ * debounce, `flushSession`, the close scenario and quit (W13 §4.1, M3).
  * state.json is one snapshot of one window; the others leave `recent` behind
- * them instead (W13 §4.4, M3).
+ * them instead (W13 §4.4).
  */
 export async function writeSession(session: SessionFile): Promise<void> {
-  if (!inTauri || !isFirstWindow()) return;
+  if (!inTauri || !isSessionWriter()) return;
   clearTimeout(timer);
   timer = undefined;
   try {

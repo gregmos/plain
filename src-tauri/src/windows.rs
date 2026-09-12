@@ -5,7 +5,8 @@
 // window a path from outside belongs to, which window already has a file
 // open, and the labels themselves. Windows last as long as the run and are
 // not brought back after it (W13 §0.1 N1), so nothing here reads or writes
-// state.json — that is the front end's, and only in `main` (W13 §4).
+// state.json — that is the front end's. What is decided here is only which
+// window does the writing, because only this side sees a window go (W13 §4.1).
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -22,6 +23,10 @@ const QUIT_REQUESTED: &str = "plain:quit-requested";
 /// Told to the window that already holds a file, so it brings that document
 /// forward instead of a second window opening it a second time (W13 §5.5).
 const ACTIVATE_DOC: &str = "plain:activate-doc";
+
+/// Told to the window that takes over writing state.json, because the one
+/// that was writing it has closed (W13 §4.1).
+const SESSION_WRITER: &str = "plain:session-writer";
 
 /// A new window sits this far down and to the right of the one it came from,
 /// in logical pixels.
@@ -66,6 +71,17 @@ fn pick_target(focused: Option<&str>, live: &[String]) -> Option<String> {
         .map(|(_, label)| label.clone())
 }
 
+/// Who writes state.json now that `gone` has been destroyed: nobody, unless
+/// `gone` was the one writing it, and nobody at all while the app is quitting
+/// — what a quit leaves is the snapshot of the window that had the role when
+/// it was asked for, not of whichever window happens to close last (W13 §4.1).
+fn successor(writer: &str, gone: &str, quitting: bool, live: &[String]) -> Option<String> {
+    if quitting || writer != gone {
+        return None;
+    }
+    pick_target(None, live)
+}
+
 /// What a window is handed at birth: the paths a launch or a second instance
 /// asked it to open, and the library and view the window it came from was
 /// showing (W13 §2.2). Drained once, by the window itself, as it starts.
@@ -86,7 +102,6 @@ pub struct Holder {
 #[derive(Default)]
 pub struct Windows(Mutex<Registry>);
 
-#[derive(Default)]
 struct Registry {
     /// The next index to hand out. Never goes back inside one run: the
     /// window-state plugin keeps geometry per label, and a reused label would
@@ -100,6 +115,26 @@ struct Registry {
     /// Which window took the focus last, so a file from Finder has somewhere
     /// to go even when the app itself is in the background.
     focused: Option<String>,
+    /// Which window writes state.json (W13 §4.1, M3).
+    writer: String,
+    /// Set from the moment the windows are asked to quit, so the role stops
+    /// moving: see `successor`.
+    quitting: bool,
+}
+
+impl Default for Registry {
+    fn default() -> Self {
+        Self {
+            next: 0,
+            opening: HashMap::new(),
+            docs: HashMap::new(),
+            focused: None,
+            // A run begins with the window tauri.conf.json builds, and it
+            // writes the session until it closes (W13 §4.1).
+            writer: "main".to_string(),
+            quitting: false,
+        }
+    }
 }
 
 impl Registry {
@@ -122,6 +157,30 @@ impl Registry {
         {
             self.docs.insert(label.to_string(), (generation, keys));
         }
+    }
+
+    /// A window is gone. If it was the one writing state.json, the role goes
+    /// to the lowest-numbered window left, and that window is returned so it
+    /// can be told — closing the first window must not freeze the session
+    /// (W13 §4.1, N10).
+    fn hand_writer_over(&mut self, gone: &str, live: &[String]) -> Option<String> {
+        let heir = successor(&self.writer, gone, self.quitting, live);
+        if let Some(next) = &heir {
+            self.writer = next.clone();
+        }
+        heir
+    }
+
+    /// The quit was called off. Windows that closed before the answer took
+    /// the role with them, because nothing is handed over while quitting, so
+    /// it is looked for again here (W13 §4.1).
+    fn quit_called_off(&mut self, live: &[String]) -> Option<String> {
+        self.quitting = false;
+        if live.iter().any(|label| label == &self.writer) {
+            return None;
+        }
+        let gone = self.writer.clone();
+        self.hand_writer_over(&gone, live)
     }
 }
 
@@ -252,14 +311,25 @@ pub fn remember_focus<R: Runtime>(app: &AppHandle<R>, label: &str) {
     }
 }
 
-/// A window that has gone takes its share of the registry with it.
+/// A window that has gone takes its share of the registry with it, and hands
+/// on the session if it was writing it (W13 §4.1).
 pub fn drop_window<R: Runtime>(app: &AppHandle<R>, label: &str) {
-    if let Ok(mut registry) = app.state::<Windows>().0.lock() {
+    // By `Destroyed` the manager has already forgotten this window, so what
+    // it lists is what is left (tauri-2.11.5/src/app.rs:2542).
+    let live: Vec<String> = app.webview_windows().keys().cloned().collect();
+    let state = app.state::<Windows>();
+    let heir = state.0.lock().ok().and_then(|mut registry| {
         registry.opening.remove(label);
         registry.docs.remove(label);
         if registry.focused.as_deref() == Some(label) {
             registry.focused = None;
         }
+        registry.hand_writer_over(label, &live)
+    });
+    // Outside the lock: this runs on the main thread, and telling a window
+    // something is not a registry operation (M6).
+    if let Some(next) = heir {
+        let _ = app.emit_to(&next, SESSION_WRITER, ());
     }
 }
 
@@ -320,6 +390,18 @@ pub fn show_doc_in(app: AppHandle, label: String, key: String) -> Result<(), Str
         .map_err(|error| error.to_string())
 }
 
+/* --------------------------------------------------------- the session */
+
+/// Which window writes state.json now. A window asks as it starts: the role
+/// may have been handed to it before it was listening for the event, and a
+/// promotion nobody heard would leave the session with no one writing it
+/// (W13 §4.2).
+#[tauri::command]
+pub fn session_writer(state: State<'_, Windows>) -> Result<String, String> {
+    let registry = state.0.lock().map_err(|error| error.to_string())?;
+    Ok(registry.writer.clone())
+}
+
 /* ------------------------------------------------------------------ quit */
 
 /// `file → exit`, on every platform (W13 §8.2).
@@ -332,12 +414,34 @@ pub fn request_quit(app: AppHandle) {
 /// last of them has closed itself (W13 §8.2). Also macOS `⌘Q` and the Dock's
 /// Quit, which arrive in `lib.rs` and end up here.
 pub fn request_quit_all<R: Runtime>(app: &AppHandle<R>) {
+    // Before anyone is asked, and the lock is let go before the asking: from
+    // here the session belongs to whichever window was writing it when quit
+    // was called for, however many windows close first (W13 §4.1).
+    if let Ok(mut registry) = app.state::<Windows>().0.lock() {
+        registry.quitting = true;
+    }
     let _ = app.emit(QUIT_REQUESTED, ());
+}
+
+/// A window answered `cancel` to the question a quit put up, so the app is
+/// staying. The window that was writing the session may already have closed
+/// under the quit, and nothing was handed on while it lasted (W13 §4.1).
+#[tauri::command]
+pub fn quit_cancelled(app: AppHandle, state: State<'_, Windows>) -> Result<(), String> {
+    let live: Vec<String> = app.webview_windows().keys().cloned().collect();
+    let heir = {
+        let mut registry = state.0.lock().map_err(|error| error.to_string())?;
+        registry.quit_called_off(&live)
+    };
+    if let Some(next) = heir {
+        let _ = app.emit_to(&next, SESSION_WRITER, ());
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{index_of, label_for, pick_target, Registry};
+    use super::{index_of, label_for, pick_target, successor, Registry};
 
     /// The label and the index are the same thing twice, and the index is
     /// what orders the windows when none of them is focused.
@@ -400,5 +504,65 @@ mod tests {
         assert_eq!(registry.docs.get("w2"), Some(&(2, vec!["c".to_string()])));
         registry.remember_docs("w2", 3, Vec::new());
         assert_eq!(registry.docs.get("w2"), Some(&(3, Vec::new())));
+    }
+
+    /// Who writes the session next, in the four cases there are (W13 §4.1).
+    #[test]
+    fn the_session_changes_hands_only_when_the_writer_goes() {
+        let live = vec!["w3".to_string(), "w2".to_string()];
+        // The writer closed and the app is staying: the lowest index left.
+        let heir = successor("main", "main", false, &live);
+        assert_eq!(heir.as_deref(), Some("w2"));
+        // Some other window closed: nothing to do with the session.
+        assert_eq!(successor("main", "w3", false, &live), None);
+        // Quitting: the snapshot is the writer's, not the last one out's.
+        assert_eq!(successor("main", "main", true, &live), None);
+        // Nobody left to write it, and no app to write it for.
+        assert_eq!(successor("main", "main", false, &[]), None);
+    }
+
+    /// Closing the first window must not freeze the session: the role goes to
+    /// the lowest-numbered window left, which then writes what it has open
+    /// (W13 §4.1, N10).
+    #[test]
+    fn the_session_is_handed_to_the_window_left_with_the_lowest_index() {
+        let mut registry = Registry::default();
+        let live = vec!["w3".to_string(), "w2".to_string()];
+        let heir = registry.hand_writer_over("main", &live);
+        assert_eq!(heir.as_deref(), Some("w2"));
+        assert_eq!(registry.writer, "w2");
+        // Any other window closing is nothing to do with the session.
+        assert_eq!(registry.hand_writer_over("w3", &["w2".to_string()]), None);
+        assert_eq!(registry.writer, "w2");
+    }
+
+    /// A quit writes one snapshot: the writer's. The windows closing under it
+    /// must not pass the role down the line and end with the last one — often
+    /// an empty window — deciding what the session was (W13 §4.1).
+    #[test]
+    fn a_quit_does_not_move_the_session_from_window_to_window() {
+        let mut registry = Registry::default();
+        registry.quitting = true;
+        let live = vec!["w2".to_string()];
+        assert_eq!(registry.hand_writer_over("main", &live), None);
+        assert_eq!(registry.writer, "main");
+    }
+
+    /// …and when the quit is called off, the role has to be found again: the
+    /// window that had it closed before the answer came (W13 §4.1).
+    #[test]
+    fn a_quit_called_off_leaves_someone_writing() {
+        let mut registry = Registry::default();
+        registry.quitting = true;
+        let live = vec!["w3".to_string(), "w2".to_string()];
+        registry.hand_writer_over("main", &live);
+
+        assert_eq!(registry.quit_called_off(&live).as_deref(), Some("w2"));
+        assert_eq!(registry.writer, "w2");
+        assert!(!registry.quitting);
+        // The writer still being there is the ordinary case: nothing moves,
+        // and nobody is told anything.
+        assert_eq!(registry.quit_called_off(&live), None);
+        assert_eq!(registry.writer, "w2");
     }
 }

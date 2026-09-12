@@ -4,9 +4,10 @@
 // A window is its own webview with its own store and its own buffers, so two
 // windows share almost nothing and neither has to know what the other is
 // showing. The exceptions are all here: which window a file belongs to, what
-// a window was handed as it started, the settings — one file, so one set of
-// values everywhere — and the `recent` list, which is what stands in for
-// bringing the windows back after a restart (W13 §4.4).
+// a window was handed as it started, which of them writes the session
+// (W13 §4.1), the settings — one file, so one set of values everywhere — and
+// the `recent` list, which is what stands in for bringing the windows back
+// after a restart (W13 §4.4).
 
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
@@ -14,11 +15,15 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { inTauri } from "./env";
 import { canonicalPath } from "./fs";
 import { pathKey } from "./paths";
+import { flushSession } from "./session";
 import { dropPendingSettings, normalizeSettings, SETTINGS_CHANGED } from "./settings";
 import { useStore } from "./store";
 
 /** Told to the window that already has the file open (W13 §5.5). */
 const ACTIVATE_DOC = "plain:activate-doc";
+
+/** Said to the window that takes over writing state.json (W13 §4.1). */
+const SESSION_WRITER = "plain:session-writer";
 
 /** Said by the window a file was just opened or saved in (W13 §4.4). */
 const RECENT_OPENED = "plain:recent-opened";
@@ -35,9 +40,75 @@ export function label(): string {
   return inTauri ? getCurrentWindow().label : "main";
 }
 
-/** The window a run starts with, and the only one that writes state.json. */
+/** The window a run starts with: the only one that reads state.json. */
 export function isFirstWindow(): boolean {
   return label() === "main";
+}
+
+/* ------------------------------------------------------ the session writer */
+
+/**
+ * The window that has been told it writes state.json, by label. `main` has
+ * the role from the start of the run and hands it on when it closes, so
+ * closing the first window does not freeze the session (W13 §4.1, N10).
+ */
+let promoted: string | null = null;
+
+/** Whether this window is the one writing state.json (W13 §4.1, M3). */
+export function isSessionWriter(): boolean {
+  const mine = label();
+  return mine === "main" || promoted === mine;
+}
+
+/**
+ * What to do on taking the role. The snapshot to write depends on what the
+ * window is doing at that moment — starting up, running, or already closing —
+ * so the phase owns it: bootstrap waits for the end of startup, `leave` writes
+ * the snapshot it took at the door rather than the emptied store (W13 §4.2).
+ */
+let onPromoted: (() => Promise<void>) | null = null;
+
+export function setPromotionHandler(handler: (() => Promise<void>) | null): void {
+  onPromoted = handler;
+}
+
+function becomeWriter(): void {
+  // Already ours: `main` asking Rust at startup is told `main`, and writing
+  // the session there would be a write bootstrap never did (M1).
+  if (isSessionWriter()) return;
+  promoted = label();
+  // With nobody to say otherwise, a window writes what it is showing.
+  void (onPromoted ?? flushSession)();
+}
+
+/** One registration, kept as the promise of it, like the settings one (§7.2). */
+let writerListening: Promise<void> | null = null;
+
+/**
+ * Rust hands the role on when the window that had it is destroyed, and the
+ * new writer writes at once: from that moment state.json is this window's.
+ *
+ * The event is not enough on its own — a window starting while the writer
+ * closes would be handed the role before it was listening — so Rust is also
+ * asked outright who the writer is now (W13 §4.2).
+ */
+export async function installWriterRole(): Promise<void> {
+  if (!inTauri) return;
+  writerListening ??= listen(SESSION_WRITER, becomeWriter).then(
+    () => undefined,
+    (error: unknown) => {
+      // A registration that failed must not stick: the next start tries again
+      // rather than running deaf for the rest of the session.
+      writerListening = null;
+      console.error("couldn't listen for the session writer role", error);
+    },
+  );
+  await writerListening;
+  try {
+    if ((await invoke<string>("session_writer")) === label()) becomeWriter();
+  } catch {
+    /* no answer is the same as "not yours": `main` writes as it always did */
+  }
 }
 
 /* --------------------------------------------------------- starting up */

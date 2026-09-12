@@ -40,8 +40,11 @@ vi.mock("@tauri-apps/api/event", () => ({
     };
   },
 }));
+/** The label Tauri gives this webview; a test may speak as another window. */
+const win = { label: "main" };
+
 vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({ label: "main" }),
+  getCurrentWindow: () => ({ label: win.label }),
 }));
 vi.mock("@tauri-apps/api/path", () => ({
   join: async (...parts: string[]) => parts.join("/"),
@@ -76,8 +79,14 @@ const { newDoc, openPaths, openPathsInBackground } = await import("./commands");
 const { saveAs } = await import("./save");
 const { DEFAULTS, flushSettings, saveSettings } = await import("./settings");
 const { makeDoc, useStore } = await import("./store");
-const { installActivateDoc, installDocRegistry, installRecentSync, installSettingsSync } =
-  await import("./windows");
+const {
+  installActivateDoc,
+  installDocRegistry,
+  installRecentSync,
+  installSettingsSync,
+  installWriterRole,
+  isSessionWriter,
+} = await import("./windows");
 const { clearBuffers } = await import("../editor/buffers");
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -127,6 +136,7 @@ function published(): string[][] {
 }
 
 beforeEach(() => {
+  win.label = "main";
   invoke.mockReset();
   readFile.mockReset();
   emit.mockClear();
@@ -431,6 +441,27 @@ describe("save as onto a file another window has open", () => {
     expect(useStore.getState().message).toBe(
       "taken.md is open in another window — close it there first",
     );
+  });
+});
+
+/* ------------------------------------------------- (л) the session writer */
+
+describe("the window that writes the session", () => {
+  /**
+   * state.json belongs to one window at a time. A second window is nobody
+   * until the one that had the role closes and Rust passes it on (W13 §4.1).
+   */
+  it("is not this one until Rust says so, and hears it said once", async () => {
+    win.label = "w2";
+    expect(isSessionWriter()).toBe(false);
+
+    await installWriterRole();
+    await installWriterRole();
+    // Two listeners would take the role twice and write the session twice.
+    expect(listeners["plain:session-writer"]).toHaveLength(1);
+
+    fire("plain:session-writer", null);
+    expect(isSessionWriter()).toBe(true);
   });
 });
 

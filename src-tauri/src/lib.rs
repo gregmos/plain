@@ -360,6 +360,8 @@ pub fn run() {
             windows::holding_window,
             windows::show_doc_in,
             windows::request_quit,
+            windows::quit_cancelled,
+            windows::session_writer,
             fs::read_file,
             fs::canonical_path,
             fs::write_file_atomic,

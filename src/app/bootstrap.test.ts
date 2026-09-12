@@ -22,6 +22,8 @@ const rust = vi.hoisted(() => ({
   settings: null as string | null,
   /** Holds `allow_asset_dir`, so a window can be caught mid-startup. */
   holdLibrary: null as Promise<void> | null,
+  /** Which window Rust says writes state.json when it is asked (W13 §4.2). */
+  writer: "main",
   openPath: null as ((event: { payload: unknown }) => void) | null,
   settingsChanged: null as ((event: { payload: unknown }) => void) | null,
 }));
@@ -50,6 +52,7 @@ const invoke = vi.hoisted(() =>
       return { paths: rust.paths.splice(0), folders: rust.folders.splice(0), seed: rust.seed };
     }
     if (command === "holding_window") return [];
+    if (command === "session_writer") return rust.writer;
     if (command === "allow_asset_dir") await rust.holdLibrary;
     return null;
   }),
@@ -86,7 +89,9 @@ vi.mock("@tauri-apps/plugin-fs", () => ({
   mkdir: async () => undefined,
 }));
 
-const writeTextAtomic = vi.hoisted(() => vi.fn(async () => undefined));
+const writeTextAtomic = vi.hoisted(() =>
+  vi.fn(async (_path: string, _text: string) => undefined),
+);
 
 vi.mock("./fs", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./fs")>()),
@@ -111,7 +116,7 @@ vi.mock("./fs", async (importOriginal) => ({
     };
   },
   canonicalPath: async (path: string) => path,
-  writeTextAtomic: () => writeTextAtomic(),
+  writeTextAtomic: (path: string, text: string) => writeTextAtomic(path, text),
 }));
 
 const { bootstrap } = await import("./bootstrap");
@@ -140,6 +145,7 @@ beforeEach(() => {
   rust.session = "";
   rust.settings = null;
   rust.holdLibrary = null;
+  rust.writer = "main";
   disk.files.clear();
   disk.holds.clear();
   invoke.mockClear();
@@ -293,6 +299,72 @@ describe("a window that was made by the one already running", () => {
       // it, and the path waited for the end of startup (§2.4).
       expect(store.getState().libraryPath).toBe(LIBRARY);
       expect(store.getState().docs.map((d) => d.id)).toEqual([pathKey(LATER)]);
+      expect(writeTextAtomic).not.toHaveBeenCalled();
+    } finally {
+      rust.openPath = handlers.path;
+      rust.settingsChanged = handlers.settings;
+    }
+  });
+});
+
+/**
+ * The window that was writing state.json can close while this one is starting,
+ * and Rust hands the role straight to it — before it has a window to write
+ * (W13 §4.1, §4.2, §Д9 #3).
+ */
+describe("a window handed the session while it is still starting", () => {
+  it("writes nothing until the start is over, and then writes what it restored", async () => {
+    rust.label = "w2";
+    rust.seed = seed();
+    // Rust answers with this window: the role changed hands before the
+    // listener could hear about it.
+    rust.writer = "w2";
+
+    const handlers = { path: rust.openPath, settings: rust.settingsChanged };
+    vi.resetModules();
+    const second = await import("./bootstrap");
+    const store = (await import("./store")).useStore;
+    try {
+      // The library is slow to take, so the window is caught mid-restore.
+      const slow = held();
+      rust.holdLibrary = slow.promise;
+      const start = second.bootstrap();
+      await flush();
+
+      // Half a window: the seed's zoom and rail have not been applied yet.
+      expect(store.getState().zoom).toBe(1);
+      expect(writeTextAtomic).not.toHaveBeenCalled();
+
+      slow.release();
+      await start;
+      await flush();
+
+      expect(writeTextAtomic).toHaveBeenCalledTimes(1);
+      const written = JSON.parse(writeTextAtomic.mock.calls[0]?.[1] as string) as {
+        library: string;
+        zoom: number;
+      };
+      expect(written.library).toBe(LIBRARY);
+      expect(written.zoom).toBeCloseTo(1.25);
+    } finally {
+      rust.openPath = handlers.path;
+      rust.settingsChanged = handlers.settings;
+    }
+  });
+
+  /** The window a run starts with already has the role, and writing on being
+   * told so would be a write startup never did in 0.2.3 (M1). */
+  it("is not what `main` being told it is the writer means", async () => {
+    rust.label = "main";
+    rust.writer = "main";
+
+    const handlers = { path: rust.openPath, settings: rust.settingsChanged };
+    vi.resetModules();
+    const third = await import("./bootstrap");
+    try {
+      await third.bootstrap();
+      await flush();
+
       expect(writeTextAtomic).not.toHaveBeenCalled();
     } finally {
       rust.openPath = handlers.path;

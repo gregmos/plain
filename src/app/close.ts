@@ -2,6 +2,7 @@
 // one explicit answer, and the answer has to still be true when the buffer
 // is actually thrown away (spec §8).
 
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { dropBuffer, flushActiveEditor, isDirty } from "../editor";
@@ -11,6 +12,7 @@ import { save } from "./save";
 import { toSession, writeSession } from "./session";
 import { flushSettings } from "./settings";
 import { useStore, type Doc } from "./store";
+import { setPromotionHandler } from "./windows";
 
 /** Rust asks every window for the close scenario under this name (§8.2). */
 const QUIT_REQUESTED = "plain:quit-requested";
@@ -144,6 +146,14 @@ export function closeActive(): void {
   if (activeId) closeDocs([activeId]);
 }
 
+/** What one window's leaving is made of: asked once, answered once. */
+interface Leaving {
+  busy: boolean;
+  yes: boolean;
+  /** A quit asked for while the question was already up (W13 §4.3). */
+  quitSeen: boolean;
+}
+
 /**
  * Everything that closes a window goes through here: its X, `Alt+F4`,
  * `Ctrl+Shift+W`, and quit — Rust holds that back and asks every window for
@@ -155,11 +165,24 @@ export function closeActive(): void {
  * window twice. The question being answered `cancel` gives the way back in
  * (W13 §4.3, M5).
  */
-function leave(finish: () => Promise<void>, leaving: { busy: boolean; yes: boolean }): void {
-  if (leaving.busy || leaving.yes) return;
+function leave(
+  finish: () => Promise<void>,
+  leaving: Leaving,
+  { quit = false }: { quit?: boolean } = {},
+): void {
+  if (leaving.busy || leaving.yes) {
+    // A quit swallowed here is still a quit this window was asked for: if the
+    // question already up is then cancelled, it is the one to say so (§4.3).
+    if (quit) leaving.quitSeen = true;
+    return;
+  }
   leaving.busy = true;
   const ids = useStore.getState().docs.map((d) => d.id);
   let session = toSession();
+  // Being handed the session while the documents are being closed — the
+  // writer went at the same moment — must write what this window is leaving
+  // behind, not the store that closing has just emptied (W13 §4.2).
+  setPromotionHandler(() => writeSession(session));
   closeDocs(ids, {
     // Taken after the saves — a Save As at the door belongs in the next
     // session — and before the documents go, since closing them is what
@@ -170,12 +193,22 @@ function leave(finish: () => Promise<void>, leaving: { busy: boolean; yes: boole
     },
     done: () => {
       leaving.yes = true;
-      // `writeSession` is `main`'s alone; in any other window it is a no-op,
-      // and `flushSettings` writes what that window still owes (W13 §4.3).
+      // `writeSession` is the writer's alone; in any other window it is a
+      // no-op, and `flushSettings` writes what that window owes (W13 §4.3).
+      // The promotion handler stays as it is: the role can still arrive
+      // between here and the window really going.
       void Promise.all([writeSession(session), flushSettings()]).then(finish);
     },
     cancel: () => {
       leaving.busy = false;
+      // Staying: back to writing whatever the window shows from now on.
+      setPromotionHandler(null);
+      if (quit || leaving.quitSeen) {
+        leaving.quitSeen = false;
+        // The quit is off. Rust held the session with whoever was writing it
+        // when quit was asked for, and that window may be gone (W13 §4.1).
+        void invoke("quit_cancelled").catch(() => undefined);
+      }
     },
   });
 }
@@ -183,7 +216,7 @@ function leave(finish: () => Promise<void>, leaving: { busy: boolean; yes: boole
 /** The window's X and Alt+F4 go through the same one question. */
 export function installCloseGuard(): () => void {
   if (!inTauri) return () => undefined;
-  const leaving = { busy: false, yes: false };
+  const leaving: Leaving = { busy: false, yes: false, quitSeen: false };
   const window = getCurrentWindow();
 
   const unlisten = window.onCloseRequested((event) => {
@@ -197,7 +230,7 @@ export function installCloseGuard(): () => void {
   // for its own documents and destroys itself, and the app goes when the last
   // one has (W13 §8.2).
   const unlistenQuit = listen(QUIT_REQUESTED, () => {
-    leave(async () => window.destroy(), leaving);
+    leave(async () => window.destroy(), leaving, { quit: true });
   });
 
   return () => {
