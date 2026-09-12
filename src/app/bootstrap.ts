@@ -21,13 +21,30 @@ import { emitGotoHeading } from "../read/events";
 /** Held while the `unsaved work found` screen is up (spec §8). */
 let afterRecovery: (() => Promise<void>) | null = null;
 
+/**
+ * Finder does not put a double-clicked file in argv: it sends an Apple Event,
+ * so `open-path` can land after `pendingPaths()` has come back empty (spec
+ * §13a). Draining the queue beside `restore()` would let the session's own
+ * `activate` land last — the file you clicked open, but behind yesterday's
+ * document. So the queue waits, and startup resolves this when it is done.
+ */
+let settleStartup: () => void = () => {};
+const startupSettled = new Promise<void>((resolve) => {
+  settleStartup = resolve;
+});
+
 export function recoveryDone(): void {
   const next = afterRecovery;
   afterRecovery = null;
   useStore.getState().setRecovery(null);
   void (async () => {
-    await next?.();
-    fitRail();
+    try {
+      await next?.();
+      fitRail();
+    } finally {
+      // Startup ran through the recovery screen, so it ends here.
+      settleStartup();
+    }
   })();
 }
 
@@ -64,46 +81,57 @@ export async function bootstrap(): Promise<void> {
 
   // Listener first, then drain: a second launch can signal at any moment, and
   // the event is only a nudge to read the queue — the paths live in Rust.
-  await listen("open-path", () => void drainPendingPaths());
-  const args = await pendingPaths();
-  const folders = await pendingFolders();
+  // A nudge during startup is held until startup is done (spec §13a).
+  await listen("open-path", () => void startupSettled.then(() => drainPendingPaths()));
 
-  // The library, the recent list and the reading positions come back either
-  // way; only the list of open files depends on the arguments (spec §6).
-  const session = await loadSession();
-  if (session) {
-    if (session.library) await openLibraryPath(session.library, false);
-    store.setCollapsed(session.collapsed);
-    store.setRecent(session.recent);
-    store.setRecentLibraries(session.recentLibraries);
-    restoreZoom(session.zoom);
-    store.setRailView(session.rail.view);
-    store.setRailWidth(session.rail.width);
-    store.setRailCollapsed(session.rail.collapsed);
-    store.setSplitRatio(session.split);
-  }
+  // The recovery screen takes startup over and ends it in `recoveryDone`;
+  // every other way out of here ends it below, failure included, because a
+  // file that is waiting must never be left waiting.
+  let handedOff = false;
+  try {
+    const args = await pendingPaths();
+    const folders = await pendingFolders();
 
-  const open = async () => {
-    // A folder argument is the library, and it replaces the last session's
-    // open files — you asked for that folder, not for yesterday (spec §6).
-    const folder = folders[0];
-    if (folder) await openLibraryPath(folder);
-    if (args.length > 0) {
-      if ((await openPaths(args)) && !folder) useStore.getState().setRailCollapsed(true);
+    // The library, the recent list and the reading positions come back either
+    // way; only the list of open files depends on the arguments (spec §6).
+    const session = await loadSession();
+    if (session) {
+      if (session.library) await openLibraryPath(session.library, false);
+      store.setCollapsed(session.collapsed);
+      store.setRecent(session.recent);
+      store.setRecentLibraries(session.recentLibraries);
+      restoreZoom(session.zoom);
+      store.setRailView(session.rail.view);
+      store.setRailWidth(session.rail.width);
+      store.setRailCollapsed(session.rail.collapsed);
+      store.setSplitRatio(session.split);
+    }
+
+    const open = async () => {
+      // A folder argument is the library, and it replaces the last session's
+      // open files — you asked for that folder, not for yesterday (spec §6).
+      const folder = folders[0];
+      if (folder) await openLibraryPath(folder);
+      if (args.length > 0) {
+        if ((await openPaths(args)) && !folder) useStore.getState().setRailCollapsed(true);
+        return;
+      }
+      if (folder) return;
+      if (session && session.files.length > 0) await restore(session);
+    };
+
+    const drafts = await listDrafts();
+    if (drafts.length > 0) {
+      afterRecovery = open;
+      store.setRecovery(drafts);
+      handedOff = true;
       return;
     }
-    if (folder) return;
-    if (session && session.files.length > 0) await restore(session);
-  };
-
-  const drafts = await listDrafts();
-  if (drafts.length > 0) {
-    afterRecovery = open;
-    store.setRecovery(drafts);
-    return;
+    await open();
+    fitRail();
+  } finally {
+    if (!handedOff) settleStartup();
   }
-  await open();
-  fitRail();
 }
 
 /**
