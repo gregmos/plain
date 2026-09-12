@@ -131,6 +131,19 @@ const LATER = "C:/notes/later.md";
 /** Everything that is not waiting on the test runs to a standstill. */
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+/**
+ * A window of its own: `startupSettled` is made once per module graph, so a
+ * second window in this file needs a second graph. The fresh graph comes with
+ * a fresh `platform`, and the pin vitest.setup.ts put on the first one cannot
+ * reach it — on a macOS host `isMac()` would be true there, `pathKey` would
+ * stop lowercasing and `DEFAULTS` would change, while the expectations here
+ * are the pinned module's. So it is pinned again before anything imports it.
+ */
+async function freshWindow(): Promise<void> {
+  vi.resetModules();
+  (await import("./platform")).setMacForTests(false);
+}
+
 function held(): { promise: Promise<void>; release: () => void } {
   let release = (): void => {};
   const promise = new Promise<void>((resolve) => (release = resolve));
@@ -275,7 +288,7 @@ describe("a window that was made by the one already running", () => {
     // been running already settled above — so this one gets its own modules,
     // and hands the shared handlers back when it is done with them.
     const handlers = { path: rust.openPath, settings: rust.settingsChanged };
-    vi.resetModules();
+    await freshWindow();
     const second = await import("./bootstrap");
     const store = (await import("./store")).useStore;
     try {
@@ -321,7 +334,7 @@ describe("a window handed the session while it is still starting", () => {
     rust.writer = "w2";
 
     const handlers = { path: rust.openPath, settings: rust.settingsChanged };
-    vi.resetModules();
+    await freshWindow();
     const second = await import("./bootstrap");
     const store = (await import("./store")).useStore;
     try {
@@ -359,7 +372,7 @@ describe("a window handed the session while it is still starting", () => {
     rust.writer = "main";
 
     const handlers = { path: rust.openPath, settings: rust.settingsChanged };
-    vi.resetModules();
+    await freshWindow();
     const third = await import("./bootstrap");
     try {
       await third.bootstrap();
