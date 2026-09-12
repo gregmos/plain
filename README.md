@@ -23,7 +23,7 @@ Builds for both systems are on the [releases page](https://github.com/gregmos/pl
 
 ### Windows 11
 
-1. Unpack `Plain-0.2.2-win-x64.zip` into any folder, for example `C:\Program Files\Plain` or `%LOCALAPPDATA%\Programs\Plain`. It contains a single `plain.exe`; there is no installer.
+1. Unpack `Plain-0.2.3-win-x64.zip` into any folder, for example `C:\Program Files\Plain` or `%LOCALAPPDATA%\Programs\Plain`. It contains a single `plain.exe`; there is no installer.
 2. Run `plain.exe`.
 3. To open `.md` files in Plain with a double-click: right-click any `.md` file → **Open with → Choose another app → Plain → Always**. Plain appears in that list after its first launch, but it never makes itself the default on its own.
 
@@ -31,7 +31,7 @@ If you move the folder later, just run the exe from its new location.
 
 ### macOS 13+
 
-1. Download `Plain_0.2.2_universal.dmg`, open it, and drag Plain into Applications. One build runs on both Apple Silicon and Intel.
+1. Download `Plain_0.2.3_universal.dmg`, open it, and drag Plain into Applications. One build runs on both Apple Silicon and Intel.
 2. To open `.md` files from Finder with a double-click: select any `.md` file, **Get Info → Open with → Plain → Change All**. Plain is listed there from its first launch.
 
 ## Using it
@@ -75,7 +75,7 @@ On Windows you need Node.js 22, Rust (`rustup` with the `stable-x86_64-pc-window
 ```
 npm install
 npm run tauri dev     # development build with live reload
-npm run pack          # release build, produces dist-win\Plain-0.2.2-win-x64.zip
+npm run pack          # release build, produces dist-win\Plain-0.2.3-win-x64.zip
 ```
 
 Checks: `npm run build`, `npx vitest run`, and `cargo test` inside `src-tauri`. The manual checklist used before a release is in `CHECKLIST.md`.
