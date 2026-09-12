@@ -3,9 +3,11 @@ import { clearBuffers } from "../editor/buffers";
 import {
   READING_LIMIT,
   loadSession,
+  normalizeSession,
   parseSession,
   readingPosition,
   rememberReading,
+  seedReading,
   toSession,
 } from "./session";
 import { makeDoc, useStore } from "./store";
@@ -142,5 +144,103 @@ describe("reading positions", () => {
   it("finds a file whatever way the path is spelled", () => {
     rememberReading(String.raw`C:\Notes\Case.md`, "here");
     expect(readingPosition("c:/notes/case.md")).toBe("here");
+  });
+});
+
+/**
+ * A window made by `file → new window` is handed its session over IPC, so it
+ * never sees the text state.json holds. The shaping has to be the one the
+ * file gets, so what is written down here is what 0.2.3 produced — pinned,
+ * not computed through `parseSession`, which now calls this very function
+ * (W13 §2.2, §Т.1, M1).
+ */
+describe("normalizeSession", () => {
+  /** Everything a session has, with two unusable entries mixed in. */
+  it("shapes a valid session the way the file has always been shaped", () => {
+    const shaped = normalizeSession({
+      version: 1,
+      files: [
+        { path: "C:/notes/a.md", mode: "edit", caret: { line: 3, col: 7 } },
+        { path: "C:/notes/b.md" },
+        { mode: "edit" },
+        null,
+      ],
+      active: "C:/notes/a.md",
+      rail: { collapsed: true, view: "outline", width: 260 },
+      split: 0.62,
+      library: "C:/notes",
+      collapsed: ["archive", 7],
+      librarySort: "name",
+      recent: ["C:/notes/a.md", 7],
+      recentLibraries: ["C:/notes", "C:/a", "C:/b", "C:/c", "C:/d", "C:/e"],
+      zoom: 1.25,
+      reading: [
+        ["c:/notes/a.md", "intro"],
+        ["c:/notes/b.md", 7],
+      ],
+    });
+
+    expect(shaped).toEqual({
+      version: 1,
+      files: [
+        { path: "C:/notes/a.md", mode: "edit", caret: { line: 3, col: 7 } },
+        { path: "C:/notes/b.md", mode: "read", caret: null },
+      ],
+      active: "C:/notes/a.md",
+      rail: { collapsed: true, view: "outline", width: 260 },
+      split: 0.62,
+      library: "C:/notes",
+      collapsed: ["archive"],
+      librarySort: "name",
+      recent: ["C:/notes/a.md"],
+      // Five libraries, and the sixth is dropped.
+      recentLibraries: ["C:/notes", "C:/a", "C:/b", "C:/c", "C:/d"],
+      zoom: 1.25,
+      reading: [["c:/notes/a.md", "intro"]],
+    });
+  });
+
+  /** Every key the wrong type: the defaults, and not a thrown error. */
+  it("falls back to the defaults, key by key, on a broken session", () => {
+    const defaults = {
+      version: 1,
+      files: [],
+      active: null,
+      rail: { collapsed: false, view: "files", width: 232 },
+      split: 0.5,
+      library: null,
+      collapsed: [],
+      librarySort: "modified",
+      recent: [],
+      recentLibraries: [],
+      zoom: 1,
+      reading: [],
+    };
+
+    expect(
+      normalizeSession({
+        files: "not a list",
+        active: 7,
+        rail: 5,
+        split: "wide",
+        library: false,
+        collapsed: "archive",
+        librarySort: "size",
+        recent: null,
+        recentLibraries: 3,
+        zoom: "big",
+        reading: "nope",
+      }),
+    ).toEqual(defaults);
+    expect(normalizeSession({})).toEqual(defaults);
+    // Not an object at all is no session, which is not a bug either.
+    expect(normalizeSession(null)).toBeNull();
+  });
+
+  it("carries the reading positions into the window it seeds", () => {
+    const seeded = normalizeSession({ files: [], reading: [["c:/notes/seed.md", "top"]] });
+    expect(seeded).not.toBeNull();
+    seedReading(seeded as NonNullable<typeof seeded>);
+    expect(readingPosition("C:/notes/seed.md")).toBe("top");
   });
 });

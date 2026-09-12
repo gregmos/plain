@@ -3,6 +3,7 @@
 // or a title is written exactly once (spec §4, §12).
 
 import {
+  closeWindow,
   copyPath,
   copyPlainText,
   exitApp,
@@ -13,6 +14,7 @@ import {
   openFile,
   openFolderSearch,
   openLibrary,
+  openNewWindow,
   openQuickSearch,
   openSettingsFile,
   refresh,
@@ -99,6 +101,14 @@ const inEdit = () => {
 export const commands: Command[] = [
   /* ------------------------------------------------------------- file */
   { id: "file.new", title: "new file", chord: "Ctrl+N", run: () => newDoc() },
+  // Always available: a window is a window whether or not anything is open
+  // in it, and the last one closing is the app closing (W13 §9).
+  {
+    id: "file.newWindow",
+    title: "new window",
+    chord: "Ctrl+Shift+N",
+    run: () => void openNewWindow(),
+  },
   { id: "file.open", title: "open file…", chord: "Ctrl+O", run: () => void openFile() },
   {
     id: "file.openLibrary",
@@ -154,6 +164,12 @@ export const commands: Command[] = [
     when: hasDoc,
   },
   { id: "file.close", title: "close", chord: "Ctrl+W", run: () => closeActive(), when: hasDoc },
+  {
+    id: "file.closeWindow",
+    title: "close window",
+    chord: "Ctrl+Shift+W",
+    run: () => void closeWindow(),
+  },
   {
     id: "file.reload",
     title: "reload from disk",

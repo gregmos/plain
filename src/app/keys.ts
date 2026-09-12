@@ -21,6 +21,9 @@ const SWALLOW = [
   "Ctrl+S",
   "Ctrl+Shift+S",
   "Ctrl+N",
+  // Chromium holds these two for its own new window and close window (§9).
+  "Ctrl+Shift+N",
+  "Ctrl+Shift+W",
   "Ctrl+O",
   "Ctrl+H",
   "Ctrl+K",

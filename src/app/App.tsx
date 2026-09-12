@@ -32,6 +32,7 @@ import { installSession } from "./session";
 import { activeDoc, useStore, type Comparison, type Screen } from "./store";
 import { watchSystemTheme } from "./theme";
 import { installWatcher } from "./watcher";
+import { installActivateDoc, installDocRegistry, installRecentSync } from "./windows";
 
 
 /**
@@ -135,6 +136,11 @@ export function App() {
   useEffect(() => installTags(), []);
   useEffect(() => installBacklinks(), []);
   useEffect(() => installLibraryCounts(), []);
+  // What this window holds, who may ask it to show a document, and the one
+  // list the windows keep between them (W13 §10).
+  useEffect(() => installDocRegistry(), []);
+  useEffect(() => installActivateDoc(), []);
+  useEffect(() => installRecentSync(), []);
 
   useEffect(
     () => watchSystemTheme((resolved) => useStore.getState().syncSystemTheme(resolved)),

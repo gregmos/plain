@@ -6,12 +6,24 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileInfo } from "./fs";
 
-/** The pending queues Rust keeps, and the nudge it sends (spec §13a). */
+/**
+ * The packet Rust keeps for this window, the nudge it sends (spec §13a), and
+ * the label it was built under — `main`, or one of the windows a run grows
+ * later (W13 §2.2).
+ */
 const rust = vi.hoisted(() => ({
+  label: "main",
   paths: [] as string[],
   folders: [] as string[],
+  /** What `new_window` seeded this one with; `main` is never given one. */
+  seed: null as unknown,
   session: "",
-  openPath: null as (() => void) | null,
+  /** settings.json, when the test wants there to be one. */
+  settings: null as string | null,
+  /** Holds `allow_asset_dir`, so a window can be caught mid-startup. */
+  holdLibrary: null as Promise<void> | null,
+  openPath: null as ((event: { payload: unknown }) => void) | null,
+  settingsChanged: null as ((event: { payload: unknown }) => void) | null,
 }));
 
 const disk = vi.hoisted(() => ({
@@ -23,19 +35,34 @@ const disk = vi.hoisted(() => ({
 vi.mock("./env", () => ({ inTauri: true }));
 
 vi.mock("@tauri-apps/api/event", () => ({
-  listen: async (name: string, handler: () => void) => {
+  emit: async () => undefined,
+  listen: async (name: string, handler: (event: { payload: unknown }) => void) => {
     if (name === "open-path") rust.openPath = handler;
+    if (name === "plain:settings-changed") rust.settingsChanged = handler;
     return () => {};
   },
 }));
 
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: async (command: string) => {
+const invoke = vi.hoisted(() =>
+  vi.fn(async (command: string, _args?: unknown) => {
     if (command === "data_path") return "C:/data";
-    if (command === "take_pending_paths") return rust.paths.splice(0);
-    if (command === "take_pending_folders") return rust.folders.splice(0);
+    if (command === "take_opening") {
+      return { paths: rust.paths.splice(0), folders: rust.folders.splice(0), seed: rust.seed };
+    }
+    if (command === "holding_window") return [];
+    if (command === "allow_asset_dir") await rust.holdLibrary;
     return null;
-  },
+  }),
+);
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: (c: string, a?: unknown) => invoke(c, a) }));
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ label: rust.label }),
+}));
+
+vi.mock("@tauri-apps/api/webview", () => ({
+  getCurrentWebview: () => ({ setZoom: async () => undefined }),
 }));
 
 vi.mock("@tauri-apps/api/path", () => ({
@@ -43,14 +70,23 @@ vi.mock("@tauri-apps/api/path", () => ({
   appDataDir: async () => "C:/data",
 }));
 
+const readDir = vi.hoisted(() => vi.fn(async () => [] as unknown[]));
+
 vi.mock("@tauri-apps/plugin-fs", () => ({
-  // Only the session file is there: no settings.json, no drafts folder.
-  exists: async (path: string) => path.endsWith("state.json"),
-  readTextFile: async () => rust.session,
-  readDir: async () => [],
+  // Only the session file is there: no drafts folder, and no settings.json
+  // unless the test puts one there.
+  exists: async (path: string) =>
+    path.endsWith("state.json") || (path.endsWith("settings.json") && rust.settings !== null),
+  readTextFile: async (path: string) => {
+    await disk.holds.get(path);
+    return path.endsWith("settings.json") ? (rust.settings as string) : rust.session;
+  },
+  readDir: () => readDir(),
   remove: async () => undefined,
   mkdir: async () => undefined,
 }));
+
+const writeTextAtomic = vi.hoisted(() => vi.fn(async () => undefined));
 
 vi.mock("./fs", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./fs")>()),
@@ -75,11 +111,12 @@ vi.mock("./fs", async (importOriginal) => ({
     };
   },
   canonicalPath: async (path: string) => path,
-  writeTextAtomic: async () => undefined,
+  writeTextAtomic: () => writeTextAtomic(),
 }));
 
 const { bootstrap } = await import("./bootstrap");
 const { pathKey } = await import("./paths");
+const { readingPosition } = await import("./session");
 const { useStore } = await import("./store");
 
 const SESSION = "C:/notes/yesterday.md";
@@ -96,10 +133,18 @@ function held(): { promise: Promise<void>; release: () => void } {
 }
 
 beforeEach(() => {
+  rust.label = "main";
   rust.paths = [];
   rust.folders = [];
+  rust.seed = null;
+  rust.session = "";
+  rust.settings = null;
+  rust.holdLibrary = null;
   disk.files.clear();
   disk.holds.clear();
+  invoke.mockClear();
+  readDir.mockClear();
+  writeTextAtomic.mockClear();
   useStore.setState({
     docs: [],
     activeId: null,
@@ -107,6 +152,9 @@ beforeEach(() => {
     recent: [],
     railCollapsed: false,
     railAuto: false,
+    libraryPath: null,
+    zoom: 1,
+    recovery: null,
   });
 });
 
@@ -132,7 +180,7 @@ describe("a file that arrives from Finder while startup is still running", () =>
     // Finder's file lands in the middle of `restore()`. Draining the queue
     // here is what used to lose it: the session's `activate` came last.
     rust.paths.push(FINDER);
-    rust.openPath?.();
+    rust.openPath?.({ payload: null });
     await flush();
     expect(useStore.getState().docs).toHaveLength(0);
 
@@ -152,10 +200,144 @@ describe("a file that arrives from Finder while startup is still running", () =>
     // second launch, or a file dropped on the Dock icon, opens at once.
     disk.files.set(LATER, "# later");
     rust.paths.push(LATER);
-    rust.openPath?.();
+    rust.openPath?.({ payload: null });
     await flush();
 
     expect(useStore.getState().activeId).toBe(pathKey(LATER));
     expect(useStore.getState().docs).toHaveLength(3);
+  });
+});
+
+/* ------------------------------------------------------------------ W13 */
+
+const LIBRARY = "C:/notes";
+
+/** What `file → new window` hands the window it makes (W13 §1.2, §2.2). */
+function seed(over: Record<string, unknown> = {}): unknown {
+  return {
+    version: 1,
+    files: [],
+    active: null,
+    rail: { collapsed: true, view: "outline", width: 260 },
+    split: 0.5,
+    library: LIBRARY,
+    collapsed: [],
+    librarySort: "modified",
+    recent: [SESSION],
+    recentLibraries: [LIBRARY],
+    zoom: 1.25,
+    reading: [["c:/notes/yesterday.md", "intro"]],
+    ...over,
+  };
+}
+
+describe("a window that was made by the one already running", () => {
+  it("starts on its seed, and leaves state.json and the drafts alone", async () => {
+    rust.label = "w2";
+    rust.seed = seed();
+    // If state.json were read this would be the session it came back with.
+    rust.session = JSON.stringify({
+      version: 1,
+      files: [{ path: SESSION, mode: "read", caret: null }],
+      active: SESSION,
+    });
+    disk.files.set(SESSION, "# yesterday");
+
+    await bootstrap();
+    await flush();
+
+    // The seed, not the file: nothing of the last run is in this window.
+    expect(useStore.getState().libraryPath).toBe(LIBRARY);
+    expect(useStore.getState().railView).toBe("outline");
+    expect(useStore.getState().zoom).toBeCloseTo(1.25);
+    expect(useStore.getState().docs).toHaveLength(0);
+    // The reading positions are the app's, and the seed carries them (§2.2).
+    expect(readingPosition(SESSION)).toBe("intro");
+    // `unsaved work found` belongs to the window a run starts with (M7), and
+    // state.json to `main` alone (M3).
+    expect(readDir).not.toHaveBeenCalled();
+    expect(writeTextAtomic).not.toHaveBeenCalled();
+    expect(useStore.getState().recovery).toBeNull();
+  });
+
+  it("keeps its seed when a path arrives in the middle of its startup", async () => {
+    rust.label = "w2";
+    rust.seed = seed();
+    disk.files.set(LATER, "# later");
+
+    // `startupSettled` is made once per window, and the window this file has
+    // been running already settled above — so this one gets its own modules,
+    // and hands the shared handlers back when it is done with them.
+    const handlers = { path: rust.openPath, settings: rust.settingsChanged };
+    vi.resetModules();
+    const second = await import("./bootstrap");
+    const store = (await import("./store")).useStore;
+    try {
+      // The library is slow to take, which is the whole race: the window is
+      // still starting when the path lands.
+      const slow = held();
+      rust.holdLibrary = slow.promise;
+      const open = second.bootstrap();
+      await flush();
+
+      rust.paths.push(LATER);
+      rust.openPath?.({ payload: null });
+      await flush();
+      expect(store.getState().docs).toHaveLength(0);
+
+      slow.release();
+      await open;
+      await flush();
+
+      // Both: the seed was taken by bootstrap before the nudge could drain
+      // it, and the path waited for the end of startup (§2.4).
+      expect(store.getState().libraryPath).toBe(LIBRARY);
+      expect(store.getState().docs.map((d) => d.id)).toEqual([pathKey(LATER)]);
+      expect(writeTextAtomic).not.toHaveBeenCalled();
+    } finally {
+      rust.openPath = handlers.path;
+      rust.settingsChanged = handlers.settings;
+    }
+  });
+});
+
+describe("settings written by another window while this one is starting", () => {
+  it("are applied on top of the file this window read (W13 §7.2)", async () => {
+    rust.settings = JSON.stringify({ appearance: { theme: "light" } });
+    const slow = held();
+    disk.holds.set("C:/data/settings.json", slow.promise);
+
+    const started = bootstrap();
+    await flush();
+
+    // The other window finished its write while our read was in flight; the
+    // values it wrote are newer than the ones we are about to apply.
+    rust.settingsChanged?.({
+      payload: { from: "w2", settings: { appearance: { theme: "dark" } } },
+    });
+    await flush();
+
+    slow.release();
+    await started;
+    await flush();
+
+    expect(useStore.getState().settings.appearance.theme).toBe("dark");
+  });
+
+  it("are ignored when they are this window's own (M1)", async () => {
+    rust.settings = JSON.stringify({ appearance: { theme: "light" } });
+    const slow = held();
+    disk.holds.set("C:/data/settings.json", slow.promise);
+
+    const started = bootstrap();
+    await flush();
+    rust.settingsChanged?.({
+      payload: { from: "main", settings: { appearance: { theme: "dark" } } },
+    });
+    slow.release();
+    await started;
+    await flush();
+
+    expect(useStore.getState().settings.appearance.theme).toBe("light");
   });
 });

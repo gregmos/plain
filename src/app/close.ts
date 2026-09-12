@@ -2,7 +2,6 @@
 // one explicit answer, and the answer has to still be true when the buffer
 // is actually thrown away (spec §8).
 
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { dropBuffer, flushActiveEditor, isDirty } from "../editor";
@@ -12,6 +11,9 @@ import { save } from "./save";
 import { toSession, writeSession } from "./session";
 import { flushSettings } from "./settings";
 import { useStore, type Doc } from "./store";
+
+/** Rust asks every window for the close scenario under this name (§8.2). */
+const QUIT_REQUESTED = "plain:quit-requested";
 
 /** Always measured on live editor text, never on a stale `Doc`. */
 function unsaved(ids: string[]): Doc[] {
@@ -49,6 +51,11 @@ interface CloseOptions {
   ready?: () => void;
   /** Once they are really gone and their drafts with them. */
   done?: () => void;
+  /**
+   * The close stopped for good: `cancel`, `Esc`, or a save that failed. Not
+   * the second question after new edits — that one carries on (W13 §4.3).
+   */
+  cancel?: () => void;
 }
 
 /**
@@ -82,8 +89,12 @@ export function closeDocs(ids: string[], options: CloseOptions | (() => void) = 
           void (async () => {
             const before = new Set(useStore.getState().docs.map((d) => d.id));
             for (const item of dirty) {
-              // A failed save leaves its own banner up and stops the close.
-              if (!(await save(item.id))) return;
+              // A failed save leaves its own banner up and stops the close —
+              // and the window has to be closeable again afterwards (§4.3).
+              if (!(await save(item.id))) {
+                hooks.cancel?.();
+                return;
+              }
             }
             // Save As gave a nameless buffer a new id; it is the same
             // document, so it is still one of the ones being closed.
@@ -110,12 +121,21 @@ export function closeDocs(ids: string[], options: CloseOptions | (() => void) = 
           finish(ids);
         },
       },
-      { label: "cancel", run: () => store.setDialog(null) },
+      {
+        label: "cancel",
+        run: () => {
+          store.setDialog(null);
+          hooks.cancel?.();
+        },
+      },
     ],
     // The one dialog where the last button is not the safe answer: losing
     // the work is what this asks about, so `save` is what `Enter` does.
     safe: "save",
-    cancel: () => store.setDialog(null),
+    cancel: () => {
+      store.setDialog(null);
+      hooks.cancel?.();
+    },
   });
 }
 
@@ -125,13 +145,19 @@ export function closeActive(): void {
 }
 
 /**
- * Everything that ends the app goes through here: the window's X, `Alt+F4`,
- * and on macOS `⌘Q` and the Dock's Quit — Rust holds those back and asks for
+ * Everything that closes a window goes through here: its X, `Alt+F4`,
+ * `Ctrl+Shift+W`, and quit — Rust holds that back and asks every window for
  * this instead, because native `terminate:` would take the unsaved text with
  * it (review #1).
+ *
+ * Once only, and only one at a time: a quit arriving in a window that already
+ * has the question up must not put a second dialog over it or destroy the
+ * window twice. The question being answered `cancel` gives the way back in
+ * (W13 §4.3, M5).
  */
-function leave(finish: () => Promise<void>, leaving: { yes: boolean }): void {
-  if (leaving.yes) return;
+function leave(finish: () => Promise<void>, leaving: { busy: boolean; yes: boolean }): void {
+  if (leaving.busy || leaving.yes) return;
+  leaving.busy = true;
   const ids = useStore.getState().docs.map((d) => d.id);
   let session = toSession();
   closeDocs(ids, {
@@ -144,7 +170,12 @@ function leave(finish: () => Promise<void>, leaving: { yes: boolean }): void {
     },
     done: () => {
       leaving.yes = true;
+      // `writeSession` is `main`'s alone; in any other window it is a no-op,
+      // and `flushSettings` writes what that window still owes (W13 §4.3).
       void Promise.all([writeSession(session), flushSettings()]).then(finish);
+    },
+    cancel: () => {
+      leaving.busy = false;
     },
   });
 }
@@ -152,7 +183,7 @@ function leave(finish: () => Promise<void>, leaving: { yes: boolean }): void {
 /** The window's X and Alt+F4 go through the same one question. */
 export function installCloseGuard(): () => void {
   if (!inTauri) return () => undefined;
-  const leaving = { yes: false };
+  const leaving = { busy: false, yes: false };
   const window = getCurrentWindow();
 
   const unlisten = window.onCloseRequested((event) => {
@@ -161,12 +192,12 @@ export function installCloseGuard(): () => void {
     leave(async () => window.destroy(), leaving);
   });
 
-  // `⌘Q`, the Dock's Quit and anything else macOS routes to `terminate:`.
-  // Rust prevented the exit and asked; the app goes when we say so.
-  const unlistenQuit = listen("plain:quit-requested", () => {
-    leave(async () => {
-      await invoke("exit_app").catch(() => undefined);
-    }, leaving);
+  // `file → exit`, `⌘Q`, the Dock's Quit and anything else macOS routes to
+  // `terminate:`. Rust asked every window instead of exiting; each answers
+  // for its own documents and destroys itself, and the app goes when the last
+  // one has (W13 §8.2).
+  const unlistenQuit = listen(QUIT_REQUESTED, () => {
+    leave(async () => window.destroy(), leaving);
   });
 
   return () => {

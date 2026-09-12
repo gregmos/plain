@@ -27,8 +27,9 @@ import {
   type FileInfo,
 } from "./fs";
 import { snapshotBuffer } from "./history";
-import { dirname, pathKey } from "./paths";
+import { basename, dirname, pathKey } from "./paths";
 import { activeDoc, useStore, type Comparison, type Doc } from "./store";
+import { heldElsewhere } from "./windows";
 
 /* -------------------------------------------------------------- plumbing */
 
@@ -258,6 +259,15 @@ async function saveAsNow(id: string): Promise<boolean> {
   // the ordinary path so the base hash is checked and the encoding is asked
   // about, instead of overwriting the original unconditionally (review #2).
   if (nextId === id && opening.path) return saveNow(id);
+  // The same reason, for a file whose buffer is in another window: that
+  // window would go on holding bytes nobody agreed to, and this one cannot
+  // take the document off it (W13 §5.4).
+  if ((await heldElsewhere([nextId])).size > 0) {
+    useStore
+      .getState()
+      .setMessage(`${basename(target)} is open in another window — close it there first`);
+    return false;
+  }
   // Writing over a file that is open would leave that document's buffer and
   // its draft pointing at bytes it never agreed to (spec §8).
   const clash = useStore.getState().docs.find((d) => d.id === nextId && d.id !== id);

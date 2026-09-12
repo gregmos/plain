@@ -8,6 +8,7 @@ import { writeTextAtomic } from "./fs";
 import { pathKey } from "./paths";
 import { dataDir } from "./settings";
 import { clampRailWidth, useStore, type LibrarySort, type Mode, type RailView } from "./store";
+import { isFirstWindow } from "./windows";
 
 const FILE = "state.json";
 const DEBOUNCE_MS = 2000;
@@ -93,12 +94,18 @@ export function toSession(): SessionFile {
 
 /** Anything unreadable is simply "no session"; a fresh start is not a bug. */
 export function parseSession(text: string): SessionFile | null {
-  let raw: unknown;
   try {
-    raw = JSON.parse(text);
+    return normalizeSession(JSON.parse(text));
   } catch {
     return null;
   }
+}
+
+/**
+ * The same shaping, for a session that never was a file: the seed a window is
+ * made with comes over IPC already parsed (W13 §2.2).
+ */
+export function normalizeSession(raw: unknown): SessionFile | null {
   if (!raw || typeof raw !== "object") return null;
   const value = raw as Partial<SessionFile>;
   const files = Array.isArray(value.files) ? value.files : [];
@@ -148,16 +155,22 @@ export function parseSession(text: string): SessionFile | null {
   };
 }
 
+/**
+ * The reading positions are the app's, not one window's: a window made from a
+ * seed takes them from the session it was seeded with (W13 §2.2).
+ */
+export function seedReading(session: SessionFile): void {
+  positions.clear();
+  for (const [path, heading] of session.reading) positions.set(path, heading);
+}
+
 export async function loadSession(): Promise<SessionFile | null> {
   if (!inTauri) return null;
   try {
     const file = await join(await dataDir(), FILE);
     if (!(await exists(file))) return null;
     const session = parseSession(await readTextFile(file));
-    if (session) {
-      positions.clear();
-      for (const [path, heading] of session.reading) positions.set(path, heading);
-    }
+    if (session) seedReading(session);
     return session;
   } catch {
     return null;
@@ -167,9 +180,14 @@ export async function loadSession(): Promise<SessionFile | null> {
 /**
  * Takes the session it is given, because closing the window empties the open
  * list before the app is allowed to go — the snapshot has to be older.
+ *
+ * Only `main` writes it, and this one line is what makes that true of every
+ * way in: the debounce, `flushSession`, the close scenario and quit (W13 §4).
+ * state.json is one snapshot of one window; the others leave `recent` behind
+ * them instead (W13 §4.4, M3).
  */
 export async function writeSession(session: SessionFile): Promise<void> {
-  if (!inTauri) return;
+  if (!inTauri || !isFirstWindow()) return;
   clearTimeout(timer);
   timer = undefined;
   try {

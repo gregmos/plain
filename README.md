@@ -14,6 +14,7 @@ Double-click a `.md` file and you are reading. Make a change, and the file stays
 - **All the Markdown you need.** Tables, task lists, footnotes, callouts like `> [!note]`, KaTeX math, Mermaid diagrams, syntax-highlighted code, `==highlights==`, `[[wikilinks]]`, and images from your folder.
 - **A folder as a library.** A file tree, create, rename, delete to the Recycle Bin or Trash, and full-text search across the folder.
 - **Quick open.** `Ctrl+K` finds files by name, lists recent ones, and runs commands.
+- **More than one window.** `Ctrl+Shift+N` opens another window on the same folder, empty; `Ctrl+Shift+W` closes it. A file only ever opens in one window, and `recent` is shared between them. Windows do not come back after a restart — the files do, through `recent`, as long as the first window was still open when you opened them.
 - **Careful saving.** Atomic writes, encodings and line endings preserved, recovery drafts in case of a crash, and a warning when a file changes on disk while you have it open.
 - **A quiet interface.** One monospace font, light and dark themes, no toolbars, no icons.
 

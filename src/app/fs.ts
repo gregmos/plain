@@ -93,8 +93,21 @@ export function trashPath(path: string): Promise<void> {
   return invoke("trash_path", { path });
 }
 
+/**
+ * One watcher per window, rebuilt whenever the library or the open files
+ * change. Two rebuilds can be in flight at once and finish in either order,
+ * so each request is numbered and Rust keeps the newest (W13 §6.2).
+ *
+ * From the clock rather than from zero, for the reason `generation` is in
+ * windows.ts: a page reload in a window that goes on living would otherwise
+ * start below the number Rust still holds, and its watcher would never be
+ * rebuilt again (§Д6 #1).
+ */
+let serial = Date.now();
+
 export function watchPaths(root: string | null, files: string[]): Promise<void> {
-  return invoke("watch", { root, files });
+  serial += 1;
+  return invoke("watch", { serial, root, files });
 }
 
 /**

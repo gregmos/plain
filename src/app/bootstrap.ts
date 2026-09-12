@@ -2,20 +2,21 @@
 // was asked to open or the session that was open last time (spec §6, §8).
 
 import { listen } from "@tauri-apps/api/event";
-import {
-  drainPendingPaths,
-  openLibraryPath,
-  openPaths,
-  pendingFolders,
-  pendingPaths,
-} from "./commands";
+import { drainPendingPaths, openLibraryPath, openPaths } from "./commands";
 import { listDrafts } from "./drafts";
 import { inTauri } from "./env";
 import { pathKey } from "./paths";
-import { loadSession, readingPosition, type SessionFile } from "./session";
+import {
+  loadSession,
+  normalizeSession,
+  readingPosition,
+  seedReading,
+  type SessionFile,
+} from "./session";
 import { restoreZoom } from "./zoom";
 import { loadSettings } from "./settings";
 import { useStore } from "./store";
+import { installSettingsSync, isFirstWindow, settingsLoaded, takeOpening } from "./windows";
 import { emitGotoHeading } from "../read/events";
 
 /** Held while the `unsaved work found` screen is up (spec §8). */
@@ -23,7 +24,7 @@ let afterRecovery: (() => Promise<void>) | null = null;
 
 /**
  * Finder does not put a double-clicked file in argv: it sends an Apple Event,
- * so `open-path` can land after `pendingPaths()` has come back empty (spec
+ * so `open-path` can land after `takeOpening()` has come back empty (spec
  * §13a). Draining the queue beside `restore()` would let the session's own
  * `activate` land last — the file you clicked open, but behind yesterday's
  * document. So the queue waits, and startup resolves this when it is done.
@@ -66,9 +67,15 @@ async function restore(session: SessionFile): Promise<void> {
 }
 
 export async function bootstrap(): Promise<void> {
+  // Before the file is read, and awaited: settings written by another window
+  // while this one is starting must not be lost (W13 §7.2, M4).
+  await installSettingsSync();
   const { settings, invalid } = await loadSettings();
   const store = useStore.getState();
   store.applySettings(settings);
+  // Whatever arrived during that read was written after it began, so it goes
+  // on top of what the file said.
+  settingsLoaded();
   if (invalid) {
     store.showBanner({
       id: "settings",
@@ -89,12 +96,21 @@ export async function bootstrap(): Promise<void> {
   // file that is waiting must never be left waiting.
   let handedOff = false;
   try {
-    const args = await pendingPaths();
-    const folders = await pendingFolders();
+    // One packet, taken once: the paths this window was handed, and — for a
+    // window `file → new window` made — the session it starts on (W13 §2.2).
+    const { paths: args, folders, seed } = await takeOpening();
+
+    // Only `main` reads state.json, and only `main` writes it: windows do not
+    // come back after a restart, so a second window has nothing there to read
+    // and nothing of its own to leave (W13 §2.2, §4.1).
+    const FIRST = isFirstWindow();
 
     // The library, the recent list and the reading positions come back either
     // way; only the list of open files depends on the arguments (spec §6).
-    const session = await loadSession();
+    const session = FIRST ? await loadSession() : normalizeSession(seed);
+    // `loadSession` seeds the reading positions itself; a seed is handed over
+    // rather than read, so it does it here (W13 §2.2).
+    if (!FIRST && session) seedReading(session);
     if (session) {
       if (session.library) await openLibraryPath(session.library, false);
       store.setCollapsed(session.collapsed);
@@ -120,7 +136,10 @@ export async function bootstrap(): Promise<void> {
       if (session && session.files.length > 0) await restore(session);
     };
 
-    const drafts = await listDrafts();
+    // The drafts folder is the app's, not this window's, so only the window a
+    // run starts with offers what is in it: three windows asking the same
+    // question would be two chances to answer it wrong (W13 §2.3, M7).
+    const drafts = FIRST ? await listDrafts() : [];
     if (drafts.length > 0) {
       afterRecovery = open;
       store.setRecovery(drafts);

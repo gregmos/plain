@@ -22,6 +22,13 @@ export interface Settings {
 
 export const SETTINGS_FILE = "settings.json";
 
+/**
+ * Said once the file is really written, so the other windows can apply the
+ * same values instead of showing the old ones and writing them back over the
+ * top on the way out (W13 §7.2).
+ */
+export const SETTINGS_CHANGED = "plain:settings-changed";
+
 /** The reading column, in px (spec §3, §10). The `−`/`+` step is the same. */
 export const CONTENT_WIDTH = { min: 440, max: 1400, step: 20 } as const;
 
@@ -232,6 +239,15 @@ async function write(settings: Settings): Promise<void> {
   try {
     const path = await settingsPath();
     await invoke("write_text_atomic", { path, text: serializeSettings(settings) });
+    // Only after the file is really there: a window that applied a change
+    // nothing holds would be showing a value the next start cannot give back.
+    // Imported here rather than at the top because windows.ts reads this
+    // module, and store.ts is in the way of the cycle that would make.
+    const [{ emit }, { label }] = await Promise.all([
+      import("@tauri-apps/api/event"),
+      import("./windows"),
+    ]);
+    await emit(SETTINGS_CHANGED, { from: label(), settings });
   } catch (error) {
     console.error("couldn't write settings.json", error);
   }
@@ -258,6 +274,18 @@ export function saveSettings(settings: Settings): void {
   pending = settings;
   clearTimeout(timer);
   timer = setTimeout(drain, SAVE_DEBOUNCE);
+}
+
+/**
+ * Another window has written the file and we have applied what it wrote, so
+ * the values waiting here are older than what is on disk: writing them would
+ * put the reader's change back (W13 §7.2). The write already in `writing` is
+ * not called off — N12.
+ */
+export function dropPendingSettings(): void {
+  pending = null;
+  clearTimeout(timer);
+  timer = undefined;
 }
 
 /**

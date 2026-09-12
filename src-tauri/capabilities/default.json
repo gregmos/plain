@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/windows-schema.json",
   "identifier": "default",
-  "description": "What the main window is allowed to do in v0.1",
-  "windows": ["main"],
+  "description": "What a window is allowed to do. Every window is the same window, so the second one gets exactly what the first has.",
+  "windows": ["main", "w*"],
   "permissions": [
     "core:default",
     "core:app:allow-version",

@@ -151,6 +151,7 @@ export function menuModel(): MenuSection[] {
       label: "file",
       items: [
         entry("file.new"),
+        entry("file.newWindow"),
         entry("file.open"),
         entry("file.openLibrary"),
         { kind: "submenu", key: "recent", label: "recent", items: recentItems() },
@@ -174,6 +175,7 @@ export function menuModel(): MenuSection[] {
         entry("file.history"),
         separator(),
         entry("file.close"),
+        entry("file.closeWindow"),
         entry("file.exit"),
       ],
     },
